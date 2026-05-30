@@ -3,6 +3,29 @@
   "callbacks": "hermes/callbacks",
   "command": "wsa-hermes-cli",
   "cwd": ".",
+  "agent_harness": {
+    "expected_cwd": "workspace_root",
+    "meeting_mode": {
+      "purpose": "representative diagnosis and proposal gathering",
+      "world_mutation": "proposal_only"
+    },
+    "path_policy": "relative_to_workspace_root",
+    "read_roots": [
+      "."
+    ],
+    "schema": "wsa.hermes.agent_harness.v1",
+    "world_state_policy": {
+      "direct_db_writes": false,
+      "direct_world_file_mutation": false,
+      "use_tickets_or_callbacks_for_changes": true
+    },
+    "write_roots": [
+      "hermes/callbacks",
+      "hermes/reports_outbox",
+      "hermes/maintenance",
+      "manager/runtime_sessions"
+    ]
+  },
   "maintenance": "hermes/maintenance",
   "name": "example-hermes",
   "notes": [
@@ -50,5 +73,10 @@
     "OPENAI_API_KEY"
   ],
   "task_queue": "hermes/task_queue",
-  "timeout_seconds": 300
+  "timeout_seconds": 300,
+  "workspace": {
+    "env": "WSA_WORKSPACE",
+    "path_policy": "relative_to_workspace_root",
+    "root": "."
+  }
 }

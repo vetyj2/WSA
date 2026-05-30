@@ -328,6 +328,40 @@ class WorldRepository:
             conn.commit()
         return EntityRecord(entity_id, entity_type, display_name, status, payload or {})
 
+    def list_entities(
+        self,
+        entity_type: str | None = None,
+        status: str | None = None,
+    ) -> List[EntityRecord]:
+        sql = """
+            SELECT entity_id, entity_type, display_name, status, payload
+            FROM entities
+        """
+        clauses = []
+        params: list[Any] = []
+        if entity_type is not None:
+            clauses.append("entity_type = ?")
+            params.append(entity_type)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at ASC"
+
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [
+            EntityRecord(
+                entity_id=row["entity_id"],
+                entity_type=row["entity_type"],
+                display_name=row["display_name"],
+                status=row["status"],
+                payload=decode_payload(row["payload"]),
+            )
+            for row in rows
+        ]
+
     def create_fact(
         self,
         subject_id: str,

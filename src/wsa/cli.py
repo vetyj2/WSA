@@ -10,6 +10,7 @@ from . import __version__
 from .config import load_config
 from .hermes_adapter import HermesCliTemplateAdapter
 from .manager import WorldManager
+from .meeting import MeetingOrchestrator
 from .orchestrator import SceneOrchestrator
 from .repositories import WorldRepository
 from .template import TemplateChecker, format_template_readiness
@@ -69,6 +70,42 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply safe diagnostic cleanups and record diagnostic logs.",
     )
+
+    meeting_parser = subparsers.add_parser(
+        "meeting",
+        help="Run non-mutating representative meetings.",
+    )
+    meeting_subparsers = meeting_parser.add_subparsers(dest="meeting_command")
+    meeting_run = meeting_subparsers.add_parser(
+        "run",
+        help="Create a meeting transcript and report without changing canon.",
+    )
+    meeting_run.add_argument("world_id", help="World ID.")
+    meeting_run.add_argument("--topic", required=True, help="Meeting topic.")
+    meeting_run.add_argument(
+        "--question",
+        default="Identify gaps, risks, and useful proposals.",
+        help="Question for representatives to discuss.",
+    )
+    meeting_run.add_argument(
+        "--participant",
+        action="append",
+        default=[],
+        help="Character, group, faction, or viewpoint to represent. Can be repeated.",
+    )
+    meeting_decide = meeting_subparsers.add_parser(
+        "decide",
+        help="Approve, retry, or hold a meeting report.",
+    )
+    meeting_decide.add_argument("world_id", help="World ID.")
+    meeting_decide.add_argument("report_id", help="Meeting report ID.")
+    meeting_decide.add_argument(
+        "--decision",
+        required=True,
+        choices=("approve", "retry", "hold"),
+        help="Decision for the meeting report.",
+    )
+    meeting_decide.add_argument("--note", help="Optional decision note.")
 
     report_parser = subparsers.add_parser("report", help="Inspect reports.")
     report_subparsers = report_parser.add_subparsers(dest="report_command")
@@ -267,6 +304,51 @@ def run_scene_mock(workspace: Path, world_id: str, name: str, goal: str, actors:
     return 0
 
 
+def run_meeting(
+    workspace: Path,
+    world_id: str,
+    topic: str,
+    question: str,
+    participants: list[str],
+) -> int:
+    world = get_world(workspace, world_id)
+    result = MeetingOrchestrator(workspace, world).run_meeting(
+        topic,
+        question,
+        participants,
+    )
+    print(f"meeting_id: {result.meeting_id}")
+    print(f"meeting_dir: {result.meeting_dir}")
+    print(f"transcript_path: {result.transcript_path}")
+    print(f"report_id: {result.report_id}")
+    print(f"manager_session_id: {result.manager_session_id}")
+    for session_id in result.participant_session_ids:
+        print(f"participant_session_id: {session_id}")
+    return 0
+
+
+def run_meeting_decide(
+    workspace: Path,
+    world_id: str,
+    report_id: str,
+    decision: str,
+    note: str | None,
+) -> int:
+    world = get_world(workspace, world_id)
+    result = MeetingOrchestrator(workspace, world).decide_report(
+        report_id,
+        decision,
+        note=note,
+    )
+    print(f"meeting_decision: {result.decision}")
+    print(f"report_id: {result.report_id}")
+    print(f"report_status: {result.report_status}")
+    if result.ticket is not None:
+        print(f"ticket_id: {result.ticket.ticket_id}")
+        print(f"ticket_type: {result.ticket.ticket_type}")
+    return 0
+
+
 def run_report_list(workspace: Path, world_id: str, status: str | None) -> int:
     world = get_world(workspace, world_id)
     repo = WorldRepository(world.world_id, world.path)
@@ -365,10 +447,10 @@ def run_hermes_task_create(
         payload=payload,
     )
     print(f"hermes_task_created: {task.task_id}")
-    print(f"task_path: {task.task_path}")
+    print(f"task_path: {task.task_ref}")
     print(f"session_id: {task.session_id}")
     print(f"world_id: {task.world_id}")
-    print(f"command_preview: {command} run-task {task.task_path}")
+    print(f"command_preview: {command} run-task {task.task_ref}")
     return 0
 
 
@@ -421,6 +503,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.manager_command == "diagnose":
             return run_manager_diagnose(config.workspace, args.fix)
         parser.parse_args(["manager", "--help"])
+    if args.command == "meeting":
+        if args.meeting_command == "run":
+            return run_meeting(
+                config.workspace,
+                args.world_id,
+                args.topic,
+                args.question,
+                args.participant,
+            )
+        if args.meeting_command == "decide":
+            return run_meeting_decide(
+                config.workspace,
+                args.world_id,
+                args.report_id,
+                args.decision,
+                args.note,
+            )
+        parser.parse_args(["meeting", "--help"])
     if args.command == "scene":
         if args.scene_command == "mock":
             return run_scene_mock(

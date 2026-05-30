@@ -19,6 +19,9 @@ MESSAGE_TYPES = {
     "progress_summary",
     "final_report",
     "pr_packet_request",
+    "meeting_agenda",
+    "meeting_contribution",
+    "meeting_summary",
 }
 
 DIRECTIONS = {"inbox", "outbox"}

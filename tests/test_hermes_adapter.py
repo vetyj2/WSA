@@ -25,6 +25,8 @@ class HermesAdapterTests(TestCase):
 
             self.assertEqual(payload["adapter"], "cli")
             self.assertEqual(payload["secret_env"], ["HERMES_BOT_TOKEN", "OPENAI_API_KEY"])
+            self.assertEqual(payload["workspace"]["path_policy"], "relative_to_workspace_root")
+            self.assertFalse(payload["agent_harness"]["world_state_policy"]["direct_db_writes"])
             self.assertEqual(
                 payload["operation_contract"]["actions"][0]["modes"],
                 ["none", "local_commit", "remote_push", "custom"],
@@ -48,6 +50,12 @@ class HermesAdapterTests(TestCase):
             self.assertEqual(task_payload["schema"], "wsa.hermes.task.v1")
             self.assertEqual(task_payload["route"]["world_id"], world.world_id)
             self.assertEqual(task_payload["adapter"]["command_preview"][0], "wsa-hermes-cli")
+            self.assertEqual(task_payload["adapter"]["command_preview"][2], task.task_ref)
+            self.assertFalse(task_payload["adapter"]["command_preview"][2].startswith("/"))
+            self.assertEqual(task_payload["workspace"]["path_policy"], "relative_to_workspace_root")
+            self.assertFalse(
+                task_payload["agent_harness"]["world_state_policy"]["direct_world_file_mutation"]
+            )
             self.assertEqual(
                 task_payload["operation_contract"]["actions"][0]["action"],
                 "version_control.snapshot",

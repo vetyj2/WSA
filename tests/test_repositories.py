@@ -96,8 +96,10 @@ class RepositoryTests(TestCase):
             )
 
             facts = repo.list_facts(actor.entity_id)
+            entities = repo.list_entities(entity_type="character", status="active")
             self.assertEqual(len(facts), 1)
             self.assertEqual(facts[0].predicate, "has_role")
+            self.assertEqual([item.display_name for item in entities], ["Mina"])
             self.assertTrue(event_id.startswith("event_"))
             self.assertTrue(report.report_id.startswith("report_"))
             self.assertTrue(commit_id.startswith("commit_"))

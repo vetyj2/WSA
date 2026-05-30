@@ -34,6 +34,7 @@ class HermesAdapterRouteError(HermesAdapterError):
 class HermesTaskRecord:
     task_id: str
     task_path: Path
+    task_ref: str
     session_id: str
     workspace_id: str
     world_id: str
@@ -121,10 +122,16 @@ class HermesCliTemplateAdapter:
             "name": self.adapter_name,
             "command": self.command,
             "cwd": ".",
+            "workspace": {
+                "root": ".",
+                "env": "WSA_WORKSPACE",
+                "path_policy": "relative_to_workspace_root",
+            },
             "task_queue": "hermes/task_queue",
             "callbacks": "hermes/callbacks",
             "reports_outbox": "hermes/reports_outbox",
             "maintenance": "hermes/maintenance",
+            "agent_harness": build_agent_harness_contract(),
             "timeout_seconds": 300,
             "operation_contract": build_operation_contract(),
             "secret_env": [
@@ -178,6 +185,7 @@ class HermesCliTemplateAdapter:
         )
         task_id = new_id("hermes_task")
         task_path = safe_child_path(self.task_queue_dir(), f"{task_id}.json")
+        task_ref = self._workspace_relative(task_path)
         packet = {
             "schema": HERMES_TASK_SCHEMA,
             "schema_version": SCHEMA_VERSION,
@@ -187,11 +195,12 @@ class HermesCliTemplateAdapter:
                 "type": "cli",
                 "name": self.adapter_name,
                 "command": self.command,
-                "command_preview": [self.command, "run-task", str(task_path)],
+                "command_preview": [self.command, "run-task", task_ref],
             },
             "workspace": {
                 "workspace_id": self.workspace_id,
-                "workspace_root_hint": str(self.workspace),
+                "workspace_root": ".",
+                "path_policy": "relative_to_workspace_root",
             },
             "route": {
                 "world_id": world.world_id,
@@ -207,6 +216,7 @@ class HermesCliTemplateAdapter:
                 "reports_outbox": "hermes/reports_outbox",
                 "maintenance": "hermes/maintenance",
             },
+            "agent_harness": build_agent_harness_contract(),
             "operation_contract": build_operation_contract(),
         }
         task_path.write_text(
@@ -216,6 +226,7 @@ class HermesCliTemplateAdapter:
         return HermesTaskRecord(
             task_id=task_id,
             task_path=task_path,
+            task_ref=task_ref,
             session_id=session_id,
             workspace_id=self.workspace_id,
             world_id=world.world_id,
@@ -312,6 +323,14 @@ class HermesCliTemplateAdapter:
             ) from exc
         return resolved
 
+    def _workspace_relative(self, path: Path) -> str:
+        resolved_workspace = self.workspace.resolve()
+        resolved_path = path.resolve()
+        try:
+            return resolved_path.relative_to(resolved_workspace).as_posix()
+        except ValueError:
+            return str(resolved_path)
+
     def _load_json(self, path: Path) -> Dict[str, Any]:
         with path.open("r", encoding="utf-8") as handle:
             value = json.load(handle)
@@ -394,6 +413,32 @@ def build_operation_contract() -> Dict[str, Any]:
                 ],
             }
         ],
+    }
+
+
+def build_agent_harness_contract() -> Dict[str, Any]:
+    return {
+        "schema": "wsa.hermes.agent_harness.v1",
+        "expected_cwd": "workspace_root",
+        "path_policy": "relative_to_workspace_root",
+        "read_roots": [
+            ".",
+        ],
+        "write_roots": [
+            "hermes/callbacks",
+            "hermes/reports_outbox",
+            "hermes/maintenance",
+            "manager/runtime_sessions",
+        ],
+        "world_state_policy": {
+            "direct_db_writes": False,
+            "direct_world_file_mutation": False,
+            "use_tickets_or_callbacks_for_changes": True,
+        },
+        "meeting_mode": {
+            "purpose": "representative diagnosis and proposal gathering",
+            "world_mutation": "proposal_only",
+        },
     }
 
 

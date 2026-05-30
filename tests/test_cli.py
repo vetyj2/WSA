@@ -108,6 +108,77 @@ class CliTests(TestCase):
             self.assertEqual(code, 0)
             self.assertIn("diagnostics: clean", stdout.getvalue())
 
+    def test_meeting_run_cli_creates_non_mutating_report(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Meeting World")
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "meeting",
+                        "run",
+                        world.world_id,
+                        "--topic",
+                        "Succession gap",
+                        "--question",
+                        "What should be proposed?",
+                        "--participant",
+                        "Council",
+                    ]
+                )
+
+            output = stdout.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("meeting_id:", output)
+            self.assertIn("transcript_path:", output)
+            self.assertIn("report_id:", output)
+
+    def test_meeting_decide_cli_approves_candidate_report(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Meeting Decision World")
+            run_stdout = StringIO()
+            with patch("sys.stdout", run_stdout):
+                main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "meeting",
+                        "run",
+                        world.world_id,
+                        "--topic",
+                        "Candidate district",
+                    ]
+                )
+            report_id = ""
+            for line in run_stdout.getvalue().splitlines():
+                if line.startswith("report_id: "):
+                    report_id = line.split(": ", 1)[1]
+
+            decide_stdout = StringIO()
+            with patch("sys.stdout", decide_stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "meeting",
+                        "decide",
+                        world.world_id,
+                        report_id,
+                        "--decision",
+                        "approve",
+                    ]
+                )
+
+            output = decide_stdout.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("meeting_decision: approve", output)
+            self.assertIn("report_status: approved", output)
+            self.assertIn("ticket_type: meeting_candidate", output)
+
     def test_report_and_ticket_list_cli_after_mock_scene(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"

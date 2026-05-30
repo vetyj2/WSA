@@ -14,6 +14,7 @@ The project is designed as a template. It does not include live agent credential
 - PR packet ticket creation and approval flow
 - Explicit fact conflict diagnostics
 - CLI-first Hermes adapter template using task and callback JSON files
+- Non-mutating meeting mode for representative diagnosis and proposal gathering
 - Template readiness checks for copied runtime instances
 
 ## Install From A Clone
@@ -50,7 +51,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-53 tests OK
+58 tests OK
 ```
 
 ## Quick Smoke Run
@@ -78,6 +79,24 @@ PYTHONPATH=src python3 -m wsa report list <world_id>
 PYTHONPATH=src python3 -m wsa manager diagnose
 ```
 
+Run a non-mutating meeting before committing world changes:
+
+```bash
+PYTHONPATH=src python3 -m wsa meeting run <world_id> \
+  --topic "Harbor succession gap" \
+  --question "Which factions should be consulted before canon changes?" \
+  --participant "Harbor Guild" \
+  --participant "Unregistered Council"
+```
+
+After reviewing the meeting report, record the user's decision:
+
+```bash
+PYTHONPATH=src python3 -m wsa meeting decide <world_id> <report_id> --decision approve
+PYTHONPATH=src python3 -m wsa meeting decide <world_id> <report_id> --decision retry
+PYTHONPATH=src python3 -m wsa meeting decide <world_id> <report_id> --decision hold
+```
+
 ## Hermes Adapter Template
 
 The Hermes adapter in this repository is a CLI/file-contract template. It writes task JSON files and collects callback JSON files. It does not start Docker, run Telegram bots, open sockets, or store raw secrets.
@@ -102,6 +121,8 @@ The generated task packet is written under:
 workspace/hermes/task_queue/
 ```
 
+Task packets and command previews use paths relative to the workspace root. A Hermes runtime should set its working directory to the workspace root, or set `WSA_WORKSPACE` explicitly, then treat packet paths as relative to that root. The example config includes an `agent_harness` contract describing allowed write roots and the policy that Hermes should not directly mutate world databases or world files.
+
 Callbacks are collected from:
 
 ```text
@@ -115,6 +136,14 @@ Hermes runtimes can implement optional operation requests from the task packet's
 Callback `operation_requests` are accepted only when their action and mode match the published operation contract. Unsupported action names or execution modes are rejected during callback collection.
 
 See `examples/hermes_operation_policy.example.json` for a public-safe policy shape that a user's Hermes runtime can copy into local configuration. Real remote URLs, key paths, tokens, and deployment policy should stay outside the repository.
+
+## Meeting Mode
+
+`wsa meeting run` creates a representative meeting transcript, runtime session messages, and an inbox report. It is intended for Hermes manager and sub-agent work where characters, groups, factions, or loose viewpoints can discuss gaps before anything becomes canon.
+
+Meeting mode is proposal-only: it does not create facts, scene events, tickets, or commits. Unknown participants are represented as unbound viewpoints so the transcript can ask what they should represent instead of silently creating new world entities.
+
+`wsa meeting decide` records the user-facing decision. `approve` marks the report approved and creates a `meeting_candidate` ticket for later explicit conversion into world changes. `retry` rejects the report so Hermes can run another meeting pass. `hold` keeps the report in pending review. None of these decisions directly writes canon facts.
 
 ## Template Readiness
 

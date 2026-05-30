@@ -39,6 +39,7 @@ WORLD_DIRS = (
     "indexes/fts",
     "indexes/vector",
     "scenes",
+    "meetings",
     "actors",
     "tickets",
     "reports",
