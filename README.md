@@ -16,11 +16,22 @@ The project is designed as a template. It does not include live agent credential
 - CLI-first Hermes adapter template using task and callback JSON files
 - Template readiness checks for copied runtime instances
 
-## Install For Local Development
+## Install From A Clone
+
+This project is not published to PyPI. Install it from a local Git clone:
 
 ```bash
+git clone <repository-url>
+cd <repository-directory>
 python3 -m venv .venv
 . .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install .
+```
+
+For development, use editable install so local source edits take effect immediately:
+
+```bash
 python3 -m pip install -e .
 ```
 
@@ -39,7 +50,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-38 tests OK
+39 tests OK
 ```
 
 ## Quick Smoke Run

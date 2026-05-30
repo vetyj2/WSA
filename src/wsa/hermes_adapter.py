@@ -33,6 +33,7 @@ class HermesTaskRecord:
     task_id: str
     task_path: Path
     session_id: str
+    workspace_id: str
     world_id: str
     role: str
     runtime_envelope: RuntimeEnvelope
@@ -214,6 +215,7 @@ class HermesCliTemplateAdapter:
             task_id=task_id,
             task_path=task_path,
             session_id=session_id,
+            workspace_id=self.workspace_id,
             world_id=world.world_id,
             role=role,
             runtime_envelope=envelope,
@@ -381,7 +383,7 @@ def build_template_callback(
         "schema_version": SCHEMA_VERSION,
         "callback_id": new_id("hermes_callback"),
         "task_id": task.task_id,
-        "workspace_id": "local",
+        "workspace_id": task.workspace_id,
         "created_at": utc_now(),
         "status": status,
         "message_type": "final_report",

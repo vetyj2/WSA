@@ -53,6 +53,28 @@ class HermesAdapterTests(TestCase):
             )
             self.assertEqual([item.message_type for item in inbox], ["intent_request"])
 
+    def test_template_callback_uses_task_workspace_id(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Hermes Workspace World")
+            adapter = HermesCliTemplateAdapter(workspace, workspace_id="customer-runtime")
+            task = adapter.create_task(
+                world.world_id,
+                title="Run diagnostics",
+                instruction="Inspect pending reports and tickets.",
+            )
+
+            callback_payload = build_template_callback(task)
+            callback_path = adapter.callbacks_dir() / f"{callback_payload['callback_id']}.json"
+            callback_path.write_text(
+                json.dumps(callback_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            callback = adapter.collect_callback(callback_path)
+
+            self.assertEqual(callback.world_id, world.world_id)
+
     def test_callback_collection_validates_route_and_creates_report(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
