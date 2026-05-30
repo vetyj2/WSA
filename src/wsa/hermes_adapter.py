@@ -17,6 +17,7 @@ DEFAULT_HERMES_ADAPTER_NAME = "example-hermes"
 DEFAULT_HERMES_COMMAND = "wsa-hermes-cli"
 HERMES_TASK_SCHEMA = "wsa.hermes.task.v1"
 HERMES_CALLBACK_SCHEMA = "wsa.hermes.callback.v1"
+HERMES_OPERATION_CONTRACT_SCHEMA = "wsa.hermes.operation_contract.v1"
 
 
 class HermesAdapterError(ValueError):
@@ -120,7 +121,9 @@ class HermesCliTemplateAdapter:
             "task_queue": "hermes/task_queue",
             "callbacks": "hermes/callbacks",
             "reports_outbox": "hermes/reports_outbox",
+            "maintenance": "hermes/maintenance",
             "timeout_seconds": 300,
+            "operation_contract": build_operation_contract(),
             "secret_env": [
                 "HERMES_BOT_TOKEN",
                 "OPENAI_API_KEY",
@@ -199,7 +202,9 @@ class HermesCliTemplateAdapter:
                 "task_queue": "hermes/task_queue",
                 "callbacks": "hermes/callbacks",
                 "reports_outbox": "hermes/reports_outbox",
+                "maintenance": "hermes/maintenance",
             },
+            "operation_contract": build_operation_contract(),
         }
         task_path.write_text(
             json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -223,6 +228,9 @@ class HermesCliTemplateAdapter:
 
         route = callback["route"]
         payload = dict(callback.get("payload") or {})
+        operation_requests = self._operation_requests_if_any(callback)
+        if operation_requests:
+            payload["operation_requests"] = operation_requests
         artifact_refs = list(callback.get("artifact_refs") or [])
         message_type = str(callback.get("message_type") or "final_report")
         status = str(callback.get("status") or "completed")
@@ -312,6 +320,54 @@ class HermesCliTemplateAdapter:
         if not isinstance(value, str) or not value:
             raise HermesAdapterError(f"{key} is required")
         return value
+
+    def _operation_requests_if_any(self, callback: Dict[str, Any]) -> List[Dict[str, Any]]:
+        value = callback.get("operation_requests")
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise HermesAdapterError("operation_requests must be a list")
+
+        requests: List[Dict[str, Any]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                raise HermesAdapterError("operation request must be an object")
+            action = item.get("action")
+            mode = item.get("mode")
+            summary = item.get("summary")
+            if not isinstance(action, str) or not action:
+                raise HermesAdapterError("operation request action is required")
+            if not isinstance(mode, str) or not mode:
+                raise HermesAdapterError("operation request mode is required")
+            if not isinstance(summary, str) or not summary:
+                raise HermesAdapterError("operation request summary is required")
+            requests.append(dict(item))
+        return requests
+
+
+def build_operation_contract() -> Dict[str, Any]:
+    return {
+        "schema": HERMES_OPERATION_CONTRACT_SCHEMA,
+        "owner": "hermes_runtime",
+        "approval": "user_required",
+        "action_request_format": {
+            "message_type": "operation_request",
+            "required_fields": ["action", "mode", "summary"],
+            "optional_fields": ["payload", "dry_run"],
+        },
+        "actions": [
+            {
+                "action": "version_control.snapshot",
+                "modes": ["none", "local_commit", "remote_push", "custom"],
+                "executor": "user_hermes_adapter",
+                "notes": [
+                    "The WSA template declares intent only.",
+                    "Each Hermes runtime maps this action to its own local policy.",
+                    "Remote push, local commit, and disabled modes are all valid.",
+                ],
+            }
+        ],
+    }
 
 
 def build_template_callback(

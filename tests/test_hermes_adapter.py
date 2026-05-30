@@ -24,6 +24,10 @@ class HermesAdapterTests(TestCase):
 
             self.assertEqual(payload["adapter"], "cli")
             self.assertEqual(payload["secret_env"], ["HERMES_BOT_TOKEN", "OPENAI_API_KEY"])
+            self.assertEqual(
+                payload["operation_contract"]["actions"][0]["modes"],
+                ["none", "local_commit", "remote_push", "custom"],
+            )
             self.assertNotIn("token_value", path.read_text(encoding="utf-8"))
 
     def test_cli_template_task_writes_queue_packet_and_runtime_inbox(self) -> None:
@@ -43,6 +47,10 @@ class HermesAdapterTests(TestCase):
             self.assertEqual(task_payload["schema"], "wsa.hermes.task.v1")
             self.assertEqual(task_payload["route"]["world_id"], world.world_id)
             self.assertEqual(task_payload["adapter"]["command_preview"][0], "wsa-hermes-cli")
+            self.assertEqual(
+                task_payload["operation_contract"]["actions"][0]["action"],
+                "version_control.snapshot",
+            )
             self.assertEqual([item.message_type for item in inbox], ["intent_request"])
 
     def test_callback_collection_validates_route_and_creates_report(self) -> None:
@@ -56,6 +64,13 @@ class HermesAdapterTests(TestCase):
                 instruction="Inspect pending reports and tickets.",
             )
             callback_payload = build_template_callback(task)
+            callback_payload["operation_requests"] = [
+                {
+                    "action": "version_control.snapshot",
+                    "mode": "local_commit",
+                    "summary": "Record Hermes callback state.",
+                }
+            ]
             callback_path = adapter.callbacks_dir() / f"{callback_payload['callback_id']}.json"
             callback_path.write_text(
                 json.dumps(callback_payload, ensure_ascii=False, indent=2) + "\n",
@@ -70,6 +85,10 @@ class HermesAdapterTests(TestCase):
             self.assertEqual(repo.get_report(callback.report_id or "").purpose, "hermes_callback")
             self.assertEqual([item.message_type for item in outbox], ["final_report"])
             self.assertEqual(outbox[0].payload["report_id"], callback.report_id)
+            self.assertEqual(
+                outbox[0].payload["operation_requests"][0]["mode"],
+                "local_commit",
+            )
 
     def test_callback_route_mismatch_is_rejected(self) -> None:
         with TemporaryDirectory() as tmp:

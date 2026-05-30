@@ -1,0 +1,38 @@
+{
+  "schema": "wsa.hermes.operation_policy.example.v1",
+  "owner": "user_hermes_runtime",
+  "approval": {
+    "required": true,
+    "source": "user_runtime_policy"
+  },
+  "version_control": {
+    "action": "version_control.snapshot",
+    "default_mode": "none",
+    "allowed_modes": [
+      "none",
+      "local_commit",
+      "remote_push",
+      "custom"
+    ],
+    "local_commit": {
+      "enabled": false,
+      "commit_message_template": "Hermes update: {summary}"
+    },
+    "remote_push": {
+      "enabled": false,
+      "remote_url_env": "HERMES_VCS_REMOTE_URL",
+      "ssh_key_path_env": "HERMES_VCS_SSH_KEY_PATH",
+      "branch_env": "HERMES_VCS_BRANCH",
+      "commit_message_template": "Hermes update: {summary}"
+    },
+    "custom": {
+      "enabled": false,
+      "command_env": "HERMES_OPERATION_COMMAND"
+    }
+  },
+  "notes": [
+    "This is a public-safe example policy, not a live deployment config.",
+    "Keep private keys, real remote URLs, tokens, and customer runtime policy outside the repository.",
+    "Hermes runtimes should map operation requests to local commands only after user approval."
+  ]
+}

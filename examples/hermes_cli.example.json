@@ -3,11 +3,46 @@
   "callbacks": "hermes/callbacks",
   "command": "wsa-hermes-cli",
   "cwd": ".",
+  "maintenance": "hermes/maintenance",
   "name": "example-hermes",
   "notes": [
     "Template only. Do not put raw secret values in this file.",
     "WSA writes task JSON; the Hermes CLI wrapper reads it and writes callback JSON."
   ],
+  "operation_contract": {
+    "action_request_format": {
+      "message_type": "operation_request",
+      "optional_fields": [
+        "payload",
+        "dry_run"
+      ],
+      "required_fields": [
+        "action",
+        "mode",
+        "summary"
+      ]
+    },
+    "actions": [
+      {
+        "action": "version_control.snapshot",
+        "executor": "user_hermes_adapter",
+        "modes": [
+          "none",
+          "local_commit",
+          "remote_push",
+          "custom"
+        ],
+        "notes": [
+          "The WSA template declares intent only.",
+          "Each Hermes runtime maps this action to its own local policy.",
+          "Remote push, local commit, and disabled modes are all valid."
+        ]
+      }
+    ],
+    "approval": "user_required",
+    "owner": "hermes_runtime",
+    "schema": "wsa.hermes.operation_contract.v1"
+  },
   "reports_outbox": "hermes/reports_outbox",
   "schema": "wsa.hermes.cli_config.example.v1",
   "secret_env": [

@@ -97,6 +97,10 @@ Callbacks are collected from:
 workspace/hermes/callbacks/
 ```
 
+Hermes runtimes can implement optional operation requests from the task packet's `operation_contract`. For example, a runtime may map `version_control.snapshot` to `none`, `local_commit`, `remote_push`, or a custom local command. The template declares the action contract only; each user's Hermes adapter owns the actual command mapping and approval policy.
+
+See `examples/hermes_operation_policy.example.json` for a public-safe policy shape that a user's Hermes runtime can copy into local configuration. Real remote URLs, key paths, tokens, and deployment policy should stay outside the repository.
+
 ## Template Readiness
 
 Before copying this project into a live runtime instance, verify a clean workspace shape:
