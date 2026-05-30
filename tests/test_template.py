@@ -19,6 +19,14 @@ class TemplateTests(TestCase):
             self.assertTrue(
                 (workspace / "hermes" / "adapter_config" / "hermes_cli.example.json").exists()
             )
+            self.assertTrue(
+                (
+                    workspace
+                    / "hermes"
+                    / "adapter_config"
+                    / "hermes_commands.example.json"
+                ).exists()
+            )
 
     def test_template_check_rejects_live_adapter_config(self) -> None:
         with TemporaryDirectory() as tmp:

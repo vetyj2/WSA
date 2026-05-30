@@ -1,9 +1,26 @@
 {
   "adapter": "cli",
-  "callbacks": "hermes/callbacks",
-  "command": "wsa-hermes-cli",
-  "cwd": ".",
   "agent_harness": {
+    "autonomy_policy": {
+      "canon_policy": "Autonomous generation may produce candidates; canon mutation still follows the user's Hermes runtime policy and WSA ticket or callback review flow.",
+      "checkpoint_policy": {
+        "examples": [
+          "until 100 characters exist",
+          "until three regions have factions, conflicts, and opening hooks",
+          "until the first academy year has enough institutions for scene play"
+        ],
+        "natural_language_allowed": true,
+        "on_checkpoint": "summarize candidates and request user decision",
+        "recommended": true
+      },
+      "enforcement": "guidance_only",
+      "fully_autonomous_generation_allowed": true,
+      "owner": "user_hermes_runtime_dialogue",
+      "range": {
+        "max": 100,
+        "min": 0
+      }
+    },
     "expected_cwd": "workspace_root",
     "meeting_mode": {
       "purpose": "representative diagnosis and proposal gathering",
@@ -23,8 +40,22 @@
       "hermes/callbacks",
       "hermes/reports_outbox",
       "hermes/maintenance",
+      "hermes/task_state",
+      "hermes/quarantine",
       "manager/runtime_sessions"
     ]
+  },
+  "callbacks": "hermes/callbacks",
+  "command": "wsa-hermes-cli",
+  "command_registry": "hermes/adapter_config/hermes_commands.example.json",
+  "cwd": ".",
+  "delivery": {
+    "chat_summary": "allowed",
+    "full_artifact": "local_report_or_file_attachment",
+    "requires_human_approval": true,
+    "safe_for_chat": false,
+    "schema": "wsa.delivery.v1",
+    "target": "origin"
   },
   "maintenance": "hermes/maintenance",
   "name": "example-hermes",
@@ -34,10 +65,18 @@
   ],
   "operation_contract": {
     "action_request_format": {
+      "approval_prompt_fields": [
+        "exact_command",
+        "meaning",
+        "why_needed",
+        "risks",
+        "rollback"
+      ],
       "message_type": "operation_request",
       "optional_fields": [
         "payload",
-        "dry_run"
+        "dry_run",
+        "approval_prompt"
       ],
       "required_fields": [
         "action",
@@ -66,13 +105,37 @@
     "owner": "hermes_runtime",
     "schema": "wsa.hermes.operation_contract.v1"
   },
+  "quarantine": "hermes/quarantine",
   "reports_outbox": "hermes/reports_outbox",
+  "runtime_target": {
+    "background": false,
+    "callback_policy": {
+      "callback_dir": "hermes/callbacks",
+      "external_callback_paths": false,
+      "quarantine_dir": "hermes/quarantine",
+      "required": true
+    },
+    "interactive": false,
+    "profile": "default",
+    "schema": "wsa.hermes.runtime_target.v1",
+    "session_mode": "callback_only",
+    "skills": [],
+    "source": "cli",
+    "toolsets": [],
+    "workdir": "."
+  },
   "schema": "wsa.hermes.cli_config.example.v1",
   "secret_env": [
     "HERMES_BOT_TOKEN",
     "OPENAI_API_KEY"
   ],
+  "sensitivity": {
+    "contains_workspace_payloads": true,
+    "level": "internal",
+    "schema": "wsa.sensitivity.v1"
+  },
   "task_queue": "hermes/task_queue",
+  "task_state": "hermes/task_state",
   "timeout_seconds": 300,
   "workspace": {
     "env": "WSA_WORKSPACE",

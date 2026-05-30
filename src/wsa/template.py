@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Any, Iterable, List
 
 from .hermes_adapter import HermesCliTemplateAdapter
+from .hermes_commands import (
+    HERMES_COMMAND_REGISTRY_FILENAME,
+    HERMES_COMMAND_REGISTRY_SCHEMA,
+    write_hermes_command_registry,
+)
 from .paths import safe_child_path
 from .workspace import control_db_path, init_workspace
 
@@ -38,16 +43,23 @@ class TemplateChecker:
     def run(self, write_missing: bool = False) -> TemplateReadiness:
         if write_missing:
             init_workspace(self.workspace)
-            HermesCliTemplateAdapter(self.workspace).write_example_config()
+            adapter = HermesCliTemplateAdapter(self.workspace)
+            adapter.write_example_config()
+            write_hermes_command_registry(
+                adapter.adapter_config_dir() / HERMES_COMMAND_REGISTRY_FILENAME
+            )
 
         checks = [
             self._workspace_initialized_check(),
             self._hermes_dirs_check(),
             self._example_config_check(),
+            self._command_registry_check(),
             self._live_adapter_config_check(),
             self._queue_clean_check("task_queue"),
+            self._queue_clean_check("task_state"),
             self._queue_clean_check("callbacks"),
             self._queue_clean_check("reports_outbox"),
+            self._queue_clean_check("quarantine"),
         ]
         return TemplateReadiness(checks)
 
@@ -63,8 +75,10 @@ class TemplateChecker:
             for item in (
                 "adapter_config",
                 "task_queue",
+                "task_state",
                 "callbacks",
                 "reports_outbox",
+                "quarantine",
                 "maintenance",
             )
             if not safe_child_path(self.workspace, "hermes", item).is_dir()
@@ -96,6 +110,37 @@ class TemplateChecker:
                 f"secret-like values present at: {', '.join(secret_paths)}",
             )
         return TemplateCheck("example_config", "ok", str(path))
+
+    def _command_registry_check(self) -> TemplateCheck:
+        path = safe_child_path(
+            self.workspace,
+            "hermes",
+            "adapter_config",
+            HERMES_COMMAND_REGISTRY_FILENAME,
+        )
+        if not path.exists():
+            return TemplateCheck(
+                "command_registry",
+                "fail",
+                f"{HERMES_COMMAND_REGISTRY_FILENAME} is missing",
+            )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return TemplateCheck("command_registry", "fail", f"invalid JSON: {exc}")
+        if payload.get("schema") != HERMES_COMMAND_REGISTRY_SCHEMA:
+            return TemplateCheck("command_registry", "fail", "unexpected command registry schema")
+        commands = payload.get("commands")
+        if not isinstance(commands, list) or not commands:
+            return TemplateCheck("command_registry", "fail", "command list is empty")
+        secret_paths = list(self._secret_value_paths(payload))
+        if secret_paths:
+            return TemplateCheck(
+                "command_registry",
+                "fail",
+                f"secret-like values present at: {', '.join(secret_paths)}",
+            )
+        return TemplateCheck("command_registry", "ok", str(path))
 
     def _live_adapter_config_check(self) -> TemplateCheck:
         config_dir = safe_child_path(self.workspace, "hermes", "adapter_config")

@@ -13,6 +13,7 @@ The project is designed as a template. It does not include live agent credential
 - Static HTML report mailbox
 - PR packet ticket creation and approval flow
 - Explicit fact conflict diagnostics
+- Easy Startup interview protocol with startup ambiguity scoring
 - CLI-first Hermes adapter template using task and callback JSON files
 - Non-mutating meeting mode for representative diagnosis and proposal gathering
 - Template readiness checks for copied runtime instances
@@ -51,7 +52,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-58 tests OK
+73 tests OK
 ```
 
 ## Quick Smoke Run
@@ -79,6 +80,18 @@ PYTHONPATH=src python3 -m wsa report list <world_id>
 PYTHONPATH=src python3 -m wsa manager diagnose
 ```
 
+Start a worldbuilding interview without exhausting the author:
+
+```bash
+PYTHONPATH=src python3 -m wsa world startup status <world_id>
+PYTHONPATH=src python3 -m wsa world startup interview <world_id> --budget 8
+PYTHONPATH=src python3 -m wsa world startup answer <world_id> Q001 --text "A scholarship mage enters the capital academy."
+```
+
+Easy Startup separates startup-blocking ambiguity from deeper optional lore. A startup ambiguity score of `0%` means the required opening-world questions are answered or author-approved enough to start early scenes; it does not mean the entire fictional universe is complete.
+
+Authors may also choose high-autonomy or fully autonomous random world generation as a creative constraint. WSA does not forbid `100%` autonomy; it recommends that the user's Hermes runtime and the author agree on natural-language checkpoints such as "until 100 characters exist" or "until three regions have factions, conflicts, and opening hooks." Generated material should still be reported as candidates and committed to canon only through the user's chosen review policy.
+
 Run a non-mutating meeting before committing world changes:
 
 ```bash
@@ -97,9 +110,45 @@ PYTHONPATH=src python3 -m wsa meeting decide <world_id> <report_id> --decision r
 PYTHONPATH=src python3 -m wsa meeting decide <world_id> <report_id> --decision hold
 ```
 
+## Hermes Shortcuts
+
+Hermes chat adapters can load a public-safe shortcut registry after installing this repository:
+
+```bash
+PYTHONPATH=src python3 -m wsa hermes commands
+PYTHONPATH=src python3 -m wsa hermes commands --format json
+PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes commands --write-example
+```
+
+The canonical command names use underscores, which are safer for bot command menus. Hyphenated forms such as `/wsa-easystart` are included as aliases for Hermes runtimes that parse free-form chat text.
+
+Recommended first shortcuts:
+
+```text
+/wsa_help              Show the WSA shortcut menu.
+/wsa_doctor            Run WSA and Hermes readiness diagnostics.
+/wsa_worlds            List worlds.
+/wsa_create_world      Create a new isolated world after confirmation.
+/wsa_easystart         Start or continue the Easy Startup interview.
+/wsa_answer            Record an author-approved startup answer.
+/wsa_autogen           Generate candidates until a natural-language checkpoint.
+/wsa_meeting           Run a non-mutating representative meeting.
+/wsa_meeting_decide    Approve, retry, or hold a meeting report.
+/wsa_reports           List reports for review.
+/wsa_tickets           List tickets for review.
+/wsa_approve_ticket    Apply a ticket after explicit confirmation.
+/wsa_snapshot          Request a version-control snapshot through Hermes policy.
+```
+
+`examples/hermes_command_registry.example.json` is the public reference manifest. `wsa hermes init-example` also writes it into `workspace/hermes/adapter_config/` next to the Hermes CLI adapter example.
+
 ## Hermes Adapter Template
 
 The Hermes adapter in this repository is a CLI/file-contract template. It writes task JSON files and collects callback JSON files. It does not start Docker, run Telegram bots, open sockets, or store raw secrets.
+
+WSA does not execute Hermes, approve operations, deliver external chat messages, or manage live Hermes profiles. Those responsibilities belong to the user's Hermes runtime, wrapper, and local policy executor. WSA's role is to produce reviewable task contracts, collect validated callbacks, preserve reports, and keep world-state mutation behind explicit tickets or user decisions.
+
+Real Hermes deployments should keep runtime credentials, gateway routing, profile memory, provider settings, approval policy, delivery policy, and long-running process management outside the public template repository.
 
 Create example adapter config in a local workspace:
 
@@ -121,7 +170,11 @@ The generated task packet is written under:
 workspace/hermes/task_queue/
 ```
 
+Durable task status is written under `workspace/hermes/task_state/`. Callback validation failures are recorded as metadata under `workspace/hermes/quarantine/`; the quarantine record stores the callback reference and error, not a copied payload.
+
 Task packets and command previews use paths relative to the workspace root. A Hermes runtime should set its working directory to the workspace root, or set `WSA_WORKSPACE` explicitly, then treat packet paths as relative to that root. The example config includes an `agent_harness` contract describing allowed write roots and the policy that Hermes should not directly mutate world databases or world files.
+
+The `agent_harness` also includes an autonomy policy. Autonomy level and random-generation scope belong to the user and Hermes runtime dialogue, not to WSA enforcement. Fully autonomous generation is a valid mode when the user wants a challenge world, but WSA recommends explicit checkpoints and reviewable candidate reports before canon mutation.
 
 Callbacks are collected from:
 
@@ -136,6 +189,8 @@ Hermes runtimes can implement optional operation requests from the task packet's
 Callback `operation_requests` are accepted only when their action and mode match the published operation contract. Unsupported action names or execution modes are rejected during callback collection.
 
 See `examples/hermes_operation_policy.example.json` for a public-safe policy shape that a user's Hermes runtime can copy into local configuration. Real remote URLs, key paths, tokens, and deployment policy should stay outside the repository.
+
+`examples/wsa_hermes_cli_reference.py` is a safe reference wrapper. It reads a WSA task JSON and writes a callback JSON without starting Hermes, executing shell operations, sending gateway messages, or performing version-control actions. Use it as a contract example, not as a production Hermes runtime.
 
 ## Meeting Mode
 

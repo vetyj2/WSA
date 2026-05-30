@@ -8,11 +8,32 @@ from typing import Sequence
 
 from . import __version__
 from .config import load_config
-from .hermes_adapter import HermesCliTemplateAdapter
+from .hermes_adapter import (
+    DELIVERY_TARGETS,
+    SENSITIVITY_LEVELS,
+    SESSION_MODES,
+    HermesCliTemplateAdapter,
+    build_delivery_contract,
+    build_runtime_target,
+    build_sensitivity_contract,
+)
+from .hermes_commands import (
+    HERMES_COMMAND_REGISTRY_FILENAME,
+    build_hermes_command_registry,
+    format_hermes_commands,
+    write_hermes_command_registry,
+)
+from .hermes_doctor import HermesDoctor, format_hermes_doctor
 from .manager import WorldManager
 from .meeting import MeetingOrchestrator
 from .orchestrator import SceneOrchestrator
 from .repositories import WorldRepository
+from .startup import (
+    QUESTION_STATUSES,
+    StartupProfileManager,
+    format_startup_interview,
+    format_startup_status,
+)
 from .template import TemplateChecker, format_template_readiness
 from .tickets import approve_ticket
 from .workspace import (
@@ -61,6 +82,46 @@ def build_parser() -> argparse.ArgumentParser:
     world_create.add_argument("name", help="Human-readable world name.")
 
     world_subparsers.add_parser("list", help="List registered worlds.")
+    world_startup = world_subparsers.add_parser(
+        "startup",
+        help="Run Easy Startup worldbuilding interview utilities.",
+    )
+    world_startup_subparsers = world_startup.add_subparsers(dest="world_startup_command")
+    world_startup_status = world_startup_subparsers.add_parser(
+        "status",
+        help="Show startup ambiguity score.",
+    )
+    world_startup_status.add_argument("world_id", help="World ID.")
+    world_startup_interview = world_startup_subparsers.add_parser(
+        "interview",
+        help="Generate a limited numbered startup interview round.",
+    )
+    world_startup_interview.add_argument("world_id", help="World ID.")
+    world_startup_interview.add_argument(
+        "--budget",
+        type=int,
+        default=8,
+        help="Maximum questions in this round.",
+    )
+    world_startup_answer = world_startup_subparsers.add_parser(
+        "answer",
+        help="Record an author answer for a startup question.",
+    )
+    world_startup_answer.add_argument("world_id", help="World ID.")
+    world_startup_answer.add_argument("question_id", help="Question ID such as Q001.")
+    world_startup_answer.add_argument("--text", required=True, help="Author answer text.")
+    world_startup_set_status = world_startup_subparsers.add_parser(
+        "set-status",
+        help="Set a startup question status without changing its answer.",
+    )
+    world_startup_set_status.add_argument("world_id", help="World ID.")
+    world_startup_set_status.add_argument("question_id", help="Question ID such as Q001.")
+    world_startup_set_status.add_argument(
+        "--status",
+        required=True,
+        choices=sorted(QUESTION_STATUSES),
+        help="Question status.",
+    )
 
     manager_parser = subparsers.add_parser("manager", help="Run world manager utilities.")
     manager_subparsers = manager_parser.add_subparsers(dest="manager_command")
@@ -150,6 +211,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hermes_example.add_argument("--overwrite", action="store_true", help="Overwrite example config.")
 
+    hermes_commands = hermes_subparsers.add_parser(
+        "commands",
+        help="List or write Hermes shortcut command registry.",
+    )
+    hermes_commands.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format when printing the registry.",
+    )
+    hermes_commands.add_argument(
+        "--write-example",
+        action="store_true",
+        help="Write hermes_commands.example.json under workspace/hermes/adapter_config.",
+    )
+    hermes_commands.add_argument("--output", help="Optional output path for registry JSON.")
+    hermes_commands.add_argument("--overwrite", action="store_true", help="Overwrite existing output.")
+
+    hermes_doctor = hermes_subparsers.add_parser(
+        "doctor",
+        help="Run read-only Hermes adapter preflight checks.",
+    )
+    hermes_doctor.add_argument(
+        "--command",
+        dest="adapter_command",
+        default="wsa-hermes-cli",
+        help="Hermes wrapper command to check.",
+    )
+    hermes_doctor.add_argument("--config", help="Optional Hermes adapter config path.")
+    hermes_doctor.add_argument("--operation-policy", help="Optional operation policy path.")
+    hermes_doctor.add_argument("--source-root", help="Optional source repository root.")
+
     hermes_task = hermes_subparsers.add_parser(
         "task",
         help="Create a filesystem task packet for a Hermes CLI wrapper.",
@@ -168,6 +261,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="CLI wrapper command.",
     )
     hermes_task.add_argument("--input-json", help="Optional JSON object payload.")
+    hermes_task.add_argument("--runtime-profile", default="default", help="Expected Hermes profile.")
+    hermes_task.add_argument("--runtime-source", default="cli", help="Hermes task source.")
+    hermes_task.add_argument(
+        "--session-mode",
+        choices=SESSION_MODES,
+        default="callback_only",
+        help="Expected Hermes session mode.",
+    )
+    hermes_task.add_argument("--runtime-workdir", default=".", help="Expected Hermes workdir.")
+    hermes_task.add_argument("--interactive", action="store_true", help="Mark task interactive.")
+    hermes_task.add_argument("--background", action="store_true", help="Mark task background-capable.")
+    hermes_task.add_argument(
+        "--toolset",
+        action="append",
+        default=[],
+        help="Expected Hermes toolset. Can be repeated.",
+    )
+    hermes_task.add_argument(
+        "--skill",
+        action="append",
+        default=[],
+        help="Expected Hermes skill. Can be repeated.",
+    )
+    hermes_task.add_argument(
+        "--delivery-target",
+        choices=DELIVERY_TARGETS,
+        default="origin",
+        help="Intended result delivery target.",
+    )
+    hermes_task.add_argument(
+        "--safe-for-chat",
+        action="store_true",
+        help="Mark generated summaries as safe for chat delivery.",
+    )
+    hermes_task.add_argument(
+        "--sensitivity",
+        choices=SENSITIVITY_LEVELS,
+        default="internal",
+        help="Task payload sensitivity level.",
+    )
 
     hermes_collect = hermes_subparsers.add_parser(
         "collect-callback",
@@ -265,6 +398,51 @@ def run_world_list(workspace: Path) -> int:
                 ]
             )
         )
+    return 0
+
+
+def run_world_startup_status(workspace: Path, world_id: str) -> int:
+    world = get_world(workspace, world_id)
+    status = StartupProfileManager(world).status()
+    for line in format_startup_status(status):
+        print(line)
+    return 0
+
+
+def run_world_startup_interview(workspace: Path, world_id: str, budget: int) -> int:
+    world = get_world(workspace, world_id)
+    round_ = StartupProfileManager(world).interview(budget=budget)
+    for line in format_startup_interview(round_):
+        print(line)
+    return 0
+
+
+def run_world_startup_answer(
+    workspace: Path,
+    world_id: str,
+    question_id: str,
+    text: str,
+) -> int:
+    world = get_world(workspace, world_id)
+    status = StartupProfileManager(world).answer(question_id, text)
+    print(f"startup_answer_recorded: {question_id}")
+    for line in format_startup_status(status):
+        print(line)
+    return 0
+
+
+def run_world_startup_set_status(
+    workspace: Path,
+    world_id: str,
+    question_id: str,
+    status_value: str,
+) -> int:
+    world = get_world(workspace, world_id)
+    status = StartupProfileManager(world).set_status(question_id, status_value)
+    print(f"startup_status_updated: {question_id}")
+    print(f"question_status: {status_value}")
+    for line in format_startup_status(status):
+        print(line)
     return 0
 
 
@@ -413,8 +591,62 @@ def run_hermes_init_example(
 ) -> int:
     adapter = HermesCliTemplateAdapter(workspace, adapter_name=adapter_name, command=command)
     path = adapter.write_example_config(overwrite=overwrite)
+    registry_path = write_hermes_command_registry(
+        adapter.adapter_config_dir() / HERMES_COMMAND_REGISTRY_FILENAME,
+        overwrite=overwrite,
+    )
     print(f"example_config: {path}")
+    print(f"command_registry: {registry_path}")
     return 0
+
+
+def run_hermes_commands(
+    workspace: Path,
+    output_format: str,
+    write_example: bool,
+    output_path: str | None,
+    overwrite: bool,
+) -> int:
+    registry = build_hermes_command_registry()
+    if write_example or output_path:
+        if output_path:
+            path = Path(output_path).expanduser()
+        else:
+            adapter = HermesCliTemplateAdapter(workspace)
+            adapter.ensure_layout()
+            path = adapter.adapter_config_dir() / HERMES_COMMAND_REGISTRY_FILENAME
+        written = write_hermes_command_registry(path, overwrite=overwrite)
+        print(f"command_registry: {written}")
+        return 0
+
+    if output_format == "json":
+        print(json.dumps(registry, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+
+    for line in format_hermes_commands(registry):
+        print(line)
+    return 0
+
+
+def run_hermes_doctor(
+    workspace: Path,
+    command: str,
+    config_path: str | None,
+    operation_policy_path: str | None,
+    source_root: str | None,
+) -> int:
+    report = HermesDoctor(
+        workspace,
+        command=command,
+        config_path=Path(config_path).expanduser() if config_path else None,
+        operation_policy_path=(
+            Path(operation_policy_path).expanduser() if operation_policy_path else None
+        ),
+        source_root=Path(source_root).expanduser() if source_root else None,
+    ).run()
+    for line in format_hermes_doctor(report):
+        print(line)
+    return 0 if report.ok else 1
 
 
 def run_hermes_task_create(
@@ -428,6 +660,17 @@ def run_hermes_task_create(
     adapter_name: str,
     command: str,
     input_json: str | None,
+    runtime_profile: str,
+    runtime_source: str,
+    session_mode: str,
+    runtime_workdir: str,
+    interactive: bool,
+    background: bool,
+    toolsets: list[str],
+    skills: list[str],
+    delivery_target: str,
+    safe_for_chat: bool,
+    sensitivity_level: str,
 ) -> int:
     payload = {}
     if input_json:
@@ -437,6 +680,21 @@ def run_hermes_task_create(
         payload = parsed
 
     adapter = HermesCliTemplateAdapter(workspace, adapter_name=adapter_name, command=command)
+    runtime_target = build_runtime_target(
+        profile=runtime_profile,
+        source=runtime_source,
+        session_mode=session_mode,
+        workdir=runtime_workdir,
+        interactive=interactive,
+        background=background,
+        toolsets=toolsets,
+        skills=skills,
+    )
+    delivery = build_delivery_contract(
+        target=delivery_target,
+        safe_for_chat=safe_for_chat,
+    )
+    sensitivity = build_sensitivity_contract(level=sensitivity_level)
     task = adapter.create_task(
         world_id=world_id,
         title=title,
@@ -445,6 +703,9 @@ def run_hermes_task_create(
         role=role,
         session_id=session_id,
         payload=payload,
+        runtime_target=runtime_target,
+        delivery=delivery,
+        sensitivity=sensitivity,
     )
     print(f"hermes_task_created: {task.task_id}")
     print(f"task_path: {task.task_ref}")
@@ -498,6 +759,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_world_create(config.workspace, args.name)
         if args.world_command == "list":
             return run_world_list(config.workspace)
+        if args.world_command == "startup":
+            if args.world_startup_command == "status":
+                return run_world_startup_status(config.workspace, args.world_id)
+            if args.world_startup_command == "interview":
+                return run_world_startup_interview(config.workspace, args.world_id, args.budget)
+            if args.world_startup_command == "answer":
+                return run_world_startup_answer(
+                    config.workspace,
+                    args.world_id,
+                    args.question_id,
+                    args.text,
+                )
+            if args.world_startup_command == "set-status":
+                return run_world_startup_set_status(
+                    config.workspace,
+                    args.world_id,
+                    args.question_id,
+                    args.status,
+                )
+            parser.parse_args(["world", "startup", "--help"])
         parser.parse_args(["world", "--help"])
     if args.command == "manager":
         if args.manager_command == "diagnose":
@@ -549,6 +830,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.adapter_command,
                 args.overwrite,
             )
+        if args.hermes_command == "commands":
+            return run_hermes_commands(
+                config.workspace,
+                args.format,
+                args.write_example,
+                args.output,
+                args.overwrite,
+            )
+        if args.hermes_command == "doctor":
+            return run_hermes_doctor(
+                config.workspace,
+                args.adapter_command,
+                args.config,
+                args.operation_policy,
+                args.source_root,
+            )
         if args.hermes_command == "task":
             return run_hermes_task_create(
                 config.workspace,
@@ -561,6 +858,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.adapter_name,
                 args.adapter_command,
                 args.input_json,
+                args.runtime_profile,
+                args.runtime_source,
+                args.session_mode,
+                args.runtime_workdir,
+                args.interactive,
+                args.background,
+                args.toolset,
+                args.skill,
+                args.delivery_target,
+                args.safe_for_chat,
+                args.sensitivity,
             )
         if args.hermes_command == "collect-callback":
             return run_hermes_collect_callback(

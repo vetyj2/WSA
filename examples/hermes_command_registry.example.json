@@ -1,0 +1,569 @@
+{
+  "commands": [
+    {
+      "aliases": [
+        "/wsa-help",
+        "/wsa",
+        "wsa help"
+      ],
+      "arguments": [],
+      "category": "meta",
+      "cli_templates": [
+        [
+          "wsa",
+          "hermes",
+          "commands"
+        ]
+      ],
+      "command": "/wsa_help",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "show_command_registry",
+      "safety": "read_only",
+      "title": "Show the WSA shortcut menu."
+    },
+    {
+      "aliases": [
+        "/wsa-doctor",
+        "/wsa_diag",
+        "/wsa-diagnose"
+      ],
+      "arguments": [],
+      "category": "diagnostics",
+      "cli_templates": [
+        [
+          "wsa",
+          "doctor"
+        ],
+        [
+          "wsa",
+          "manager",
+          "diagnose"
+        ],
+        [
+          "wsa",
+          "hermes",
+          "doctor",
+          "--command",
+          "{hermes_wrapper_command}"
+        ]
+      ],
+      "command": "/wsa_doctor",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "run_diagnostics",
+      "safety": "read_only",
+      "title": "Run local WSA and Hermes readiness diagnostics."
+    },
+    {
+      "aliases": [
+        "/wsa-worlds",
+        "/wsa_list_worlds"
+      ],
+      "arguments": [],
+      "category": "world",
+      "cli_templates": [
+        [
+          "wsa",
+          "world",
+          "list"
+        ]
+      ],
+      "command": "/wsa_worlds",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "list_worlds",
+      "safety": "read_only",
+      "title": "List registered worlds."
+    },
+    {
+      "aliases": [
+        "/wsa-create-world",
+        "/wsa_new_world"
+      ],
+      "arguments": [
+        {
+          "description": "Human-readable world name.",
+          "name": "name",
+          "required": true
+        }
+      ],
+      "category": "world",
+      "cli_templates": [
+        [
+          "wsa",
+          "world",
+          "create",
+          "{name}"
+        ]
+      ],
+      "command": "/wsa_create_world",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "create_world",
+      "safety": "requires_approval",
+      "title": "Create a new isolated world workspace."
+    },
+    {
+      "aliases": [
+        "/wsa-easystart",
+        "/wsa_startup",
+        "/wsa-startup"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Maximum startup questions for this round. Default: 8.",
+          "name": "budget",
+          "required": false
+        }
+      ],
+      "category": "startup",
+      "cli_templates": [
+        [
+          "wsa",
+          "world",
+          "startup",
+          "status",
+          "{world_id}"
+        ],
+        [
+          "wsa",
+          "world",
+          "startup",
+          "interview",
+          "{world_id}",
+          "--budget",
+          "{budget:8}"
+        ]
+      ],
+      "command": "/wsa_easystart",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "easy_startup_interview",
+      "notes": [
+        "Hermes should summarize the numbered questions and ask the author which answers to record."
+      ],
+      "safety": "read_only",
+      "title": "Start or continue the numbered Easy Startup interview."
+    },
+    {
+      "aliases": [
+        "/wsa-answer",
+        "/wsa_startup_answer"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Startup question ID such as Q001.",
+          "name": "question_id",
+          "required": true
+        },
+        {
+          "description": "Author-approved answer text.",
+          "name": "text",
+          "required": true
+        }
+      ],
+      "category": "startup",
+      "cli_templates": [
+        [
+          "wsa",
+          "world",
+          "startup",
+          "answer",
+          "{world_id}",
+          "{question_id}",
+          "--text",
+          "{text}"
+        ]
+      ],
+      "command": "/wsa_answer",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "record_startup_answer",
+      "safety": "requires_approval",
+      "title": "Record an author answer for a startup question."
+    },
+    {
+      "aliases": [
+        "/wsa-autogen",
+        "/wsa_random",
+        "/wsa-random"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Natural-language stopping point, such as 'until 100 characters exist'.",
+          "name": "checkpoint",
+          "required": true
+        },
+        {
+          "description": "Autonomy level from 0 to 100. Default decided by Hermes/user dialogue.",
+          "name": "autonomy",
+          "required": false
+        }
+      ],
+      "category": "startup",
+      "cli_templates": [
+        [
+          "wsa",
+          "hermes",
+          "task",
+          "{world_id}",
+          "--task-type",
+          "autonomous_world_generation",
+          "--title",
+          "Autonomous world generation",
+          "--instruction",
+          "{checkpoint}",
+          "--background"
+        ]
+      ],
+      "command": "/wsa_autogen",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "autonomous_world_generation",
+      "notes": [
+        "This command generates candidates only; canon mutation still follows user review policy.",
+        "A 100% autonomy value is allowed when the author wants a challenge world."
+      ],
+      "safety": "proposal_only",
+      "title": "Ask Hermes to generate world candidates until a natural-language checkpoint."
+    },
+    {
+      "aliases": [
+        "/wsa-meeting",
+        "/wsa_council",
+        "/wsa-council"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Meeting topic.",
+          "name": "topic",
+          "required": true
+        },
+        {
+          "description": "Question for representatives to discuss.",
+          "name": "question",
+          "required": false
+        },
+        {
+          "description": "Participant/viewpoint. May be repeated by Hermes.",
+          "name": "participant",
+          "required": false
+        }
+      ],
+      "category": "meeting",
+      "cli_templates": [
+        [
+          "wsa",
+          "meeting",
+          "run",
+          "{world_id}",
+          "--topic",
+          "{topic}",
+          "--question",
+          "{question}",
+          "--participant",
+          "{participant}"
+        ]
+      ],
+      "command": "/wsa_meeting",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "run_meeting",
+      "safety": "proposal_only",
+      "title": "Run a non-mutating representative meeting."
+    },
+    {
+      "aliases": [
+        "/wsa-meeting-decide",
+        "/wsa_decide_meeting"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Meeting report ID.",
+          "name": "report_id",
+          "required": true
+        },
+        {
+          "description": "One of approve, retry, or hold.",
+          "name": "decision",
+          "required": true
+        }
+      ],
+      "category": "meeting",
+      "cli_templates": [
+        [
+          "wsa",
+          "meeting",
+          "decide",
+          "{world_id}",
+          "{report_id}",
+          "--decision",
+          "{decision}"
+        ]
+      ],
+      "command": "/wsa_meeting_decide",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "decide_meeting_report",
+      "safety": "requires_approval",
+      "title": "Approve, retry, or hold a meeting report."
+    },
+    {
+      "aliases": [
+        "/wsa-reports",
+        "/wsa_report_list"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Optional report status filter.",
+          "name": "status",
+          "required": false
+        }
+      ],
+      "category": "review",
+      "cli_templates": [
+        [
+          "wsa",
+          "report",
+          "list",
+          "{world_id}",
+          "--status",
+          "{status}"
+        ]
+      ],
+      "command": "/wsa_reports",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "list_reports",
+      "safety": "read_only",
+      "title": "List reports for review."
+    },
+    {
+      "aliases": [
+        "/wsa-tickets",
+        "/wsa_ticket_list"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Optional ticket status filter.",
+          "name": "status",
+          "required": false
+        }
+      ],
+      "category": "review",
+      "cli_templates": [
+        [
+          "wsa",
+          "ticket",
+          "list",
+          "{world_id}",
+          "--status",
+          "{status}"
+        ]
+      ],
+      "command": "/wsa_tickets",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "list_tickets",
+      "safety": "read_only",
+      "title": "List pending or applied tickets."
+    },
+    {
+      "aliases": [
+        "/wsa-approve-ticket",
+        "/wsa_apply_ticket"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Ticket ID.",
+          "name": "ticket_id",
+          "required": true
+        }
+      ],
+      "category": "review",
+      "cli_templates": [
+        [
+          "wsa",
+          "ticket",
+          "approve",
+          "{world_id}",
+          "{ticket_id}"
+        ]
+      ],
+      "command": "/wsa_approve_ticket",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "approve_ticket",
+      "notes": [
+        "Hermes should obtain explicit user confirmation before executing this command."
+      ],
+      "safety": "world_mutating",
+      "title": "Approve and apply a ticket to world state."
+    },
+    {
+      "aliases": [
+        "/wsa-snapshot",
+        "/wsa_commit",
+        "/wsa-commit"
+      ],
+      "arguments": [
+        {
+          "description": "User-facing snapshot summary.",
+          "name": "summary",
+          "required": true
+        }
+      ],
+      "category": "operations",
+      "cli_templates": [],
+      "command": "/wsa_snapshot",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "version_control_snapshot",
+      "notes": [
+        "WSA declares the operation request only.",
+        "The user's Hermes runtime decides whether this means none, local commit, remote push, or custom."
+      ],
+      "operation_request": {
+        "action": "version_control.snapshot",
+        "allowed_modes": [
+          "none",
+          "local_commit",
+          "remote_push",
+          "custom"
+        ]
+      },
+      "safety": "requires_approval",
+      "title": "Request a local or remote version-control snapshot through Hermes policy."
+    }
+  ],
+  "owner": "user_hermes_runtime",
+  "parser_policy": {
+    "aliases_may_include_hyphen": true,
+    "canonical_style": "telegram_safe_underscore",
+    "execution_owner": "user_hermes_runtime",
+    "unknown_command_policy": "show_help_without_execution",
+    "wsa_role": "declare_intents_and_cli_templates_only"
+  },
+  "purpose": "Public-safe shortcut command manifest for Hermes chat adapters.",
+  "schema": "wsa.hermes.command_registry.v1",
+  "schema_version": 1
+}

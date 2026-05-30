@@ -1,3 +1,4 @@
+import json
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -5,6 +6,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from wsa.cli import main
+from wsa.startup import StartupProfileManager
 from wsa.workspace import (
     SCHEMA_VERSION,
     control_db_path,
@@ -107,6 +109,83 @@ class CliTests(TestCase):
 
             self.assertEqual(code, 0)
             self.assertIn("diagnostics: clean", stdout.getvalue())
+
+    def test_world_startup_cli_tracks_interview_and_answer(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Startup World")
+
+            status_stdout = StringIO()
+            with patch("sys.stdout", status_stdout):
+                status_code = main(["--workspace", str(workspace), "world", "startup", "status", world.world_id])
+
+            interview_stdout = StringIO()
+            with patch("sys.stdout", interview_stdout):
+                interview_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "startup",
+                        "interview",
+                        world.world_id,
+                        "--budget",
+                        "2",
+                    ]
+                )
+
+            answer_stdout = StringIO()
+            with patch("sys.stdout", answer_stdout):
+                answer_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "startup",
+                        "answer",
+                        world.world_id,
+                        "Q001",
+                        "--text",
+                        "A magic academy mystery.",
+                    ]
+                )
+
+            self.assertEqual(status_code, 0)
+            self.assertEqual(interview_code, 0)
+            self.assertEqual(answer_code, 0)
+            self.assertIn("startup_ambiguity: 100%", status_stdout.getvalue())
+            self.assertIn("Q001\tasked", interview_stdout.getvalue())
+            self.assertIn("startup_ambiguity: 90%", answer_stdout.getvalue())
+
+    def test_world_startup_cli_set_status_can_approve_proposal(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Startup Approval World")
+            StartupProfileManager(world).answer(
+                "Q001",
+                "An agent-suggested premise.",
+                answered_by="agent_proposal",
+            )
+            stdout = StringIO()
+
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "startup",
+                        "set-status",
+                        world.world_id,
+                        "Q001",
+                        "--status",
+                        "approved_by_author",
+                    ]
+                )
+
+            self.assertEqual(code, 0)
+            self.assertIn("startup_status_updated: Q001", stdout.getvalue())
+            self.assertIn("startup_ambiguity: 90%", stdout.getvalue())
 
     def test_meeting_run_cli_creates_non_mutating_report(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -283,8 +362,117 @@ class CliTests(TestCase):
             self.assertEqual(example_code, 0)
             self.assertEqual(task_code, 0)
             self.assertIn("example_config:", example_stdout.getvalue())
+            self.assertIn("command_registry:", example_stdout.getvalue())
+            self.assertTrue(
+                (
+                    workspace
+                    / "hermes"
+                    / "adapter_config"
+                    / "hermes_commands.example.json"
+                ).exists()
+            )
             self.assertIn("hermes_task_created:", task_stdout.getvalue())
             self.assertIn("command_preview: wsa-hermes-cli run-task", task_stdout.getvalue())
+
+    def test_hermes_commands_cli_lists_and_writes_registry(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+
+            text_stdout = StringIO()
+            with patch("sys.stdout", text_stdout):
+                text_code = main(["--workspace", str(workspace), "hermes", "commands"])
+
+            json_stdout = StringIO()
+            with patch("sys.stdout", json_stdout):
+                json_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "commands",
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            write_stdout = StringIO()
+            with patch("sys.stdout", write_stdout):
+                write_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "commands",
+                        "--write-example",
+                    ]
+                )
+
+            payload = json.loads(json_stdout.getvalue())
+            commands = {item["command"]: item for item in payload["commands"]}
+
+            self.assertEqual(text_code, 0)
+            self.assertEqual(json_code, 0)
+            self.assertEqual(write_code, 0)
+            self.assertIn("/wsa_easystart", text_stdout.getvalue())
+            self.assertIn("/wsa-easystart", text_stdout.getvalue())
+            self.assertIn("/wsa_easystart", commands)
+            self.assertIn("/wsa-easystart", commands["/wsa_easystart"]["aliases"])
+            self.assertEqual(commands["/wsa_autogen"]["safety"], "proposal_only")
+            self.assertTrue(
+                (
+                    workspace
+                    / "hermes"
+                    / "adapter_config"
+                    / "hermes_commands.example.json"
+                ).exists()
+            )
+
+    def test_hermes_doctor_passes_with_available_wrapper_command(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            with patch("sys.stdout", StringIO()):
+                main(["--workspace", str(workspace), "hermes", "init-example"])
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "doctor",
+                        "--command",
+                        "python3",
+                    ]
+                )
+
+            self.assertEqual(code, 0)
+            self.assertIn("hermes_ready: yes", stdout.getvalue())
+            self.assertIn("ok\tcommand_available\tpython3", stdout.getvalue())
+            self.assertIn("ok\tcommand_registry", stdout.getvalue())
+
+    def test_hermes_doctor_fails_when_wrapper_command_is_missing(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            with patch("sys.stdout", StringIO()):
+                main(["--workspace", str(workspace), "hermes", "init-example"])
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "doctor",
+                        "--command",
+                        "wsa-missing-hermes-wrapper",
+                    ]
+                )
+
+            self.assertEqual(code, 1)
+            self.assertIn("hermes_ready: no", stdout.getvalue())
+            self.assertIn("fail\tcommand_available", stdout.getvalue())
 
     def test_template_check_cli_can_initialize_template_workspace(self) -> None:
         with TemporaryDirectory() as tmp:
