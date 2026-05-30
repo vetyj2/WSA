@@ -1,0 +1,19 @@
+{
+  "adapter": "cli",
+  "callbacks": "hermes/callbacks",
+  "command": "wsa-hermes-cli",
+  "cwd": ".",
+  "name": "example-hermes",
+  "notes": [
+    "Template only. Do not put raw secret values in this file.",
+    "WSA writes task JSON; the Hermes CLI wrapper reads it and writes callback JSON."
+  ],
+  "reports_outbox": "hermes/reports_outbox",
+  "schema": "wsa.hermes.cli_config.example.v1",
+  "secret_env": [
+    "HERMES_BOT_TOKEN",
+    "OPENAI_API_KEY"
+  ],
+  "task_queue": "hermes/task_queue",
+  "timeout_seconds": 300
+}

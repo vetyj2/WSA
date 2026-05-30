@@ -1,0 +1,94 @@
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import TestCase
+
+from wsa.hermes_adapter import (
+    HermesAdapterRouteError,
+    HermesCliTemplateAdapter,
+    build_template_callback,
+)
+from wsa.repositories import WorldRepository
+from wsa.transport import RuntimeTransport
+from wsa.workspace import create_world
+
+
+class HermesAdapterTests(TestCase):
+    def test_example_config_is_written_without_secret_values(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            adapter = HermesCliTemplateAdapter(workspace)
+
+            path = adapter.write_example_config()
+            payload = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(payload["adapter"], "cli")
+            self.assertEqual(payload["secret_env"], ["HERMES_BOT_TOKEN", "OPENAI_API_KEY"])
+            self.assertNotIn("token_value", path.read_text(encoding="utf-8"))
+
+    def test_cli_template_task_writes_queue_packet_and_runtime_inbox(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Hermes Task World")
+            adapter = HermesCliTemplateAdapter(workspace)
+
+            task = adapter.create_task(
+                world.world_id,
+                title="Run diagnostics",
+                instruction="Inspect pending reports and tickets.",
+            )
+            task_payload = json.loads(task.task_path.read_text(encoding="utf-8"))
+            inbox = RuntimeTransport(workspace).list_envelopes(task.session_id, "inbox")
+
+            self.assertEqual(task_payload["schema"], "wsa.hermes.task.v1")
+            self.assertEqual(task_payload["route"]["world_id"], world.world_id)
+            self.assertEqual(task_payload["adapter"]["command_preview"][0], "wsa-hermes-cli")
+            self.assertEqual([item.message_type for item in inbox], ["intent_request"])
+
+    def test_callback_collection_validates_route_and_creates_report(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Hermes Callback World")
+            adapter = HermesCliTemplateAdapter(workspace)
+            task = adapter.create_task(
+                world.world_id,
+                title="Run diagnostics",
+                instruction="Inspect pending reports and tickets.",
+            )
+            callback_payload = build_template_callback(task)
+            callback_path = adapter.callbacks_dir() / f"{callback_payload['callback_id']}.json"
+            callback_path.write_text(
+                json.dumps(callback_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            callback = adapter.collect_callback(callback_path)
+            repo = WorldRepository(world.world_id, world.path)
+            outbox = RuntimeTransport(workspace).list_envelopes(task.session_id, "outbox")
+
+            self.assertTrue(callback.report_id)
+            self.assertEqual(repo.get_report(callback.report_id or "").purpose, "hermes_callback")
+            self.assertEqual([item.message_type for item in outbox], ["final_report"])
+            self.assertEqual(outbox[0].payload["report_id"], callback.report_id)
+
+    def test_callback_route_mismatch_is_rejected(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Hermes Route World")
+            other_world = create_world(workspace, "Hermes Other World")
+            adapter = HermesCliTemplateAdapter(workspace)
+            task = adapter.create_task(
+                world.world_id,
+                title="Run diagnostics",
+                instruction="Inspect pending reports and tickets.",
+            )
+            callback_payload = build_template_callback(task)
+            callback_payload["route"]["world_id"] = other_world.world_id
+            callback_path = adapter.callbacks_dir() / f"{callback_payload['callback_id']}.json"
+            callback_path.write_text(
+                json.dumps(callback_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(HermesAdapterRouteError):
+                adapter.collect_callback(callback_path)
