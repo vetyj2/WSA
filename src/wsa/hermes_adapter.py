@@ -18,6 +18,8 @@ DEFAULT_HERMES_COMMAND = "wsa-hermes-cli"
 HERMES_TASK_SCHEMA = "wsa.hermes.task.v1"
 HERMES_CALLBACK_SCHEMA = "wsa.hermes.callback.v1"
 HERMES_OPERATION_CONTRACT_SCHEMA = "wsa.hermes.operation_contract.v1"
+ALLOWED_OPERATION_ACTIONS = {"version_control.snapshot"}
+ALLOWED_OPERATION_MODES = ("none", "local_commit", "remote_push", "custom")
 
 
 class HermesAdapterError(ValueError):
@@ -221,8 +223,13 @@ class HermesCliTemplateAdapter:
             runtime_envelope=envelope,
         )
 
-    def collect_callback(self, callback_path: Path) -> HermesCallbackRecord:
+    def collect_callback(
+        self,
+        callback_path: Path,
+        allow_external_path: bool = False,
+    ) -> HermesCallbackRecord:
         self.ensure_layout()
+        callback_path = self._resolve_callback_path(callback_path, allow_external_path)
         callback = self._load_json(callback_path)
         task_id = self._required_str(callback, "task_id")
         task = self._load_task(task_id)
@@ -291,6 +298,20 @@ class HermesCliTemplateAdapter:
         task_path = safe_child_path(self.task_queue_dir(), f"{task_id}.json")
         return self._load_json(task_path)
 
+    def _resolve_callback_path(self, path: Path, allow_external_path: bool) -> Path:
+        resolved = path.expanduser().resolve()
+        if allow_external_path:
+            return resolved
+
+        callbacks_root = self.callbacks_dir().resolve()
+        try:
+            resolved.relative_to(callbacks_root)
+        except ValueError as exc:
+            raise HermesAdapterError(
+                "callback_path must be inside hermes/callbacks unless external paths are allowed"
+            ) from exc
+        return resolved
+
     def _load_json(self, path: Path) -> Dict[str, Any]:
         with path.open("r", encoding="utf-8") as handle:
             value = json.load(handle)
@@ -343,6 +364,10 @@ class HermesCliTemplateAdapter:
                 raise HermesAdapterError("operation request mode is required")
             if not isinstance(summary, str) or not summary:
                 raise HermesAdapterError("operation request summary is required")
+            if action not in ALLOWED_OPERATION_ACTIONS:
+                raise HermesAdapterError(f"unsupported operation request action: {action}")
+            if mode not in ALLOWED_OPERATION_MODES:
+                raise HermesAdapterError(f"unsupported operation request mode: {mode}")
             requests.append(dict(item))
         return requests
 
@@ -360,7 +385,7 @@ def build_operation_contract() -> Dict[str, Any]:
         "actions": [
             {
                 "action": "version_control.snapshot",
-                "modes": ["none", "local_commit", "remote_push", "custom"],
+                "modes": list(ALLOWED_OPERATION_MODES),
                 "executor": "user_hermes_adapter",
                 "notes": [
                     "The WSA template declares intent only.",

@@ -5,9 +5,9 @@ import sqlite3
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, ContextManager, Dict, List, Optional
 
-from .workspace import SCHEMA_VERSION, connect_sqlite, control_db_path, utc_now, world_db_path
+from .workspace import SCHEMA_VERSION, control_db_path, sqlite_connection, utc_now, world_db_path
 
 
 Payload = Dict[str, Any]
@@ -55,8 +55,8 @@ class ControlRepository:
         self.workspace = workspace
         self.workspace_id = workspace_id
 
-    def _connect(self) -> sqlite3.Connection:
-        return connect_sqlite(control_db_path(self.workspace))
+    def _connect(self) -> ContextManager[sqlite3.Connection]:
+        return sqlite_connection(control_db_path(self.workspace), schema_name="control")
 
     def get_runtime_session(self, session_id: str) -> RuntimeSessionRecord:
         with self._connect() as conn:
@@ -292,8 +292,8 @@ class WorldRepository:
         self.world_id = world_id
         self.world_path = world_path
 
-    def _connect(self) -> sqlite3.Connection:
-        return connect_sqlite(world_db_path(self.world_path))
+    def _connect(self) -> ContextManager[sqlite3.Connection]:
+        return sqlite_connection(world_db_path(self.world_path), schema_name="world")
 
     def create_entity(
         self,

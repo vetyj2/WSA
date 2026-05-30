@@ -232,6 +232,7 @@ class SceneOrchestrator:
             payload={"report_id": report.report_id},
             artifact_refs=[report.artifact_ref] if report.artifact_ref else [],
         )
+        safe_child_path(tmp_dir, ".wsa_completed").write_text("completed\n", encoding="utf-8")
 
         return MockSceneResult(
             scene_id=scene.scene_id,

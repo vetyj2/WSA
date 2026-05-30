@@ -14,7 +14,18 @@ from .orchestrator import SceneOrchestrator
 from .repositories import WorldRepository
 from .template import TemplateChecker, format_template_readiness
 from .tickets import approve_ticket
-from .workspace import create_world, get_world, init_workspace, list_worlds
+from .workspace import (
+    SchemaVersionError,
+    WorkspacePathError,
+    control_db_path,
+    create_world,
+    get_world,
+    init_workspace,
+    list_worlds,
+    schema_version,
+    sqlite_connection,
+    world_db_path,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,7 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     manager_parser = subparsers.add_parser("manager", help="Run world manager utilities.")
     manager_subparsers = manager_parser.add_subparsers(dest="manager_command")
-    manager_subparsers.add_parser("diagnose", help="Run local diagnostics.")
+    manager_diagnose = manager_subparsers.add_parser("diagnose", help="Run local diagnostics.")
+    manager_diagnose.add_argument(
+        "--fix",
+        action="store_true",
+        help="Apply safe diagnostic cleanups and record diagnostic logs.",
+    )
 
     report_parser = subparsers.add_parser("report", help="Inspect reports.")
     report_subparsers = report_parser.add_subparsers(dest="report_command")
@@ -128,6 +144,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="wsa-hermes-cli",
         help="CLI wrapper command.",
     )
+    hermes_collect.add_argument(
+        "--allow-external-callback",
+        action="store_true",
+        help="Allow callback JSON outside workspace/hermes/callbacks.",
+    )
 
     template_parser = subparsers.add_parser("template", help="Check MVP template readiness.")
     template_subparsers = template_parser.add_subparsers(dest="template_command")
@@ -152,6 +173,26 @@ def configure_logging(verbose: bool) -> None:
 def run_doctor(workspace: Path) -> int:
     print(f"workspace: {workspace}")
     print(f"workspace_exists: {workspace.exists()}")
+    db_path = control_db_path(workspace)
+    print(f"control_db_exists: {db_path.exists()}")
+    if db_path.exists():
+        try:
+            with sqlite_connection(db_path, schema_name="control") as conn:
+                version = schema_version(conn, "control")
+            world_count = 0
+            for world in list_worlds(workspace):
+                with sqlite_connection(world_db_path(world.path), schema_name="world") as conn:
+                    schema_version(conn, "world")
+                world_count += 1
+        except SchemaVersionError as exc:
+            print(f"schema_status: unsupported: {exc}")
+            return 1
+        except WorkspacePathError as exc:
+            print(f"path_status: invalid: {exc}")
+            return 1
+        print(f"control_schema_version: {version if version is not None else 'unknown'}")
+        print(f"world_count: {world_count}")
+    print("schema_status: ok")
     return 0
 
 
@@ -190,8 +231,8 @@ def run_world_list(workspace: Path) -> int:
     return 0
 
 
-def run_manager_diagnose(workspace: Path) -> int:
-    findings = WorldManager(workspace).run_diagnostics()
+def run_manager_diagnose(workspace: Path, fix: bool = False) -> int:
+    findings = WorldManager(workspace).run_diagnostics(fix=fix)
     if not findings:
         print("diagnostics: clean")
         return 0
@@ -336,9 +377,13 @@ def run_hermes_collect_callback(
     callback_path: str,
     adapter_name: str,
     command: str,
+    allow_external_callback: bool,
 ) -> int:
     adapter = HermesCliTemplateAdapter(workspace, adapter_name=adapter_name, command=command)
-    callback = adapter.collect_callback(Path(callback_path).expanduser().resolve())
+    callback = adapter.collect_callback(
+        Path(callback_path),
+        allow_external_path=allow_external_callback,
+    )
     print(f"hermes_callback_collected: {callback.callback_id}")
     print(f"task_id: {callback.task_id}")
     print(f"session_id: {callback.session_id}")
@@ -374,7 +419,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.parse_args(["world", "--help"])
     if args.command == "manager":
         if args.manager_command == "diagnose":
-            return run_manager_diagnose(config.workspace)
+            return run_manager_diagnose(config.workspace, args.fix)
         parser.parse_args(["manager", "--help"])
     if args.command == "scene":
         if args.scene_command == "mock":
@@ -423,6 +468,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.callback_path,
                 args.adapter_name,
                 args.adapter_command,
+                args.allow_external_callback,
             )
         parser.parse_args(["hermes", "--help"])
     if args.command == "template":

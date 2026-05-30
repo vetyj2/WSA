@@ -50,7 +50,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-39 tests OK
+53 tests OK
 ```
 
 ## Quick Smoke Run
@@ -108,7 +108,11 @@ Callbacks are collected from:
 workspace/hermes/callbacks/
 ```
 
+By default, `wsa hermes collect-callback` only accepts callback JSON files under the workspace's `hermes/callbacks/` directory. Local automation that needs to import a trusted external file must opt in with `--allow-external-callback`.
+
 Hermes runtimes can implement optional operation requests from the task packet's `operation_contract`. For example, a runtime may map `version_control.snapshot` to `none`, `local_commit`, `remote_push`, or a custom local command. The template declares the action contract only; each user's Hermes adapter owns the actual command mapping and approval policy.
+
+Callback `operation_requests` are accepted only when their action and mode match the published operation contract. Unsupported action names or execution modes are rejected during callback collection.
 
 See `examples/hermes_operation_policy.example.json` for a public-safe policy shape that a user's Hermes runtime can copy into local configuration. Real remote URLs, key paths, tokens, and deployment policy should stay outside the repository.
 
@@ -133,16 +137,26 @@ After cloning and installing the repository, run a short pre-use diagnostic befo
 ```bash
 python3 -m unittest discover -s tests
 wsa --workspace /tmp/wsa-template-check template check --write-missing
+wsa --workspace /tmp/wsa-template-check doctor
+wsa --workspace /tmp/wsa-template-check manager diagnose
 python3 -m json.tool examples/hermes_cli.example.json >/dev/null
 python3 -m json.tool examples/hermes_operation_policy.example.json >/dev/null
 ```
 
-If you have not installed the package and are running directly from the clone, prefix the WSA commands with `PYTHONPATH=src`.
+If you have not installed the package and are running directly from the clone, prefix Python and WSA commands with `PYTHONPATH=src`.
 
 Confirm that local admin files, private env files, handoff notes, credentials, tokens, SQLite runtime state, and live workspace artifacts are absent from the clone. The example Hermes files should contain only public-safe schemas, environment variable names, and policy shapes.
+
+`wsa manager diagnose` is read-only by default. Use `--fix` only when you want safe local cleanups and diagnostic log writes.
+
+## Safe Updates
+
+Persistent workspaces can contain live SQLite databases, reports, runtime queues, and agent artifacts. Before pulling template updates into an instance that has live state, back up the workspace directory outside the repository, update the source, run tests against a temporary workspace, and run `wsa doctor` against the live workspace before resuming automation.
+
+WSA refuses to operate on workspace databases with a schema version newer than this build supports. If `wsa doctor` reports an unsupported schema, stop and use a compatible WSA version or an explicit migration path.
 
 ## Public Repo Safety
 
 This repository intentionally ignores local workspaces, SQLite databases, runtime queues, callback files, logs, environment files, secrets, and session handoff notes.
 
-Keep real runtime credentials outside the repository. Use environment variables or external secret files managed by your deployment/runtime layer.
+Keep real runtime credentials outside the repository. Use environment variables or external secret files managed by your deployment/runtime layer. Treat local workspace contents as potentially sensitive: reports, runtime payloads, and SQLite rows may contain user or world-state data even when the template repository itself is public-safe.

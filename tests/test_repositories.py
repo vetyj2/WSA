@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from wsa.repositories import ControlRepository, WorldRepository
-from wsa.workspace import connect_sqlite, control_db_path, create_world, world_db_path
+from wsa.workspace import control_db_path, create_world, sqlite_connection, world_db_path
 
 
 CONTROL_TABLES = {
@@ -39,7 +39,7 @@ WORLD_TABLES = {
 
 
 def table_names(db_path: Path) -> set[str]:
-    with connect_sqlite(db_path) as conn:
+    with sqlite_connection(db_path) as conn:
         rows = conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         ).fetchall()

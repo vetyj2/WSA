@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, Iterator, List
 
 from .ids import new_world_id, slugify
+from .paths import UnsafePathError, safe_child_path
 
 
 SCHEMA_VERSION = 1
@@ -54,17 +56,71 @@ class WorldRecord:
     schema_version: int
 
 
+class SchemaVersionError(RuntimeError):
+    """Raised when a workspace database is newer than this WSA build supports."""
+
+
+class WorkspacePathError(ValueError):
+    """Raised when a registered workspace path does not match the safe layout."""
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def connect_sqlite(path: Path) -> sqlite3.Connection:
+    """Open a configured SQLite connection.
+
+    Callers that use this low-level factory must close the returned connection.
+    Prefer sqlite_connection() for ordinary workspace access.
+    """
+
     conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def schema_version(conn: sqlite3.Connection, name: str) -> int | None:
+    try:
+        row = conn.execute(
+            "SELECT version FROM schema_info WHERE name = ?",
+            (name,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return None
+        raise
+    if row is None:
+        return None
+    return int(row["version"])
+
+
+def ensure_supported_schema(conn: sqlite3.Connection, name: str) -> None:
+    version = schema_version(conn, name)
+    if version is not None and version > SCHEMA_VERSION:
+        raise SchemaVersionError(
+            f"{name} schema version {version} is newer than supported version {SCHEMA_VERSION}"
+        )
+
+
+@contextmanager
+def sqlite_connection(path: Path, schema_name: str | None = None) -> Iterator[sqlite3.Connection]:
+    """Open a SQLite connection and always close it on exit."""
+
+    conn = connect_sqlite(path)
+    try:
+        if schema_name is not None:
+            ensure_supported_schema(conn, schema_name)
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def ensure_dirs(base: Path, dirs: Iterable[str]) -> None:
@@ -78,6 +134,25 @@ def control_db_path(workspace: Path) -> Path:
 
 def world_db_path(world_path: Path) -> Path:
     return world_path / "world.sqlite"
+
+
+def world_root_path(workspace: Path, world_id: str) -> Path:
+    candidate = Path(world_id)
+    if (
+        not world_id
+        or candidate.is_absolute()
+        or candidate.name != world_id
+        or ".." in candidate.parts
+    ):
+        raise WorkspacePathError(f"invalid world_id path segment: {world_id}")
+    try:
+        return safe_child_path(workspace, "worlds", world_id)
+    except UnsafePathError as exc:
+        raise WorkspacePathError(f"invalid world_id path segment: {world_id}") from exc
+
+
+def registered_world_path(world_id: str) -> Path:
+    return Path("worlds") / world_id
 
 
 def init_control_schema(conn: sqlite3.Connection) -> None:
@@ -572,7 +647,7 @@ def init_workspace(workspace: Path) -> Path:
     workspace.mkdir(parents=True, exist_ok=True)
     ensure_dirs(workspace, CONTROL_DIRS)
     db_path = control_db_path(workspace)
-    with connect_sqlite(db_path) as conn:
+    with sqlite_connection(db_path, schema_name="control") as conn:
         init_control_schema(conn)
     return db_path
 
@@ -581,14 +656,14 @@ def create_world(workspace: Path, display_name: str) -> WorldRecord:
     init_workspace(workspace)
     world_id = new_world_id(display_name)
     slug = slugify(display_name)
-    world_path = workspace / "worlds" / world_id
+    world_path = world_root_path(workspace, world_id)
     ensure_dirs(world_path, WORLD_DIRS)
 
-    with connect_sqlite(world_db_path(world_path)) as conn:
+    with sqlite_connection(world_db_path(world_path), schema_name="world") as conn:
         init_world_schema(conn, world_id, display_name)
 
     now = utc_now()
-    with connect_sqlite(control_db_path(workspace)) as conn:
+    with sqlite_connection(control_db_path(workspace), schema_name="control") as conn:
         conn.execute(
             """
             INSERT INTO worlds (
@@ -601,7 +676,7 @@ def create_world(workspace: Path, display_name: str) -> WorldRecord:
                 world_id,
                 display_name,
                 slug,
-                str(world_path),
+                str(registered_world_path(world_id)),
                 "active",
                 SCHEMA_VERSION,
                 now,
@@ -625,7 +700,7 @@ def list_worlds(workspace: Path) -> List[WorldRecord]:
     if not db_path.exists():
         return []
 
-    with connect_sqlite(db_path) as conn:
+    with sqlite_connection(db_path, schema_name="control") as conn:
         rows = conn.execute(
             """
             SELECT world_id, display_name, slug, path, status, schema_version
@@ -634,22 +709,12 @@ def list_worlds(workspace: Path) -> List[WorldRecord]:
             """
         ).fetchall()
 
-    return [
-        WorldRecord(
-            world_id=row["world_id"],
-            display_name=row["display_name"],
-            slug=row["slug"],
-            path=Path(row["path"]),
-            status=row["status"],
-            schema_version=row["schema_version"],
-        )
-        for row in rows
-    ]
+    return [_world_record_from_row(workspace, row) for row in rows]
 
 
 def get_world(workspace: Path, world_id: str) -> WorldRecord:
     db_path = control_db_path(workspace)
-    with connect_sqlite(db_path) as conn:
+    with sqlite_connection(db_path, schema_name="control") as conn:
         row = conn.execute(
             """
             SELECT world_id, display_name, slug, path, status, schema_version
@@ -660,11 +725,26 @@ def get_world(workspace: Path, world_id: str) -> WorldRecord:
         ).fetchone()
     if row is None:
         raise KeyError(f"world not found: {world_id}")
+    return _world_record_from_row(workspace, row)
+
+
+def _world_record_from_row(workspace: Path, row: sqlite3.Row) -> WorldRecord:
+    world_id = row["world_id"]
+    expected_path = world_root_path(workspace, world_id)
+    stored_path = Path(row["path"]).expanduser()
+    if stored_path.is_absolute():
+        resolved_stored_path = stored_path.resolve()
+    else:
+        resolved_stored_path = (workspace / stored_path).resolve()
+    if resolved_stored_path != expected_path:
+        raise WorkspacePathError(
+            f"registered path for world {world_id} does not match workspace layout"
+        )
     return WorldRecord(
-        world_id=row["world_id"],
+        world_id=world_id,
         display_name=row["display_name"],
         slug=row["slug"],
-        path=Path(row["path"]),
+        path=expected_path,
         status=row["status"],
         schema_version=row["schema_version"],
     )

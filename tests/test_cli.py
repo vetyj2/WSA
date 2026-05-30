@@ -5,7 +5,13 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from wsa.cli import main
-from wsa.workspace import create_world
+from wsa.workspace import (
+    SCHEMA_VERSION,
+    control_db_path,
+    create_world,
+    sqlite_connection,
+    world_db_path,
+)
 
 
 class CliTests(TestCase):
@@ -22,6 +28,40 @@ class CliTests(TestCase):
             code = main(["--workspace", "/tmp/wsa-test", "doctor"])
         self.assertEqual(code, 0)
         self.assertIn(f"workspace: {Path('/tmp/wsa-test').resolve()}", stdout.getvalue())
+
+    def test_doctor_rejects_newer_schema(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Future Doctor")
+            with sqlite_connection(world_db_path(world.path)) as conn:
+                conn.execute(
+                    "UPDATE schema_info SET version = ? WHERE name = 'world'",
+                    (SCHEMA_VERSION + 1,),
+                )
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(["--workspace", str(workspace), "doctor"])
+
+            self.assertEqual(code, 1)
+            self.assertIn("schema_status: unsupported", stdout.getvalue())
+
+    def test_doctor_rejects_invalid_world_path(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Path Doctor")
+            with sqlite_connection(control_db_path(workspace)) as conn:
+                conn.execute(
+                    "UPDATE worlds SET path = ? WHERE world_id = ?",
+                    (str(Path(tmp) / "outside-world"), world.world_id),
+                )
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(["--workspace", str(workspace), "doctor"])
+
+            self.assertEqual(code, 1)
+            self.assertIn("path_status: invalid", stdout.getvalue())
 
     def test_world_list_without_workspace_is_empty(self) -> None:
         stdout = StringIO()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .paths import safe_child_path
 from .repositories import ReportRecord, WorldRepository
@@ -137,13 +137,20 @@ class ReportMailbox:
 """
 
 
-def remove_empty_mailbox_files(workspace: Path) -> int:
-    removed = 0
+def list_empty_mailbox_files(workspace: Path) -> List[Path]:
     reports_root = safe_child_path(workspace, "reports")
     if not reports_root.exists():
-        return 0
-    for path in reports_root.glob("*/*.html"):
-        if path.is_file() and path.stat().st_size == 0:
-            path.unlink()
-            removed += 1
+        return []
+    return [
+        path
+        for path in sorted(reports_root.glob("*/*.html"))
+        if path.is_file() and path.stat().st_size == 0
+    ]
+
+
+def remove_empty_mailbox_files(workspace: Path) -> int:
+    removed = 0
+    for path in list_empty_mailbox_files(workspace):
+        path.unlink()
+        removed += 1
     return removed

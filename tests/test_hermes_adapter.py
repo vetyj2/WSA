@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from wsa.hermes_adapter import (
+    HermesAdapterError,
     HermesAdapterRouteError,
     HermesCliTemplateAdapter,
     build_template_callback,
@@ -112,6 +113,33 @@ class HermesAdapterTests(TestCase):
                 "local_commit",
             )
 
+    def test_callback_operation_request_rejects_unsupported_mode(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Hermes Operation Guard World")
+            adapter = HermesCliTemplateAdapter(workspace)
+            task = adapter.create_task(
+                world.world_id,
+                title="Run diagnostics",
+                instruction="Inspect pending reports and tickets.",
+            )
+            callback_payload = build_template_callback(task)
+            callback_payload["operation_requests"] = [
+                {
+                    "action": "version_control.snapshot",
+                    "mode": "shell",
+                    "summary": "Try unsupported execution mode.",
+                }
+            ]
+            callback_path = adapter.callbacks_dir() / f"{callback_payload['callback_id']}.json"
+            callback_path.write_text(
+                json.dumps(callback_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(HermesAdapterError):
+                adapter.collect_callback(callback_path)
+
     def test_callback_route_mismatch_is_rejected(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -133,3 +161,27 @@ class HermesAdapterTests(TestCase):
 
             with self.assertRaises(HermesAdapterRouteError):
                 adapter.collect_callback(callback_path)
+
+    def test_callback_path_is_restricted_to_callbacks_dir_by_default(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Hermes Path World")
+            adapter = HermesCliTemplateAdapter(workspace)
+            task = adapter.create_task(
+                world.world_id,
+                title="Run diagnostics",
+                instruction="Inspect pending reports and tickets.",
+            )
+            callback_payload = build_template_callback(task)
+            external_path = Path(tmp) / "external_callback.json"
+            external_path.write_text(
+                json.dumps(callback_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(HermesAdapterError):
+                adapter.collect_callback(external_path)
+
+            callback = adapter.collect_callback(external_path, allow_external_path=True)
+
+            self.assertEqual(callback.task_id, task.task_id)
