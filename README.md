@@ -126,6 +126,21 @@ Expected first line:
 template_ready: yes
 ```
 
+## Pre-Use Diagnostic
+
+After cloning and installing the repository, run a short pre-use diagnostic before connecting any live Hermes runtime:
+
+```bash
+python3 -m unittest discover -s tests
+wsa --workspace /tmp/wsa-template-check template check --write-missing
+python3 -m json.tool examples/hermes_cli.example.json >/dev/null
+python3 -m json.tool examples/hermes_operation_policy.example.json >/dev/null
+```
+
+If you have not installed the package and are running directly from the clone, prefix the WSA commands with `PYTHONPATH=src`.
+
+Confirm that local admin files, private env files, handoff notes, credentials, tokens, SQLite runtime state, and live workspace artifacts are absent from the clone. The example Hermes files should contain only public-safe schemas, environment variable names, and policy shapes.
+
 ## Public Repo Safety
 
 This repository intentionally ignores local workspaces, SQLite databases, runtime queues, callback files, logs, environment files, secrets, and session handoff notes.
