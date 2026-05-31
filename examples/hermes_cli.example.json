@@ -13,7 +13,109 @@
         "on_checkpoint": "summarize candidates and request user decision",
         "recommended": true
       },
+      "discretion_customizable": true,
+      "discretion_scale": {
+        "0": {
+          "agent_may": [
+            "organize answers",
+            "surface contradictions",
+            "ask follow-up questions"
+          ],
+          "agent_must_not": [
+            "invent canon candidates without explicit request"
+          ],
+          "cron_allowed": false,
+          "label": "author_only",
+          "summary": "Hermes asks before filling any world detail."
+        },
+        "1": {
+          "agent_may": [
+            "draft alternatives",
+            "recommend one option with reasons"
+          ],
+          "agent_must_not": [
+            "fill missing details as if accepted"
+          ],
+          "cron_allowed": false,
+          "label": "ask_before_filling",
+          "summary": "Hermes may propose small options, then waits for author selection."
+        },
+        "2": {
+          "agent_may": [
+            "fill names, placeholders, and low-risk connective tissue"
+          ],
+          "agent_must_not": [
+            "change major premise, faction power, or protagonist frame"
+          ],
+          "cron_allowed": false,
+          "label": "small_gaps_allowed",
+          "summary": "Hermes may fill minor connective details as candidates."
+        },
+        "3": {
+          "agent_may": [
+            "draft institutions, locations, customs, and scene hooks"
+          ],
+          "agent_must_not": [
+            "commit generated material to canon without review"
+          ],
+          "cron_allowed": false,
+          "label": "balanced_fill",
+          "summary": "Hermes may prefill ordinary supporting details and report assumptions."
+        },
+        "4": {
+          "agent_may": [
+            "run larger fill passes",
+            "prepare candidate reports for approval"
+          ],
+          "agent_must_not": [
+            "run unattended cron loops without a level-5 agreement"
+          ],
+          "cron_allowed": false,
+          "label": "broad_agent_fill",
+          "summary": "Hermes may generate broad lower-layer world material as candidate sets."
+        },
+        "5": {
+          "agent_may": [
+            "prepare recurring lower-layer generation",
+            "stop when the destination checkpoint is met",
+            "perform a quality gate before completion"
+          ],
+          "agent_must_not": [
+            "start without a destination checkpoint",
+            "continue after the checkpoint is met",
+            "commit generated material to canon without approval"
+          ],
+          "completion_policy": "stop_cron_then_report_quality_and_request_approval",
+          "cron_allowed": true,
+          "label": "challenge_world_autonomy",
+          "requires_destination_checkpoint": true,
+          "summary": "Hermes may run cron-capable autonomous fill loops toward a destination checkpoint."
+        }
+      },
       "enforcement": "guidance_only",
+      "fill_the_rest": {
+        "approval_flow": "report_candidates_then_request_user_approval",
+        "available_anytime": true,
+        "candidate_scope": "lower_layer_information",
+        "canon_policy": "generated_material_requires_user_or_policy_approval",
+        "completion_must_state_cron_stopped": true,
+        "cron_capable_at_discretion_level": 5,
+        "cron_owner": "user_hermes_runtime",
+        "must_stop_when_destination_met": true,
+        "owner": "user_hermes_runtime",
+        "purpose": "Prepare lower-layer autonomous candidate generation until a destination checkpoint.",
+        "quality_gate": {
+          "checks": [
+            "destination_checkpoint_satisfied",
+            "internal_consistency_reviewed",
+            "duplicate_or_low_value_fill_removed",
+            "approval_report_created"
+          ],
+          "required_before_completion": true
+        },
+        "requires_destination_checkpoint": true,
+        "schema": "wsa.hermes.fill_the_rest_contract.v1"
+      },
       "fully_autonomous_generation_allowed": true,
       "owner": "user_hermes_runtime_dialogue",
       "range": {

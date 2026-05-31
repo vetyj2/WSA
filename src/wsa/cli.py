@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     world_subparsers.add_parser("list", help="List registered worlds.")
     world_startup = world_subparsers.add_parser(
         "startup",
-        help="Run Easy Startup worldbuilding interview utilities.",
+        help="Run open-ended startup interview utilities.",
     )
     world_startup_subparsers = world_startup.add_subparsers(dest="world_startup_command")
     world_startup_status = world_startup_subparsers.add_parser(
@@ -100,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     world_startup_interview.add_argument(
         "--budget",
         type=int,
-        default=8,
+        default=4,
         help="Maximum questions in this round.",
     )
     world_startup_answer = world_startup_subparsers.add_parser(
@@ -108,19 +108,88 @@ def build_parser() -> argparse.ArgumentParser:
         help="Record an author answer for a startup question.",
     )
     world_startup_answer.add_argument("world_id", help="World ID.")
-    world_startup_answer.add_argument("question_id", help="Question ID such as Q001.")
+    world_startup_answer.add_argument("question_id", help="Question ID such as 0001.")
     world_startup_answer.add_argument("--text", required=True, help="Author answer text.")
+    world_startup_answer.add_argument("--choice", help="Optional choice label a-i.")
+    world_startup_batch = world_startup_subparsers.add_parser(
+        "batch-answer",
+        help="Record parallel answers such as '0001a 0002b plus notes'.",
+    )
+    world_startup_batch.add_argument("world_id", help="World ID.")
+    world_startup_batch.add_argument("--text", required=True, help="Answer code text.")
     world_startup_set_status = world_startup_subparsers.add_parser(
         "set-status",
         help="Set a startup question status without changing its answer.",
     )
     world_startup_set_status.add_argument("world_id", help="World ID.")
-    world_startup_set_status.add_argument("question_id", help="Question ID such as Q001.")
+    world_startup_set_status.add_argument("question_id", help="Question ID such as 0001.")
     world_startup_set_status.add_argument(
         "--status",
         required=True,
         choices=sorted(QUESTION_STATUSES),
         help="Question status.",
+    )
+    world_startup_discretion = world_startup_subparsers.add_parser(
+        "set-discretion",
+        help="Set Hermes discretion level from 0 to 5.",
+    )
+    world_startup_discretion.add_argument("world_id", help="World ID.")
+    world_startup_discretion.add_argument(
+        "--level",
+        type=int,
+        required=True,
+        choices=range(0, 6),
+        help="Discretion level from 0 author-only to 5 challenge autonomy.",
+    )
+
+    world_easystartup = world_subparsers.add_parser(
+        "easystartup",
+        help="Run easy-pick startup interview utilities.",
+    )
+    world_easystartup_subparsers = world_easystartup.add_subparsers(
+        dest="world_easystartup_command"
+    )
+    world_easystartup_status = world_easystartup_subparsers.add_parser(
+        "status",
+        help="Show startup ambiguity score.",
+    )
+    world_easystartup_status.add_argument("world_id", help="World ID.")
+    world_easystartup_interview = world_easystartup_subparsers.add_parser(
+        "interview",
+        help="Generate an easy-pick numbered startup interview round.",
+    )
+    world_easystartup_interview.add_argument("world_id", help="World ID.")
+    world_easystartup_interview.add_argument(
+        "--budget",
+        type=int,
+        default=8,
+        help="Maximum questions in this round.",
+    )
+    world_easystartup_answer = world_easystartup_subparsers.add_parser(
+        "answer",
+        help="Record an author answer for an easy-pick startup question.",
+    )
+    world_easystartup_answer.add_argument("world_id", help="World ID.")
+    world_easystartup_answer.add_argument("question_id", help="Question ID such as 0001.")
+    world_easystartup_answer.add_argument("--text", required=True, help="Author answer text.")
+    world_easystartup_answer.add_argument("--choice", help="Optional choice label a-i.")
+    world_easystartup_batch = world_easystartup_subparsers.add_parser(
+        "batch-answer",
+        help="Record parallel answers such as '0001a 0002b plus notes'.",
+    )
+    world_easystartup_batch.add_argument("world_id", help="World ID.")
+    world_easystartup_batch.add_argument("--text", required=True, help="Answer code text.")
+    world_easystartup_discretion = world_easystartup_subparsers.add_parser(
+        "set-discretion",
+        help="Set Hermes discretion level from 0 to 5.",
+    )
+    world_easystartup_discretion.add_argument("world_id", help="World ID.")
+    world_easystartup_discretion.add_argument(
+        "--level",
+        type=int,
+        required=True,
+        choices=range(0, 6),
+        help="Discretion level from 0 author-only to 5 challenge autonomy.",
     )
 
     manager_parser = subparsers.add_parser("manager", help="Run world manager utilities.")
@@ -409,9 +478,14 @@ def run_world_startup_status(workspace: Path, world_id: str) -> int:
     return 0
 
 
-def run_world_startup_interview(workspace: Path, world_id: str, budget: int) -> int:
+def run_world_startup_interview(
+    workspace: Path,
+    world_id: str,
+    budget: int,
+    mode: str = "startup",
+) -> int:
     world = get_world(workspace, world_id)
-    round_ = StartupProfileManager(world).interview(budget=budget)
+    round_ = StartupProfileManager(world).interview(budget=budget, mode=mode)
     for line in format_startup_interview(round_):
         print(line)
     return 0
@@ -422,10 +496,20 @@ def run_world_startup_answer(
     world_id: str,
     question_id: str,
     text: str,
+    choice: str | None = None,
 ) -> int:
     world = get_world(workspace, world_id)
-    status = StartupProfileManager(world).answer(question_id, text)
+    status = StartupProfileManager(world).answer(question_id, text, choice=choice)
     print(f"startup_answer_recorded: {question_id}")
+    for line in format_startup_status(status):
+        print(line)
+    return 0
+
+
+def run_world_startup_batch_answer(workspace: Path, world_id: str, text: str) -> int:
+    world = get_world(workspace, world_id)
+    status = StartupProfileManager(world).answer_batch(text)
+    print("startup_batch_answer_recorded: yes")
     for line in format_startup_status(status):
         print(line)
     return 0
@@ -441,6 +525,15 @@ def run_world_startup_set_status(
     status = StartupProfileManager(world).set_status(question_id, status_value)
     print(f"startup_status_updated: {question_id}")
     print(f"question_status: {status_value}")
+    for line in format_startup_status(status):
+        print(line)
+    return 0
+
+
+def run_world_startup_set_discretion(workspace: Path, world_id: str, level: int) -> int:
+    world = get_world(workspace, world_id)
+    status = StartupProfileManager(world).set_discretion(level)
+    print(f"startup_discretion_updated: {level}")
     for line in format_startup_status(status):
         print(line)
     return 0
@@ -763,12 +856,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.world_startup_command == "status":
                 return run_world_startup_status(config.workspace, args.world_id)
             if args.world_startup_command == "interview":
-                return run_world_startup_interview(config.workspace, args.world_id, args.budget)
+                return run_world_startup_interview(
+                    config.workspace,
+                    args.world_id,
+                    args.budget,
+                    mode="startup",
+                )
             if args.world_startup_command == "answer":
                 return run_world_startup_answer(
                     config.workspace,
                     args.world_id,
                     args.question_id,
+                    args.text,
+                    choice=args.choice,
+                )
+            if args.world_startup_command == "batch-answer":
+                return run_world_startup_batch_answer(
+                    config.workspace,
+                    args.world_id,
                     args.text,
                 )
             if args.world_startup_command == "set-status":
@@ -778,7 +883,44 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.question_id,
                     args.status,
                 )
+            if args.world_startup_command == "set-discretion":
+                return run_world_startup_set_discretion(
+                    config.workspace,
+                    args.world_id,
+                    args.level,
+                )
             parser.parse_args(["world", "startup", "--help"])
+        if args.world_command == "easystartup":
+            if args.world_easystartup_command == "status":
+                return run_world_startup_status(config.workspace, args.world_id)
+            if args.world_easystartup_command == "interview":
+                return run_world_startup_interview(
+                    config.workspace,
+                    args.world_id,
+                    args.budget,
+                    mode="easystartup",
+                )
+            if args.world_easystartup_command == "answer":
+                return run_world_startup_answer(
+                    config.workspace,
+                    args.world_id,
+                    args.question_id,
+                    args.text,
+                    choice=args.choice,
+                )
+            if args.world_easystartup_command == "batch-answer":
+                return run_world_startup_batch_answer(
+                    config.workspace,
+                    args.world_id,
+                    args.text,
+                )
+            if args.world_easystartup_command == "set-discretion":
+                return run_world_startup_set_discretion(
+                    config.workspace,
+                    args.world_id,
+                    args.level,
+                )
+            parser.parse_args(["world", "easystartup", "--help"])
         parser.parse_args(["world", "--help"])
     if args.command == "manager":
         if args.manager_command == "diagnose":

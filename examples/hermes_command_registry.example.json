@@ -130,9 +130,8 @@
     },
     {
       "aliases": [
-        "/wsa-easystart",
-        "/wsa_startup",
-        "/wsa-startup"
+        "/wsa-startup",
+        "/wsa_open_startup"
       ],
       "arguments": [
         {
@@ -141,7 +140,7 @@
           "required": true
         },
         {
-          "description": "Maximum startup questions for this round. Default: 8.",
+          "description": "Maximum startup questions for this round. Default: 4.",
           "name": "budget",
           "required": false
         }
@@ -162,10 +161,10 @@
           "interview",
           "{world_id}",
           "--budget",
-          "{budget:8}"
+          "{budget:4}"
         ]
       ],
-      "command": "/wsa_easystart",
+      "command": "/wsa_startup",
       "delivery": {
         "default": "chat_summary",
         "full_artifact": "local_report_or_file_attachment"
@@ -174,12 +173,66 @@
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
-      "intent": "easy_startup_interview",
+      "intent": "open_startup_interview",
       "notes": [
-        "Hermes should summarize the numbered questions and ask the author which answers to record."
+        "Use at most three choices per question and encourage longer free-text author answers."
       ],
       "safety": "read_only",
-      "title": "Start or continue the numbered Easy Startup interview."
+      "title": "Start or continue the open-ended startup interview."
+    },
+    {
+      "aliases": [
+        "/wsa-easystartup",
+        "/wsa_easystart",
+        "/wsa-easystart"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Maximum easy-pick questions for this round. Default: 8.",
+          "name": "budget",
+          "required": false
+        }
+      ],
+      "category": "startup",
+      "cli_templates": [
+        [
+          "wsa",
+          "world",
+          "easystartup",
+          "status",
+          "{world_id}"
+        ],
+        [
+          "wsa",
+          "world",
+          "easystartup",
+          "interview",
+          "{world_id}",
+          "--budget",
+          "{budget:8}"
+        ]
+      ],
+      "command": "/wsa_easystartup",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "easy_pick_startup_interview",
+      "notes": [
+        "Offer five to eight easy-pick choices per question and let Hermes fill details according to discretion level.",
+        "Hermes should keep returning to the interview with progress unless the user stops it."
+      ],
+      "safety": "read_only",
+      "title": "Start or continue the easy-pick startup interview."
     },
     {
       "aliases": [
@@ -193,7 +246,7 @@
           "required": true
         },
         {
-          "description": "Startup question ID such as Q001.",
+          "description": "Startup question ID such as 0001.",
           "name": "question_id",
           "required": true
         },
@@ -231,6 +284,61 @@
     },
     {
       "aliases": [
+        "/wsa-pick",
+        "/wsa_batch_answer",
+        "/wsa-batch-answer"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Answer text containing codes such as 0001a 0002b.",
+          "name": "text",
+          "required": true
+        }
+      ],
+      "category": "startup",
+      "cli_templates": [
+        [
+          "wsa",
+          "world",
+          "startup",
+          "batch-answer",
+          "{world_id}",
+          "--text",
+          "{text}"
+        ],
+        [
+          "wsa",
+          "world",
+          "easystartup",
+          "batch-answer",
+          "{world_id}",
+          "--text",
+          "{text}"
+        ]
+      ],
+      "command": "/wsa_pick",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "record_parallel_startup_choices",
+      "notes": [
+        "Hermes chooses the startup or easystartup batch endpoint based on the active interview mode."
+      ],
+      "safety": "requires_approval",
+      "title": "Record parallel startup choices such as 0001a 0002b plus notes."
+    },
+    {
+      "aliases": [
         "/wsa-autogen",
         "/wsa_random",
         "/wsa-random"
@@ -247,8 +355,8 @@
           "required": true
         },
         {
-          "description": "Autonomy level from 0 to 100. Default decided by Hermes/user dialogue.",
-          "name": "autonomy",
+          "description": "Discretion level from 0 to 5. Default decided by Hermes/user dialogue.",
+          "name": "discretion",
           "required": false
         }
       ],
@@ -280,10 +388,115 @@
       "intent": "autonomous_world_generation",
       "notes": [
         "This command generates candidates only; canon mutation still follows user review policy.",
-        "A 100% autonomy value is allowed when the author wants a challenge world."
+        "Discretion level 5 requires a destination checkpoint before cron automation starts."
       ],
       "safety": "proposal_only",
       "title": "Ask Hermes to generate world candidates until a natural-language checkpoint."
+    },
+    {
+      "aliases": [
+        "/fill-the-rest",
+        "/filltherest",
+        "/wsa_fill_the_rest",
+        "/wsa-fill-the-rest"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Natural-language endpoint, such as 'until every region has factions and hooks'.",
+          "name": "destination",
+          "required": true
+        },
+        {
+          "description": "Optional area to fill. Can be initial, midstream, or late-stage.",
+          "name": "scope",
+          "required": false
+        },
+        {
+          "description": "0-5 discretion level. Level 5 enables cron-capable automation.",
+          "name": "discretion_level",
+          "required": false
+        },
+        {
+          "description": "Optional Hermes-owned cron schedule for level 5.",
+          "name": "cron_schedule",
+          "required": false
+        },
+        {
+          "description": "Optional quality conditions Hermes must verify before stopping.",
+          "name": "quality_bar",
+          "required": false
+        }
+      ],
+      "category": "operations",
+      "cli_templates": [
+        [
+          "wsa",
+          "hermes",
+          "task",
+          "{world_id}",
+          "--task-type",
+          "fill_the_rest",
+          "--title",
+          "Fill the rest",
+          "--instruction",
+          "{destination}",
+          "--session-mode",
+          "cron",
+          "--runtime-source",
+          "cron",
+          "--background",
+          "--input-json",
+          "{\"destination\":\"{destination}\",\"scope\":\"{scope}\",\"discretion_level\":\"{discretion_level:5}\",\"quality_gate\":\"required_before_completion\",\"completion\":\"stop_cron_then_report_and_request_approval\"}"
+        ]
+      ],
+      "command": "/fill_the_rest",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "fill_remaining_lower_layer_candidates",
+      "notes": [
+        "Generates lower-layer candidate material only; it does not directly mutate canon.",
+        "Can be used at initial setup, mid-project, or late-project cleanup.",
+        "At discretion level 5 Hermes must ask for the destination checkpoint before starting cron automation.",
+        "When the destination is met, Hermes must stop the cron job and explicitly report that it stopped.",
+        "Before completion, Hermes must diagnose whether the generated material actually satisfies the destination and quality bar.",
+        "After completion, Hermes should request user approval before canon conversion."
+      ],
+      "runtime_contract": {
+        "approval_flow": "report_candidates_then_request_user_approval",
+        "available_anytime": true,
+        "candidate_scope": "lower_layer_information",
+        "canon_policy": "generated_material_requires_user_or_policy_approval",
+        "completion_must_state_cron_stopped": true,
+        "cron_capable_at_discretion_level": 5,
+        "cron_owner": "user_hermes_runtime",
+        "must_stop_when_destination_met": true,
+        "owner": "user_hermes_runtime",
+        "purpose": "Prepare lower-layer autonomous candidate generation until a destination checkpoint.",
+        "quality_gate": {
+          "checks": [
+            "destination_checkpoint_satisfied",
+            "internal_consistency_reviewed",
+            "duplicate_or_low_value_fill_removed",
+            "approval_report_created"
+          ],
+          "required_before_completion": true
+        },
+        "requires_destination_checkpoint": true,
+        "schema": "wsa.hermes.fill_the_rest_contract.v1"
+      },
+      "safety": "requires_approval",
+      "title": "Prepare a cron-capable pass that fills remaining lower-layer world details."
     },
     {
       "aliases": [
@@ -555,6 +768,111 @@
       "title": "Request a local or remote version-control snapshot through Hermes policy."
     }
   ],
+  "discretion_policy": {
+    "customizable": true,
+    "level_5_requires_destination_checkpoint": true,
+    "scale": {
+      "0": {
+        "agent_may": [
+          "organize answers",
+          "surface contradictions",
+          "ask follow-up questions"
+        ],
+        "agent_must_not": [
+          "invent canon candidates without explicit request"
+        ],
+        "cron_allowed": false,
+        "label": "author_only",
+        "summary": "Hermes asks before filling any world detail."
+      },
+      "1": {
+        "agent_may": [
+          "draft alternatives",
+          "recommend one option with reasons"
+        ],
+        "agent_must_not": [
+          "fill missing details as if accepted"
+        ],
+        "cron_allowed": false,
+        "label": "ask_before_filling",
+        "summary": "Hermes may propose small options, then waits for author selection."
+      },
+      "2": {
+        "agent_may": [
+          "fill names, placeholders, and low-risk connective tissue"
+        ],
+        "agent_must_not": [
+          "change major premise, faction power, or protagonist frame"
+        ],
+        "cron_allowed": false,
+        "label": "small_gaps_allowed",
+        "summary": "Hermes may fill minor connective details as candidates."
+      },
+      "3": {
+        "agent_may": [
+          "draft institutions, locations, customs, and scene hooks"
+        ],
+        "agent_must_not": [
+          "commit generated material to canon without review"
+        ],
+        "cron_allowed": false,
+        "label": "balanced_fill",
+        "summary": "Hermes may prefill ordinary supporting details and report assumptions."
+      },
+      "4": {
+        "agent_may": [
+          "run larger fill passes",
+          "prepare candidate reports for approval"
+        ],
+        "agent_must_not": [
+          "run unattended cron loops without a level-5 agreement"
+        ],
+        "cron_allowed": false,
+        "label": "broad_agent_fill",
+        "summary": "Hermes may generate broad lower-layer world material as candidate sets."
+      },
+      "5": {
+        "agent_may": [
+          "prepare recurring lower-layer generation",
+          "stop when the destination checkpoint is met",
+          "perform a quality gate before completion"
+        ],
+        "agent_must_not": [
+          "start without a destination checkpoint",
+          "continue after the checkpoint is met",
+          "commit generated material to canon without approval"
+        ],
+        "completion_policy": "stop_cron_then_report_quality_and_request_approval",
+        "cron_allowed": true,
+        "label": "challenge_world_autonomy",
+        "requires_destination_checkpoint": true,
+        "summary": "Hermes may run cron-capable autonomous fill loops toward a destination checkpoint."
+      }
+    }
+  },
+  "fill_the_rest": {
+    "approval_flow": "report_candidates_then_request_user_approval",
+    "available_anytime": true,
+    "candidate_scope": "lower_layer_information",
+    "canon_policy": "generated_material_requires_user_or_policy_approval",
+    "completion_must_state_cron_stopped": true,
+    "cron_capable_at_discretion_level": 5,
+    "cron_owner": "user_hermes_runtime",
+    "must_stop_when_destination_met": true,
+    "owner": "user_hermes_runtime",
+    "purpose": "Prepare lower-layer autonomous candidate generation until a destination checkpoint.",
+    "quality_gate": {
+      "checks": [
+        "destination_checkpoint_satisfied",
+        "internal_consistency_reviewed",
+        "duplicate_or_low_value_fill_removed",
+        "approval_report_created"
+      ],
+      "required_before_completion": true
+    },
+    "requires_destination_checkpoint": true,
+    "schema": "wsa.hermes.fill_the_rest_contract.v1"
+  },
   "owner": "user_hermes_runtime",
   "parser_policy": {
     "aliases_may_include_hyphen": true,

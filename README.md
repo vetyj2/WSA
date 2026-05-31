@@ -13,7 +13,7 @@ The project is designed as a template. It does not include live agent credential
 - Static HTML report mailbox
 - PR packet ticket creation and approval flow
 - Explicit fact conflict diagnostics
-- Easy Startup interview protocol with startup ambiguity scoring
+- Startup and Easy Startup interview protocols with ambiguity scoring
 - CLI-first Hermes adapter template using task and callback JSON files
 - Non-mutating meeting mode for representative diagnosis and proposal gathering
 - Template readiness checks for copied runtime instances
@@ -52,7 +52,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-73 tests OK
+77 tests OK
 ```
 
 ## Quick Smoke Run
@@ -80,17 +80,47 @@ PYTHONPATH=src python3 -m wsa report list <world_id>
 PYTHONPATH=src python3 -m wsa manager diagnose
 ```
 
-Start a worldbuilding interview without exhausting the author:
+Start a worldbuilding interview without exhausting the author. `startup` is the open-ended author-facing mode: it gives minimal framing, at most three choices per question, and expects longer free-text answers where the author wants control.
 
 ```bash
 PYTHONPATH=src python3 -m wsa world startup status <world_id>
-PYTHONPATH=src python3 -m wsa world startup interview <world_id> --budget 8
-PYTHONPATH=src python3 -m wsa world startup answer <world_id> Q001 --text "A scholarship mage enters the capital academy."
+PYTHONPATH=src python3 -m wsa world startup interview <world_id> --budget 4
+PYTHONPATH=src python3 -m wsa world startup answer <world_id> 0001 --text "A scholarship mage enters the capital academy."
 ```
 
-Easy Startup separates startup-blocking ambiguity from deeper optional lore. A startup ambiguity score of `0%` means the required opening-world questions are answered or author-approved enough to start early scenes; it does not mean the entire fictional universe is complete.
+`easystartup` is the easy-pick mode: it gives 5-8 tagged recommendations per item, keeps questions more closed, and lets Hermes fill details according to the selected discretion level.
+
+```bash
+PYTHONPATH=src python3 -m wsa world easystartup set-discretion <world_id> --level 3
+PYTHONPATH=src python3 -m wsa world easystartup interview <world_id> --budget 8
+PYTHONPATH=src python3 -m wsa world easystartup batch-answer <world_id> --text "0001a 0002b 0003e plus any free note"
+```
+
+Interview questions use four-digit IDs and lettered choices so Hermes can keep collecting answers even if the conversation wanders. A user can answer several at once, for example `0001a 0002b 0003e`, then add free text after the codes. WSA stores the active question list in `worlds/<world_id>/startup/startup_profile.json`; Hermes should keep returning the current progress percentage and a next question until the user explicitly stops the interview.
+
+Startup ambiguity separates startup-blocking ambiguity from deeper optional lore. A startup ambiguity score of `0%` means the required opening-world questions are answered or author-approved enough to start early scenes; it does not mean the entire fictional universe is complete.
 
 Authors may also choose high-autonomy or fully autonomous random world generation as a creative constraint. WSA does not forbid `100%` autonomy; it recommends that the user's Hermes runtime and the author agree on natural-language checkpoints such as "until 100 characters exist" or "until three regions have factions, conflicts, and opening hooks." Generated material should still be reported as candidates and committed to canon only through the user's chosen review policy.
+
+The default discretion scale is customizable by the user's Hermes runtime:
+
+```text
+0  author_only                 Hermes asks before filling any world detail.
+1  ask_before_filling          Hermes proposes small options, then waits.
+2  small_gaps_allowed          Hermes fills minor connective details as candidates.
+3  balanced_fill               Hermes pre-fills ordinary supporting details and reports assumptions.
+4  broad_agent_fill            Hermes runs larger lower-layer candidate passes.
+5  challenge_world_autonomy    Hermes may prepare cron-capable fill loops toward a destination checkpoint.
+```
+
+At level `5`, Hermes should ask for the destination checkpoint before starting automation, stop when that checkpoint is met, explicitly report that the cron job stopped, run a quality gate against the stated condition, and then request user approval before canon conversion.
+
+Hermes runtimes can also expose `/fill-the-rest` or `/filltherest` for anytime lower-layer filling. This is proposal-only: it prepares candidate generation for remaining details until a user-defined destination, then performs quality diagnosis before asking for approval.
+
+```text
+/fill-the-rest world=<world_id> destination="until every region has factions and hooks" discretion=5
+/filltherest world=<world_id> destination="until the academy has teachers, clubs, rivals, and exams"
+```
 
 Run a non-mutating meeting before committing world changes:
 
@@ -120,7 +150,7 @@ PYTHONPATH=src python3 -m wsa hermes commands --format json
 PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes commands --write-example
 ```
 
-The canonical command names use underscores, which are safer for bot command menus. Hyphenated forms such as `/wsa-easystart` are included as aliases for Hermes runtimes that parse free-form chat text.
+The canonical command names use underscores, which are safer for bot command menus. Hyphenated forms such as `/wsa-easystartup` and `/wsa-easystart` are included as aliases for Hermes runtimes that parse free-form chat text.
 
 Recommended first shortcuts:
 
@@ -129,9 +159,12 @@ Recommended first shortcuts:
 /wsa_doctor            Run WSA and Hermes readiness diagnostics.
 /wsa_worlds            List worlds.
 /wsa_create_world      Create a new isolated world after confirmation.
-/wsa_easystart         Start or continue the Easy Startup interview.
+/wsa_startup           Start or continue the open-ended startup interview.
+/wsa_easystartup       Start or continue the easy-pick startup interview.
 /wsa_answer            Record an author-approved startup answer.
+/wsa_pick              Record parallel choices like 0001a 0002b plus notes.
 /wsa_autogen           Generate candidates until a natural-language checkpoint.
+/fill_the_rest         Prepare lower-layer fill work until a destination checkpoint.
 /wsa_meeting           Run a non-mutating representative meeting.
 /wsa_meeting_decide    Approve, retry, or hold a meeting report.
 /wsa_reports           List reports for review.

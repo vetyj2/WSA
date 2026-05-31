@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol
 
+from .autonomy import discretion_scale_contract, fill_the_rest_contract
 from .hermes_commands import HERMES_COMMAND_REGISTRY_FILENAME
 from .paths import safe_child_path
 from .reports import ReportMailbox, validate_report_state
@@ -698,6 +699,9 @@ def build_agent_harness_contract() -> Dict[str, Any]:
             "owner": "user_hermes_runtime_dialogue",
             "enforcement": "guidance_only",
             "range": {"min": 0, "max": 100},
+            "discretion_customizable": True,
+            "discretion_scale": discretion_scale_contract(),
+            "fill_the_rest": fill_the_rest_contract(),
             "fully_autonomous_generation_allowed": True,
             "checkpoint_policy": {
                 "natural_language_allowed": True,

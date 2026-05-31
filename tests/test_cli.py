@@ -154,8 +154,67 @@ class CliTests(TestCase):
             self.assertEqual(interview_code, 0)
             self.assertEqual(answer_code, 0)
             self.assertIn("startup_ambiguity: 100%", status_stdout.getvalue())
-            self.assertIn("Q001\tasked", interview_stdout.getvalue())
+            self.assertIn("0001\tasked", interview_stdout.getvalue())
+            self.assertIn("startup_interview_mode: startup", interview_stdout.getvalue())
             self.assertIn("startup_ambiguity: 90%", answer_stdout.getvalue())
+
+    def test_world_easystartup_cli_supports_batch_answers_and_discretion(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Easy Startup World")
+
+            discretion_stdout = StringIO()
+            with patch("sys.stdout", discretion_stdout):
+                discretion_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "easystartup",
+                        "set-discretion",
+                        world.world_id,
+                        "--level",
+                        "5",
+                    ]
+                )
+
+            interview_stdout = StringIO()
+            with patch("sys.stdout", interview_stdout):
+                interview_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "easystartup",
+                        "interview",
+                        world.world_id,
+                        "--budget",
+                        "2",
+                    ]
+                )
+
+            batch_stdout = StringIO()
+            with patch("sys.stdout", batch_stdout):
+                batch_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "easystartup",
+                        "batch-answer",
+                        world.world_id,
+                        "--text",
+                        "0001a 0002b 그리고 첫 지역은 조금 어둡게",
+                    ]
+                )
+
+            self.assertEqual(discretion_code, 0)
+            self.assertEqual(interview_code, 0)
+            self.assertEqual(batch_code, 0)
+            self.assertIn("discretion_level: 5", discretion_stdout.getvalue())
+            self.assertIn("startup_interview_mode: easystartup", interview_stdout.getvalue())
+            self.assertIn("0001f=", interview_stdout.getvalue())
+            self.assertIn("startup_ambiguity: 80%", batch_stdout.getvalue())
 
     def test_world_startup_cli_set_status_can_approve_proposal(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -413,10 +472,29 @@ class CliTests(TestCase):
             self.assertEqual(text_code, 0)
             self.assertEqual(json_code, 0)
             self.assertEqual(write_code, 0)
-            self.assertIn("/wsa_easystart", text_stdout.getvalue())
+            self.assertIn("/wsa_startup", text_stdout.getvalue())
+            self.assertIn("/wsa_easystartup", text_stdout.getvalue())
             self.assertIn("/wsa-easystart", text_stdout.getvalue())
-            self.assertIn("/wsa_easystart", commands)
-            self.assertIn("/wsa-easystart", commands["/wsa_easystart"]["aliases"])
+            self.assertIn("/wsa_pick", text_stdout.getvalue())
+            self.assertIn("/fill_the_rest", text_stdout.getvalue())
+            self.assertIn("/fill-the-rest", text_stdout.getvalue())
+            self.assertIn("/filltherest", text_stdout.getvalue())
+            self.assertIn("/wsa_startup", commands)
+            self.assertIn("/wsa_easystartup", commands)
+            self.assertIn("/wsa-easystart", commands["/wsa_easystartup"]["aliases"])
+            self.assertIn("/wsa_pick", commands)
+            self.assertIn("/fill_the_rest", commands)
+            self.assertIn("/filltherest", commands["/fill_the_rest"]["aliases"])
+            self.assertTrue(
+                commands["/fill_the_rest"]["runtime_contract"][
+                    "requires_destination_checkpoint"
+                ]
+            )
+            self.assertTrue(
+                commands["/fill_the_rest"]["runtime_contract"][
+                    "completion_must_state_cron_stopped"
+                ]
+            )
             self.assertEqual(commands["/wsa_autogen"]["safety"], "proposal_only")
             self.assertTrue(
                 (

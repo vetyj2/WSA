@@ -66,6 +66,17 @@ class HermesAdapterTests(TestCase):
                     "natural_language_allowed"
                 ]
             )
+            self.assertTrue(payload["agent_harness"]["autonomy_policy"]["discretion_customizable"])
+            self.assertTrue(
+                payload["agent_harness"]["autonomy_policy"]["discretion_scale"]["5"][
+                    "cron_allowed"
+                ]
+            )
+            self.assertTrue(
+                payload["agent_harness"]["autonomy_policy"]["fill_the_rest"][
+                    "completion_must_state_cron_stopped"
+                ]
+            )
             self.assertEqual(
                 payload["operation_contract"]["actions"][0]["modes"],
                 ["none", "local_commit", "remote_push", "custom"],
