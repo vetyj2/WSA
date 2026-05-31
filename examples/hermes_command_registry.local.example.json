@@ -1,0 +1,44 @@
+{
+  "commands": [
+    {
+      "aliases": [
+        "/my-command"
+      ],
+      "arguments": [
+        {
+          "description": "Example argument handled by the user's Hermes runtime.",
+          "name": "topic",
+          "required": false
+        }
+      ],
+      "category": "local",
+      "cli_template_policy": {
+        "execution": "run_single"
+      },
+      "cli_templates": [],
+      "command": "/my_command",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "local_custom_command_example",
+      "notes": [
+        "Copy this shape to workspace/hermes/adapter_config/hermes_commands.local.json.",
+        "Do not reuse a base command name or alias; update preflight blocks collisions."
+      ],
+      "safety": "read_only",
+      "title": "Example local Hermes command."
+    }
+  ],
+  "notes": [
+    "Local overlays are runtime-owned and should stay outside the public repository.",
+    "Base WSA updates may refresh hermes_commands.example.json, but must preserve this local file."
+  ],
+  "owner": "user_hermes_runtime",
+  "schema": "wsa.hermes.command_registry.local.v1",
+  "schema_version": 1
+}

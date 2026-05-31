@@ -7,6 +7,14 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
+from .autonomous_orchestrator import AutonomousOrchestrator
+from .orchestrator_contract import (
+    DEFAULT_CONTEXT_POLICY,
+    DEFAULT_MAX_CONCURRENT_SUBSESSIONS,
+    DEFAULT_MAX_QUEUE_TURNS,
+    DEFAULT_MAX_SUBSESSION_CALLS,
+    DEFAULT_TERMINATION_POLICY,
+)
 from .config import load_config
 from .hermes_adapter import (
     DELIVERY_TARGETS,
@@ -33,9 +41,22 @@ from .startup import (
     StartupProfileManager,
     format_startup_interview,
     format_startup_status,
+    startup_interview_to_dict,
+    startup_status_to_dict,
 )
 from .template import TemplateChecker, format_template_readiness
 from .tickets import approve_ticket
+from .update import (
+    UpdateBackupError,
+    UpdateLockError,
+    assert_update_unlocked,
+    backup_result_to_dict,
+    backup_workspace,
+    format_backup_result,
+    format_update_preflight,
+    run_update_preflight,
+    update_preflight_to_dict,
+)
 from .workspace import (
     SchemaVersionError,
     WorkspacePathError,
@@ -78,6 +99,14 @@ def build_parser() -> argparse.ArgumentParser:
     world_parser = subparsers.add_parser("world", help="Manage worlds.")
     world_subparsers = world_parser.add_subparsers(dest="world_command")
 
+    def add_startup_output_format(target: argparse.ArgumentParser) -> None:
+        target.add_argument(
+            "--format",
+            choices=("text", "json"),
+            default="text",
+            help="Output format.",
+        )
+
     world_create = world_subparsers.add_parser("create", help="Create a new isolated world.")
     world_create.add_argument("name", help="Human-readable world name.")
 
@@ -92,6 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show startup ambiguity score.",
     )
     world_startup_status.add_argument("world_id", help="World ID.")
+    add_startup_output_format(world_startup_status)
     world_startup_interview = world_startup_subparsers.add_parser(
         "interview",
         help="Generate a limited numbered startup interview round.",
@@ -103,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=4,
         help="Maximum questions in this round.",
     )
+    add_startup_output_format(world_startup_interview)
     world_startup_answer = world_startup_subparsers.add_parser(
         "answer",
         help="Record an author answer for a startup question.",
@@ -111,12 +142,14 @@ def build_parser() -> argparse.ArgumentParser:
     world_startup_answer.add_argument("question_id", help="Question ID such as 0001.")
     world_startup_answer.add_argument("--text", required=True, help="Author answer text.")
     world_startup_answer.add_argument("--choice", help="Optional choice label a-i.")
+    add_startup_output_format(world_startup_answer)
     world_startup_batch = world_startup_subparsers.add_parser(
         "batch-answer",
         help="Record parallel answers such as '0001a 0002b plus notes'.",
     )
     world_startup_batch.add_argument("world_id", help="World ID.")
     world_startup_batch.add_argument("--text", required=True, help="Answer code text.")
+    add_startup_output_format(world_startup_batch)
     world_startup_set_status = world_startup_subparsers.add_parser(
         "set-status",
         help="Set a startup question status without changing its answer.",
@@ -129,6 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(QUESTION_STATUSES),
         help="Question status.",
     )
+    add_startup_output_format(world_startup_set_status)
     world_startup_discretion = world_startup_subparsers.add_parser(
         "set-discretion",
         help="Set Hermes discretion level from 0 to 5.",
@@ -141,6 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=range(0, 6),
         help="Discretion level from 0 author-only to 5 challenge autonomy.",
     )
+    add_startup_output_format(world_startup_discretion)
 
     world_easystartup = world_subparsers.add_parser(
         "easystartup",
@@ -154,6 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show startup ambiguity score.",
     )
     world_easystartup_status.add_argument("world_id", help="World ID.")
+    add_startup_output_format(world_easystartup_status)
     world_easystartup_interview = world_easystartup_subparsers.add_parser(
         "interview",
         help="Generate an easy-pick numbered startup interview round.",
@@ -165,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=8,
         help="Maximum questions in this round.",
     )
+    add_startup_output_format(world_easystartup_interview)
     world_easystartup_answer = world_easystartup_subparsers.add_parser(
         "answer",
         help="Record an author answer for an easy-pick startup question.",
@@ -173,12 +210,14 @@ def build_parser() -> argparse.ArgumentParser:
     world_easystartup_answer.add_argument("question_id", help="Question ID such as 0001.")
     world_easystartup_answer.add_argument("--text", required=True, help="Author answer text.")
     world_easystartup_answer.add_argument("--choice", help="Optional choice label a-i.")
+    add_startup_output_format(world_easystartup_answer)
     world_easystartup_batch = world_easystartup_subparsers.add_parser(
         "batch-answer",
         help="Record parallel answers such as '0001a 0002b plus notes'.",
     )
     world_easystartup_batch.add_argument("world_id", help="World ID.")
     world_easystartup_batch.add_argument("--text", required=True, help="Answer code text.")
+    add_startup_output_format(world_easystartup_batch)
     world_easystartup_discretion = world_easystartup_subparsers.add_parser(
         "set-discretion",
         help="Set Hermes discretion level from 0 to 5.",
@@ -191,6 +230,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=range(0, 6),
         help="Discretion level from 0 author-only to 5 challenge autonomy.",
     )
+    add_startup_output_format(world_easystartup_discretion)
 
     manager_parser = subparsers.add_parser("manager", help="Run world manager utilities.")
     manager_subparsers = manager_parser.add_subparsers(dest="manager_command")
@@ -236,6 +276,139 @@ def build_parser() -> argparse.ArgumentParser:
         help="Decision for the meeting report.",
     )
     meeting_decide.add_argument("--note", help="Optional decision note.")
+
+    orchestrator_parser = subparsers.add_parser(
+        "orchestrator",
+        help="Run manual-trigger autonomous orchestration workflows.",
+    )
+    orchestrator_subparsers = orchestrator_parser.add_subparsers(dest="orchestrator_command")
+    orchestrator_run = orchestrator_subparsers.add_parser(
+        "run",
+        help="Run an autonomous-until-boundary orchestrator workflow.",
+    )
+    orchestrator_run.add_argument("world_id", help="World ID.")
+    orchestrator_run.add_argument(
+        "--workflow",
+        default="meetup",
+        help="Workflow type, such as meetup or subsession.",
+    )
+    orchestrator_run.add_argument(
+        "--skill",
+        help="Hermes skill shortcut scope, such as meetup or scene_start. Defaults to workflow.",
+    )
+    orchestrator_run.add_argument("--topic", required=True, help="Orchestration topic.")
+    orchestrator_run.add_argument(
+        "--question",
+        default="Synthesize proposals, conflicts, gaps, and approval options.",
+        help="Question the orchestrator should resolve.",
+    )
+    orchestrator_run.add_argument("--mode", default="agent", help="Runtime mode label.")
+    orchestrator_run.add_argument("--rounds", type=int, default=2, help="Internal round budget.")
+    orchestrator_run.add_argument(
+        "--max-queue-turns",
+        type=int,
+        default=DEFAULT_MAX_QUEUE_TURNS,
+        help=f"Maximum autonomous queue turns before stopping. Default: {DEFAULT_MAX_QUEUE_TURNS}.",
+    )
+    orchestrator_run.add_argument(
+        "--max-concurrent-subsessions",
+        type=int,
+        default=DEFAULT_MAX_CONCURRENT_SUBSESSIONS,
+        help=(
+            "Maximum subsessions Hermes should run at the same time. "
+            f"Default: {DEFAULT_MAX_CONCURRENT_SUBSESSIONS}."
+        ),
+    )
+    orchestrator_run.add_argument(
+        "--max-subsession-calls",
+        type=int,
+        default=DEFAULT_MAX_SUBSESSION_CALLS,
+        help=(
+            "Maximum total subsession calls before returning a partial package. "
+            f"Default: {DEFAULT_MAX_SUBSESSION_CALLS}."
+        ),
+    )
+    orchestrator_run.add_argument(
+        "--context-policy",
+        default=DEFAULT_CONTEXT_POLICY,
+        help=f"Context carry-forward policy. Default: {DEFAULT_CONTEXT_POLICY}.",
+    )
+    orchestrator_run.add_argument(
+        "--frame-plan",
+        help="User-defined plan/frame for this run. A conservative default is used when omitted.",
+    )
+    orchestrator_run.add_argument(
+        "--termination-policy",
+        default=DEFAULT_TERMINATION_POLICY,
+        help=f"Termination policy label. Default: {DEFAULT_TERMINATION_POLICY}.",
+    )
+    orchestrator_run.add_argument(
+        "--participant",
+        action="append",
+        default=[],
+        help="Participant/viewpoint. Can be repeated.",
+    )
+    orchestrator_run.add_argument(
+        "--subsession-policy",
+        default="ephemeral",
+        help="Subsession lifecycle policy. Default: ephemeral.",
+    )
+    orchestrator_run.add_argument(
+        "--canon-policy",
+        default="proposal-only",
+        help="Canon policy. Default: proposal-only.",
+    )
+    orchestrator_run.add_argument(
+        "--approval",
+        default="required",
+        help="Approval boundary. Default: required.",
+    )
+    orchestrator_run.add_argument(
+        "--close-on",
+        default="complete",
+        help="When temporary subsessions should close. Default: complete.",
+    )
+    orchestrator_status = orchestrator_subparsers.add_parser(
+        "status",
+        help="Show orchestrator run status.",
+    )
+    orchestrator_status.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_status.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    orchestrator_report = orchestrator_subparsers.add_parser(
+        "report",
+        help="Print orchestrator run artifact path and summary.",
+    )
+    orchestrator_report.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_report.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    orchestrator_decide = orchestrator_subparsers.add_parser(
+        "decide",
+        help="Approve, retry, or hold an orchestrator package.",
+    )
+    orchestrator_decide.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_decide.add_argument(
+        "--decision",
+        required=True,
+        choices=("approve", "retry", "hold"),
+        help="Decision for the orchestrator package.",
+    )
+    orchestrator_decide.add_argument("--option", help="Approved option ID.")
+    orchestrator_decide.add_argument("--note", help="Optional decision note.")
+    orchestrator_close = orchestrator_subparsers.add_parser(
+        "close",
+        help="Close an orchestrator run record.",
+    )
+    orchestrator_close.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_close.add_argument("--reason", help="Close reason.")
 
     report_parser = subparsers.add_parser("report", help="Inspect reports.")
     report_subparsers = report_parser.add_subparsers(dest="report_command")
@@ -401,6 +574,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="Create missing template workspace files before checking.",
     )
 
+    update_parser = subparsers.add_parser("update", help="Check safe update readiness.")
+    update_subparsers = update_parser.add_subparsers(dest="update_command")
+    update_preflight = update_subparsers.add_parser(
+        "preflight",
+        help="Run read-only checks before Hermes-owned WSA source updates.",
+    )
+    update_preflight.add_argument(
+        "--source-root",
+        help="WSA source checkout or package root to inspect. Omit when unknown.",
+    )
+    update_preflight.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    update_backup = update_subparsers.add_parser(
+        "backup",
+        help="Create a workspace backup before a Hermes-owned WSA source update.",
+    )
+    update_backup.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory outside the workspace where the backup folder will be created.",
+    )
+    update_backup.add_argument(
+        "--source-root",
+        help="WSA source checkout or package root to inspect. Omit when unknown.",
+    )
+    update_backup.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+
     return parser
 
 
@@ -435,7 +644,20 @@ def run_doctor(workspace: Path) -> int:
     return 0
 
 
+def guard_update_unlocked(workspace: Path, operation: str) -> bool:
+    try:
+        assert_update_unlocked(workspace, operation)
+    except UpdateLockError as exc:
+        print("update_lock: blocked")
+        print(f"operation: {operation}")
+        print(f"detail: {exc}")
+        return False
+    return True
+
+
 def run_init(workspace: Path) -> int:
+    if not guard_update_unlocked(workspace, "init"):
+        return 1
     db_path = init_workspace(workspace)
     print(f"workspace_initialized: {workspace}")
     print(f"control_db: {db_path}")
@@ -443,6 +665,8 @@ def run_init(workspace: Path) -> int:
 
 
 def run_world_create(workspace: Path, name: str) -> int:
+    if not guard_update_unlocked(workspace, "world.create"):
+        return 1
     record = create_world(workspace, name)
     print(f"world_created: {record.world_id}")
     print(f"display_name: {record.display_name}")
@@ -470,9 +694,23 @@ def run_world_list(workspace: Path) -> int:
     return 0
 
 
-def run_world_startup_status(workspace: Path, world_id: str) -> int:
+def print_json(payload: object) -> None:
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def run_world_startup_status(
+    workspace: Path,
+    world_id: str,
+    mode: str = "startup",
+    output_format: str = "text",
+) -> int:
+    if not guard_update_unlocked(workspace, f"world.{mode}.status"):
+        return 1
     world = get_world(workspace, world_id)
-    status = StartupProfileManager(world).status()
+    status = StartupProfileManager(world).status(mode=mode)
+    if output_format == "json":
+        print_json(startup_status_to_dict(status))
+        return 0
     for line in format_startup_status(status):
         print(line)
     return 0
@@ -483,9 +721,15 @@ def run_world_startup_interview(
     world_id: str,
     budget: int,
     mode: str = "startup",
+    output_format: str = "text",
 ) -> int:
+    if not guard_update_unlocked(workspace, f"world.{mode}.interview"):
+        return 1
     world = get_world(workspace, world_id)
     round_ = StartupProfileManager(world).interview(budget=budget, mode=mode)
+    if output_format == "json":
+        print_json(startup_interview_to_dict(round_))
+        return 0
     for line in format_startup_interview(round_):
         print(line)
     return 0
@@ -497,18 +741,46 @@ def run_world_startup_answer(
     question_id: str,
     text: str,
     choice: str | None = None,
+    mode: str = "startup",
+    output_format: str = "text",
 ) -> int:
+    if not guard_update_unlocked(workspace, f"world.{mode}.answer"):
+        return 1
     world = get_world(workspace, world_id)
-    status = StartupProfileManager(world).answer(question_id, text, choice=choice)
+    status = StartupProfileManager(world).answer(question_id, text, choice=choice, mode=mode)
+    if output_format == "json":
+        print_json(
+            {
+                "startup_answer_recorded": question_id,
+                "status": startup_status_to_dict(status),
+            }
+        )
+        return 0
     print(f"startup_answer_recorded: {question_id}")
     for line in format_startup_status(status):
         print(line)
     return 0
 
 
-def run_world_startup_batch_answer(workspace: Path, world_id: str, text: str) -> int:
+def run_world_startup_batch_answer(
+    workspace: Path,
+    world_id: str,
+    text: str,
+    mode: str = "startup",
+    output_format: str = "text",
+) -> int:
+    if not guard_update_unlocked(workspace, f"world.{mode}.batch_answer"):
+        return 1
     world = get_world(workspace, world_id)
-    status = StartupProfileManager(world).answer_batch(text)
+    status = StartupProfileManager(world).answer_batch(text, mode=mode)
+    if output_format == "json":
+        print_json(
+            {
+                "startup_batch_answer_recorded": True,
+                "status": startup_status_to_dict(status),
+            }
+        )
+        return 0
     print("startup_batch_answer_recorded: yes")
     for line in format_startup_status(status):
         print(line)
@@ -520,9 +792,21 @@ def run_world_startup_set_status(
     world_id: str,
     question_id: str,
     status_value: str,
+    output_format: str = "text",
 ) -> int:
+    if not guard_update_unlocked(workspace, "world.startup.set_status"):
+        return 1
     world = get_world(workspace, world_id)
     status = StartupProfileManager(world).set_status(question_id, status_value)
+    if output_format == "json":
+        print_json(
+            {
+                "startup_status_updated": question_id,
+                "question_status": status_value,
+                "status": startup_status_to_dict(status),
+            }
+        )
+        return 0
     print(f"startup_status_updated: {question_id}")
     print(f"question_status: {status_value}")
     for line in format_startup_status(status):
@@ -530,9 +814,25 @@ def run_world_startup_set_status(
     return 0
 
 
-def run_world_startup_set_discretion(workspace: Path, world_id: str, level: int) -> int:
+def run_world_startup_set_discretion(
+    workspace: Path,
+    world_id: str,
+    level: int,
+    mode: str = "startup",
+    output_format: str = "text",
+) -> int:
+    if not guard_update_unlocked(workspace, f"world.{mode}.set_discretion"):
+        return 1
     world = get_world(workspace, world_id)
-    status = StartupProfileManager(world).set_discretion(level)
+    status = StartupProfileManager(world).set_discretion(level, mode=mode)
+    if output_format == "json":
+        print_json(
+            {
+                "startup_discretion_updated": level,
+                "status": startup_status_to_dict(status),
+            }
+        )
+        return 0
     print(f"startup_discretion_updated: {level}")
     for line in format_startup_status(status):
         print(line)
@@ -540,6 +840,8 @@ def run_world_startup_set_discretion(workspace: Path, world_id: str, level: int)
 
 
 def run_manager_diagnose(workspace: Path, fix: bool = False) -> int:
+    if fix and not guard_update_unlocked(workspace, "manager.diagnose.fix"):
+        return 1
     findings = WorldManager(workspace).run_diagnostics(fix=fix)
     if not findings:
         print("diagnostics: clean")
@@ -559,6 +861,8 @@ def run_manager_diagnose(workspace: Path, fix: bool = False) -> int:
 
 
 def run_scene_mock(workspace: Path, world_id: str, name: str, goal: str, actors: list[str]) -> int:
+    if not guard_update_unlocked(workspace, "scene.mock"):
+        return 1
     world = get_world(workspace, world_id)
     repo = WorldRepository(world.world_id, world.path)
     actor_records = [
@@ -582,6 +886,8 @@ def run_meeting(
     question: str,
     participants: list[str],
 ) -> int:
+    if not guard_update_unlocked(workspace, "meeting.run"):
+        return 1
     world = get_world(workspace, world_id)
     result = MeetingOrchestrator(workspace, world).run_meeting(
         topic,
@@ -605,6 +911,8 @@ def run_meeting_decide(
     decision: str,
     note: str | None,
 ) -> int:
+    if not guard_update_unlocked(workspace, "meeting.decide"):
+        return 1
     world = get_world(workspace, world_id)
     result = MeetingOrchestrator(workspace, world).decide_report(
         report_id,
@@ -617,6 +925,154 @@ def run_meeting_decide(
     if result.ticket is not None:
         print(f"ticket_id: {result.ticket.ticket_id}")
         print(f"ticket_type: {result.ticket.ticket_type}")
+    return 0
+
+
+def run_orchestrator(
+    workspace: Path,
+    world_id: str,
+    workflow: str,
+    skill: str | None,
+    topic: str,
+    question: str,
+    mode: str,
+    rounds: int,
+    max_queue_turns: int,
+    max_concurrent_subsessions: int,
+    max_subsession_calls: int,
+    context_policy: str,
+    frame_plan: str | None,
+    termination_policy: str,
+    participants: list[str],
+    subsession_policy: str,
+    canon_policy: str,
+    approval: str,
+    close_on: str,
+) -> int:
+    if not guard_update_unlocked(workspace, "orchestrator.run"):
+        return 1
+    world = get_world(workspace, world_id)
+    try:
+        result = AutonomousOrchestrator(workspace, world).run(
+            workflow=workflow,
+            topic=topic,
+            question=question,
+            participants=participants,
+            rounds=rounds,
+            skill=skill,
+            mode=mode,
+            max_queue_turns=max_queue_turns,
+            max_concurrent_subsessions=max_concurrent_subsessions,
+            max_subsession_calls=max_subsession_calls,
+            context_policy=context_policy,
+            frame_plan=frame_plan,
+            termination_policy=termination_policy,
+            subsession_policy=subsession_policy,
+            canon_policy=canon_policy,
+            approval=approval,
+            close_on=close_on,
+        )
+    except ValueError as exc:
+        print("orchestrator_run: blocked")
+        print(f"detail: {exc}")
+        return 1
+    print(f"orchestrator_run_id: {result.run_id}")
+    print(f"orchestrator_status: {result.status}")
+    print(f"run_dir: {result.run_dir}")
+    print(f"run_path: {result.run_path}")
+    print(f"report_id: {result.report_id}")
+    print(f"manager_session_id: {result.manager_session_id}")
+    for session_id in result.subsession_session_ids:
+        print(f"subsession_session_id: {session_id}")
+    return 0
+
+
+def run_orchestrator_status(workspace: Path, run_id: str, output_format: str) -> int:
+    payload = AutonomousOrchestrator.load_run(workspace, run_id)
+    if output_format == "json":
+        print_json(payload)
+        return 0
+    print(f"orchestrator_run_id: {payload['run_id']}")
+    print(f"orchestrator_status: {payload['status']}")
+    print(f"workflow: {payload['workflow']}")
+    print(f"skill: {payload.get('skill', payload['workflow'])}")
+    print(f"topic: {payload['topic']}")
+    print(f"execution: {payload['execution']}")
+    print(f"round_budget: {payload['plan']['round_budget']}")
+    queue_limits = payload.get("queue_limits", {})
+    if queue_limits:
+        print(
+            "queue_turns: "
+            f"{queue_limits.get('queue_turns_used')}/{queue_limits.get('max_queue_turns')}"
+        )
+        print(
+            "subsession_calls: "
+            f"{queue_limits.get('planned_subsession_calls')}/"
+            f"{queue_limits.get('max_subsession_calls')}"
+        )
+    print(f"frame_source: {payload.get('plan_frame', {}).get('source', 'unknown')}")
+    print(
+        "max_concurrent_subsessions: "
+        f"{payload.get('concurrency_policy', {}).get('max_concurrent_subsessions', 'unknown')}"
+    )
+    print(f"closed_subsessions: {len(payload.get('closed_subsessions', []))}")
+    print(f"approval_options: {', '.join(payload.get('approval_options', []))}")
+    return 0
+
+
+def run_orchestrator_report(workspace: Path, run_id: str, output_format: str) -> int:
+    payload = AutonomousOrchestrator.load_run(workspace, run_id)
+    path = AutonomousOrchestrator.report_path(workspace, run_id)
+    if output_format == "json":
+        print_json({"run_path": str(path), "run": payload})
+        return 0
+    print(f"orchestrator_run_id: {payload['run_id']}")
+    print(f"run_path: {path}")
+    print(f"summary: {payload['synthesis']['summary']}")
+    print(f"requires_author_boundary: {payload['conflict_gap_diagnosis']['requires_author_boundary']}")
+    for option in payload.get("draft_options", []):
+        print(f"draft_option: {option['option_id']}\t{option['title']}")
+    return 0
+
+
+def run_orchestrator_decide(
+    workspace: Path,
+    run_id: str,
+    decision: str,
+    option: str | None,
+    note: str | None,
+) -> int:
+    if not guard_update_unlocked(workspace, "orchestrator.decide"):
+        return 1
+    try:
+        result = AutonomousOrchestrator.decide(
+            workspace,
+            run_id,
+            decision=decision,
+            option=option,
+            note=note,
+        )
+    except ValueError as exc:
+        print("orchestrator_decision: blocked")
+        print(f"detail: {exc}")
+        return 1
+    print(f"orchestrator_decision: {result.decision}")
+    print(f"orchestrator_run_id: {result.run_id}")
+    print(f"report_id: {result.report_id}")
+    print(f"report_status: {result.report_status}")
+    if result.ticket is not None:
+        print(f"ticket_id: {result.ticket.ticket_id}")
+        print(f"ticket_type: {result.ticket.ticket_type}")
+    return 0
+
+
+def run_orchestrator_close(workspace: Path, run_id: str, reason: str | None) -> int:
+    if not guard_update_unlocked(workspace, "orchestrator.close"):
+        return 1
+    payload = AutonomousOrchestrator.close(workspace, run_id, reason=reason)
+    print(f"orchestrator_closed: {payload['run_id']}")
+    print(f"orchestrator_status: {payload['status']}")
+    print(f"close_reason: {payload['close_reason']}")
     return 0
 
 
@@ -666,6 +1122,8 @@ def run_ticket_list(workspace: Path, world_id: str, status: str | None) -> int:
 
 
 def run_ticket_approve(workspace: Path, world_id: str, ticket_id: str) -> int:
+    if not guard_update_unlocked(workspace, "ticket.approve"):
+        return 1
     world = get_world(workspace, world_id)
     repo = WorldRepository(world.world_id, world.path)
     applied = approve_ticket(repo, ticket_id)
@@ -682,6 +1140,8 @@ def run_hermes_init_example(
     command: str,
     overwrite: bool,
 ) -> int:
+    if not guard_update_unlocked(workspace, "hermes.init_example"):
+        return 1
     adapter = HermesCliTemplateAdapter(workspace, adapter_name=adapter_name, command=command)
     path = adapter.write_example_config(overwrite=overwrite)
     registry_path = write_hermes_command_registry(
@@ -702,6 +1162,8 @@ def run_hermes_commands(
 ) -> int:
     registry = build_hermes_command_registry()
     if write_example or output_path:
+        if not guard_update_unlocked(workspace, "hermes.commands.write"):
+            return 1
         if output_path:
             path = Path(output_path).expanduser()
         else:
@@ -765,6 +1227,8 @@ def run_hermes_task_create(
     safe_for_chat: bool,
     sensitivity_level: str,
 ) -> int:
+    if not guard_update_unlocked(workspace, "hermes.task"):
+        return 1
     payload = {}
     if input_json:
         parsed = json.loads(input_json)
@@ -815,6 +1279,8 @@ def run_hermes_collect_callback(
     command: str,
     allow_external_callback: bool,
 ) -> int:
+    if not guard_update_unlocked(workspace, "hermes.collect_callback"):
+        return 1
     adapter = HermesCliTemplateAdapter(workspace, adapter_name=adapter_name, command=command)
     callback = adapter.collect_callback(
         Path(callback_path),
@@ -831,10 +1297,53 @@ def run_hermes_collect_callback(
 
 
 def run_template_check(workspace: Path, write_missing: bool) -> int:
+    if write_missing and not guard_update_unlocked(workspace, "template.check.write_missing"):
+        return 1
     readiness = TemplateChecker(workspace).run(write_missing=write_missing)
     for line in format_template_readiness(readiness):
         print(line)
     return 0 if readiness.ok else 1
+
+
+def run_update_preflight_cli(
+    workspace: Path,
+    source_root: str | None,
+    output_format: str,
+) -> int:
+    report = run_update_preflight(
+        workspace,
+        source_root=Path(source_root).expanduser().resolve() if source_root else None,
+    )
+    if output_format == "json":
+        print(json.dumps(update_preflight_to_dict(report), ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_update_preflight(report):
+            print(line)
+    return 1 if report.blocked else 0
+
+
+def run_update_backup_cli(
+    workspace: Path,
+    output_dir: str,
+    source_root: str | None,
+    output_format: str,
+) -> int:
+    try:
+        result = backup_workspace(
+            workspace,
+            Path(output_dir),
+            source_root=Path(source_root).expanduser().resolve() if source_root else None,
+        )
+    except UpdateBackupError as exc:
+        print("update_backup: blocked")
+        print(f"detail: {exc}")
+        return 1
+    if output_format == "json":
+        print(json.dumps(backup_result_to_dict(result), ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_backup_result(result):
+            print(line)
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -854,13 +1363,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_world_list(config.workspace)
         if args.world_command == "startup":
             if args.world_startup_command == "status":
-                return run_world_startup_status(config.workspace, args.world_id)
+                return run_world_startup_status(
+                    config.workspace,
+                    args.world_id,
+                    mode="startup",
+                    output_format=args.format,
+                )
             if args.world_startup_command == "interview":
                 return run_world_startup_interview(
                     config.workspace,
                     args.world_id,
                     args.budget,
                     mode="startup",
+                    output_format=args.format,
                 )
             if args.world_startup_command == "answer":
                 return run_world_startup_answer(
@@ -869,12 +1384,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.question_id,
                     args.text,
                     choice=args.choice,
+                    mode="startup",
+                    output_format=args.format,
                 )
             if args.world_startup_command == "batch-answer":
                 return run_world_startup_batch_answer(
                     config.workspace,
                     args.world_id,
                     args.text,
+                    mode="startup",
+                    output_format=args.format,
                 )
             if args.world_startup_command == "set-status":
                 return run_world_startup_set_status(
@@ -882,23 +1401,32 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.world_id,
                     args.question_id,
                     args.status,
+                    output_format=args.format,
                 )
             if args.world_startup_command == "set-discretion":
                 return run_world_startup_set_discretion(
                     config.workspace,
                     args.world_id,
                     args.level,
+                    mode="startup",
+                    output_format=args.format,
                 )
             parser.parse_args(["world", "startup", "--help"])
         if args.world_command == "easystartup":
             if args.world_easystartup_command == "status":
-                return run_world_startup_status(config.workspace, args.world_id)
+                return run_world_startup_status(
+                    config.workspace,
+                    args.world_id,
+                    mode="easystartup",
+                    output_format=args.format,
+                )
             if args.world_easystartup_command == "interview":
                 return run_world_startup_interview(
                     config.workspace,
                     args.world_id,
                     args.budget,
                     mode="easystartup",
+                    output_format=args.format,
                 )
             if args.world_easystartup_command == "answer":
                 return run_world_startup_answer(
@@ -907,18 +1435,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.question_id,
                     args.text,
                     choice=args.choice,
+                    mode="easystartup",
+                    output_format=args.format,
                 )
             if args.world_easystartup_command == "batch-answer":
                 return run_world_startup_batch_answer(
                     config.workspace,
                     args.world_id,
                     args.text,
+                    mode="easystartup",
+                    output_format=args.format,
                 )
             if args.world_easystartup_command == "set-discretion":
                 return run_world_startup_set_discretion(
                     config.workspace,
                     args.world_id,
                     args.level,
+                    mode="easystartup",
+                    output_format=args.format,
                 )
             parser.parse_args(["world", "easystartup", "--help"])
         parser.parse_args(["world", "--help"])
@@ -944,6 +1478,44 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.note,
             )
         parser.parse_args(["meeting", "--help"])
+    if args.command == "orchestrator":
+        if args.orchestrator_command == "run":
+            return run_orchestrator(
+                config.workspace,
+                args.world_id,
+                args.workflow,
+                args.skill,
+                args.topic,
+                args.question,
+                args.mode,
+                args.rounds,
+                args.max_queue_turns,
+                args.max_concurrent_subsessions,
+                args.max_subsession_calls,
+                args.context_policy,
+                args.frame_plan,
+                args.termination_policy,
+                args.participant,
+                args.subsession_policy,
+                args.canon_policy,
+                args.approval,
+                args.close_on,
+            )
+        if args.orchestrator_command == "status":
+            return run_orchestrator_status(config.workspace, args.run_id, args.format)
+        if args.orchestrator_command == "report":
+            return run_orchestrator_report(config.workspace, args.run_id, args.format)
+        if args.orchestrator_command == "decide":
+            return run_orchestrator_decide(
+                config.workspace,
+                args.run_id,
+                args.decision,
+                args.option,
+                args.note,
+            )
+        if args.orchestrator_command == "close":
+            return run_orchestrator_close(config.workspace, args.run_id, args.reason)
+        parser.parse_args(["orchestrator", "--help"])
     if args.command == "scene":
         if args.scene_command == "mock":
             return run_scene_mock(
@@ -1025,6 +1597,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.template_command == "check":
             return run_template_check(config.workspace, args.write_missing)
         parser.parse_args(["template", "--help"])
+    if args.command == "update":
+        if args.update_command == "preflight":
+            return run_update_preflight_cli(
+                config.workspace,
+                args.source_root,
+                args.format,
+            )
+        if args.update_command == "backup":
+            return run_update_backup_cli(
+                config.workspace,
+                args.output_dir,
+                args.source_root,
+                args.format,
+            )
+        parser.parse_args(["update", "--help"])
 
     parser.print_help()
     return 0

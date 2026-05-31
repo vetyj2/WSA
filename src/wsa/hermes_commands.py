@@ -5,10 +5,20 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .autonomy import discretion_scale_contract, fill_the_rest_contract
+from .orchestrator_contract import (
+    DEFAULT_CONTEXT_POLICY,
+    DEFAULT_MAX_CONCURRENT_SUBSESSIONS,
+    DEFAULT_MAX_QUEUE_TURNS,
+    DEFAULT_MAX_SUBSESSION_CALLS,
+    DEFAULT_TERMINATION_POLICY,
+    build_hermes_orchestrator_runtime_contract,
+)
 
 
 HERMES_COMMAND_REGISTRY_SCHEMA = "wsa.hermes.command_registry.v1"
+HERMES_LOCAL_COMMAND_REGISTRY_SCHEMA = "wsa.hermes.command_registry.local.v1"
 HERMES_COMMAND_REGISTRY_FILENAME = "hermes_commands.example.json"
+HERMES_LOCAL_COMMAND_REGISTRY_FILENAME = "hermes_commands.local.json"
 
 
 def build_hermes_command_registry() -> Dict[str, Any]:
@@ -20,9 +30,38 @@ def build_hermes_command_registry() -> Dict[str, Any]:
         "parser_policy": {
             "canonical_style": "telegram_safe_underscore",
             "aliases_may_include_hyphen": True,
+            "telegram_menu_policy": "register_canonical_underscore_commands_only",
             "unknown_command_policy": "show_help_without_execution",
             "execution_owner": "user_hermes_runtime",
             "wsa_role": "declare_intents_and_cli_templates_only",
+        },
+        "cli_template_policy": {
+            "argv_array_required": True,
+            "shell_joining": "forbidden_by_default",
+            "multiple_templates_default": "run_all",
+            "optional_unset_policy": "omit_flag_and_value_or_omit_input_json_key",
+            "placeholder_resolution": "resolve_all_placeholders_before_execution",
+            "input_json_template": "json_serialize_after_placeholder_resolution",
+            "repeatable_argument_policy": "repeat_flag_once_per_value",
+            "machine_readable_argument_hints": True,
+        },
+        "runtime_portability": {
+            "supported_runtime_shapes": ["local_shell", "docker_container", "vps_service"],
+            "command_wrapper": "wsa",
+            "fallback_command_wrapper": "python -m wsa",
+            "cwd_policy": "workspace_root_recommended",
+            "workspace_env": "WSA_WORKSPACE",
+            "path_policy": "relative_to_workspace_root",
+        },
+        "local_overlay_policy": {
+            "schema": HERMES_LOCAL_COMMAND_REGISTRY_SCHEMA,
+            "filename": HERMES_LOCAL_COMMAND_REGISTRY_FILENAME,
+            "owner": "user_hermes_runtime",
+            "merge_order": ["base_registry", "local_overlay"],
+            "base_updates_replace_generated_registry_only": True,
+            "local_overlay_preserved_across_updates": True,
+            "override_base_commands": "forbidden_by_default",
+            "conflict_policy": "block_update_until_resolved",
         },
         "discretion_policy": {
             "customizable": True,
@@ -44,6 +83,81 @@ def write_hermes_command_registry(path: Path, overwrite: bool = False) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def command_lookup_keys(command: Dict[str, Any]) -> List[str]:
+    values = [str(command.get("command", "")), *[str(item) for item in command.get("aliases", [])]]
+    keys = []
+    for value in values:
+        lowered = " ".join(value.strip().lower().split())
+        if lowered.startswith("/"):
+            lowered = lowered.replace("-", "_")
+        if lowered:
+            keys.append(lowered)
+    return keys
+
+
+def validate_local_command_registry(
+    local_registry: Dict[str, Any],
+    base_registry: Dict[str, Any] | None = None,
+) -> List[str]:
+    issues: List[str] = []
+    if local_registry.get("schema") != HERMES_LOCAL_COMMAND_REGISTRY_SCHEMA:
+        issues.append("unexpected local command registry schema")
+    commands = local_registry.get("commands")
+    if not isinstance(commands, list):
+        issues.append("local command registry commands must be a list")
+        return issues
+
+    base_keys = set()
+    if base_registry is not None:
+        for command in base_registry.get("commands", []):
+            base_keys.update(command_lookup_keys(command))
+
+    local_keys: Dict[str, str] = {}
+    reserved_prefixes = ("/wsa_", "/filltherest", "/fill_the_rest", "/fillrest")
+    for command in commands:
+        if not isinstance(command, dict):
+            issues.append("local command entries must be objects")
+            continue
+        name = str(command.get("command") or "")
+        if not name.startswith("/"):
+            issues.append(f"local command must start with /: {name or '<missing>'}")
+        if command.get("safety") is None:
+            issues.append(f"local command missing safety: {name or '<missing>'}")
+        if command.get("intent") is None:
+            issues.append(f"local command missing intent: {name or '<missing>'}")
+        for key in command_lookup_keys(command):
+            if key in base_keys:
+                issues.append(f"local command collides with base command or alias: {key}")
+            elif key.startswith(reserved_prefixes):
+                issues.append(f"local command uses reserved WSA namespace: {key}")
+            previous = local_keys.get(key)
+            if previous is not None and previous != name:
+                issues.append(f"local command alias collides inside overlay: {key}")
+            local_keys[key] = name
+    return issues
+
+
+def merge_hermes_command_registries(
+    base_registry: Dict[str, Any] | None = None,
+    local_registry: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    base = base_registry or build_hermes_command_registry()
+    if local_registry is None:
+        return base
+    issues = validate_local_command_registry(local_registry, base)
+    if issues:
+        raise ValueError("; ".join(issues))
+    merged = json.loads(json.dumps(base, ensure_ascii=False))
+    merged["commands"] = [*base.get("commands", []), *local_registry.get("commands", [])]
+    merged["local_overlay"] = {
+        "schema": HERMES_LOCAL_COMMAND_REGISTRY_SCHEMA,
+        "owner": local_registry.get("owner", "user_hermes_runtime"),
+        "command_count": len(local_registry.get("commands", [])),
+        "conflict_policy": "validated_no_base_collisions",
+    }
+    return merged
 
 
 def format_hermes_commands(registry: Dict[str, Any] | None = None) -> List[str]:
@@ -69,12 +183,23 @@ def format_hermes_commands(registry: Dict[str, Any] | None = None) -> List[str]:
     return lines
 
 
-def _arg(name: str, required: bool, description: str) -> Dict[str, Any]:
-    return {
+def _arg(
+    name: str,
+    required: bool,
+    description: str,
+    default: str | int | None = None,
+    repeatable: bool = False,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
         "name": name,
         "required": required,
         "description": description,
     }
+    if default is not None:
+        payload["default"] = default
+    if repeatable:
+        payload["repeatable"] = True
+    return payload
 
 
 def _command(
@@ -89,6 +214,8 @@ def _command(
     notes: List[str] | None = None,
     operation_request: Dict[str, Any] | None = None,
     runtime_contract: Dict[str, Any] | None = None,
+    input_json_template: Dict[str, Any] | None = None,
+    template_execution: str | None = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "command": command,
@@ -107,6 +234,22 @@ def _command(
             "owner": "user_hermes_runtime",
             "requires_user_confirmation": safety in {"requires_approval", "world_mutating"},
         },
+        "cli_template_policy": {
+            "execution": template_execution or ("run_all" if len(cli_templates) > 1 else "run_single"),
+            "optional_arguments": [
+                item["name"] for item in arguments if item.get("required") is False
+            ],
+            "repeatable_arguments": [
+                item["name"] for item in arguments if item.get("repeatable") is True
+            ],
+            "optional_placeholder_rule": (
+                "If an optional placeholder is unresolved or empty, omit that argv token; "
+                "if the previous argv token is the option flag for that placeholder, omit the flag too."
+            ),
+            "repeatable_placeholder_rule": (
+                "For repeatable placeholders, emit one flag/value pair per value rather than joining."
+            ),
+        },
     }
     if notes:
         payload["notes"] = notes
@@ -114,6 +257,13 @@ def _command(
         payload["operation_request"] = operation_request
     if runtime_contract:
         payload["runtime_contract"] = runtime_contract
+    if input_json_template:
+        payload["input_json_template"] = input_json_template
+        payload["input_json_policy"] = {
+            "target_flag": "--input-json",
+            "serialization": "json_object_argv_value",
+            "omit_unresolved_optional_keys": True,
+        }
     return payload
 
 
@@ -136,7 +286,14 @@ def _default_commands() -> List[Dict[str, Any]]:
             "run_diagnostics",
             "diagnostics",
             "read_only",
-            [],
+            [
+                _arg(
+                    "hermes_wrapper_command",
+                    False,
+                    "Hermes wrapper command visible inside the runtime.",
+                    default="wsa-hermes-cli",
+                ),
+            ],
             [
                 ["wsa", "doctor"],
                 ["wsa", "manager", "diagnose"],
@@ -169,16 +326,27 @@ def _default_commands() -> List[Dict[str, Any]]:
             "Start or continue the open-ended startup interview.",
             "open_startup_interview",
             "startup",
-            "read_only",
+            "workspace_mutating",
             [
                 _arg("world_id", True, "World ID or active world selected by Hermes."),
-                _arg("budget", False, "Maximum startup questions for this round. Default: 4."),
+                _arg("budget", False, "Maximum startup questions for this round. Default: 4.", default=4),
             ],
             [
-                ["wsa", "world", "startup", "status", "{world_id}"],
-                ["wsa", "world", "startup", "interview", "{world_id}", "--budget", "{budget:4}"],
+                ["wsa", "world", "startup", "status", "{world_id}", "--format", "json"],
+                [
+                    "wsa",
+                    "world",
+                    "startup",
+                    "interview",
+                    "{world_id}",
+                    "--budget",
+                    "{budget:4}",
+                    "--format",
+                    "json",
+                ],
             ],
             [
+                "This command may create or update startup_profile.json; do not run during update.lock.",
                 "Use at most three choices per question and encourage longer free-text author answers.",
             ],
         ),
@@ -188,13 +356,13 @@ def _default_commands() -> List[Dict[str, Any]]:
             "Start or continue the easy-pick startup interview.",
             "easy_pick_startup_interview",
             "startup",
-            "read_only",
+            "workspace_mutating",
             [
                 _arg("world_id", True, "World ID or active world selected by Hermes."),
-                _arg("budget", False, "Maximum easy-pick questions for this round. Default: 8."),
+                _arg("budget", False, "Maximum easy-pick questions for this round. Default: 8.", default=8),
             ],
             [
-                ["wsa", "world", "easystartup", "status", "{world_id}"],
+                ["wsa", "world", "easystartup", "status", "{world_id}", "--format", "json"],
                 [
                     "wsa",
                     "world",
@@ -203,9 +371,12 @@ def _default_commands() -> List[Dict[str, Any]]:
                     "{world_id}",
                     "--budget",
                     "{budget:8}",
+                    "--format",
+                    "json",
                 ],
             ],
             [
+                "This command may create or update startup_profile.json; do not run during update.lock.",
                 "Offer five to eight easy-pick choices per question and let Hermes fill details according to discretion level.",
                 "Hermes should keep returning to the interview with progress unless the user stops it.",
             ],
@@ -222,7 +393,36 @@ def _default_commands() -> List[Dict[str, Any]]:
                 _arg("question_id", True, "Startup question ID such as 0001."),
                 _arg("text", True, "Author-approved answer text."),
             ],
-            [["wsa", "world", "startup", "answer", "{world_id}", "{question_id}", "--text", "{text}"]],
+            [
+                [
+                    "wsa",
+                    "world",
+                    "startup",
+                    "answer",
+                    "{world_id}",
+                    "{question_id}",
+                    "--text",
+                    "{text}",
+                    "--format",
+                    "json",
+                ],
+                [
+                    "wsa",
+                    "world",
+                    "easystartup",
+                    "answer",
+                    "{world_id}",
+                    "{question_id}",
+                    "--text",
+                    "{text}",
+                    "--format",
+                    "json",
+                ],
+            ],
+            [
+                "Hermes chooses the startup or easystartup answer endpoint based on the active interview mode.",
+            ],
+            template_execution="choose_one_by_active_mode",
         ),
         _command(
             "/wsa_pick",
@@ -236,12 +436,33 @@ def _default_commands() -> List[Dict[str, Any]]:
                 _arg("text", True, "Answer text containing codes such as 0001a 0002b."),
             ],
             [
-                ["wsa", "world", "startup", "batch-answer", "{world_id}", "--text", "{text}"],
-                ["wsa", "world", "easystartup", "batch-answer", "{world_id}", "--text", "{text}"],
+                [
+                    "wsa",
+                    "world",
+                    "startup",
+                    "batch-answer",
+                    "{world_id}",
+                    "--text",
+                    "{text}",
+                    "--format",
+                    "json",
+                ],
+                [
+                    "wsa",
+                    "world",
+                    "easystartup",
+                    "batch-answer",
+                    "{world_id}",
+                    "--text",
+                    "{text}",
+                    "--format",
+                    "json",
+                ],
             ],
             [
                 "Hermes chooses the startup or easystartup batch endpoint based on the active interview mode.",
             ],
+            template_execution="choose_one_by_active_mode",
         ),
         _command(
             "/wsa_autogen",
@@ -280,12 +501,224 @@ def _default_commands() -> List[Dict[str, Any]]:
             ],
         ),
         _command(
-            "/fill_the_rest",
-            ["/fill-the-rest", "/filltherest", "/wsa_fill_the_rest", "/wsa-fill-the-rest"],
-            "Prepare a cron-capable pass that fills remaining lower-layer world details.",
-            "fill_remaining_lower_layer_candidates",
+            "/wsa_update",
+            ["/wsa-update", "/wsa_upgrade", "/wsa-upgrade"],
+            "Run update preflight before a Hermes-owned WSA source upgrade.",
+            "preflight_wsa_update",
+            "operations",
+            "read_only",
+            [
+                _arg(
+                    "source_root",
+                    False,
+                    "WSA source checkout or package root to inspect before update. Pass explicitly when known.",
+                ),
+            ],
+            [
+                [
+                    "wsa",
+                    "update",
+                    "preflight",
+                    "--source-root",
+                    "{source_root}",
+                    "--format",
+                    "json",
+                ]
+            ],
+            [
+                "This command does not pull, overwrite, migrate, or delete files.",
+                "If Hermes runs from the workspace root, pass the installed WSA source root explicitly or omit source_root.",
+                "Hermes should run this before and after any runtime-owned source update.",
+                "If preflight blocks, Hermes should stop update automation and report the blocking condition.",
+            ],
+        ),
+        _command(
+            "/wsa_update_backup",
+            ["/wsa-update-backup", "/wsa_backup", "/wsa-backup"],
+            "Create a workspace backup before a Hermes-owned WSA source upgrade.",
+            "backup_before_wsa_update",
             "operations",
             "requires_approval",
+            [
+                _arg(
+                    "output_dir",
+                    True,
+                    "Directory outside the workspace where the backup folder will be created.",
+                ),
+                _arg(
+                    "source_root",
+                    False,
+                    "WSA source checkout or package root to inspect before backup. Pass explicitly when known.",
+                ),
+            ],
+            [
+                [
+                    "wsa",
+                    "update",
+                    "backup",
+                    "--output-dir",
+                    "{output_dir}",
+                    "--source-root",
+                    "{source_root}",
+                    "--format",
+                    "json",
+                ]
+            ],
+            [
+                "This command creates a backup artifact only; it does not pull, overwrite, migrate, or delete source files.",
+                "If Hermes runs from the workspace root, pass the installed WSA source root explicitly or omit source_root.",
+                "Hermes should run update preflight before and after backup, then request approval for any source update command.",
+            ],
+        ),
+        _command(
+            "/wsa_orchestrator",
+            ["/wsa-orchestrator", "/wsa_meetup", "/wsa-meetup"],
+            "Run a manual-trigger autonomous orchestrator workflow.",
+            "run_autonomous_orchestrator",
+            "orchestrator",
+            "proposal_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("workflow", False, "Workflow type such as meetup. Default: meetup.", default="meetup"),
+                _arg(
+                    "skill",
+                    False,
+                    "Hermes skill shortcut scope such as meetup or scene_start. Default: workflow.",
+                    default="meetup",
+                ),
+                _arg("topic", True, "Topic or high-level request to orchestrate."),
+                _arg("question", False, "Question to resolve during orchestration."),
+                _arg("rounds", False, "Internal round budget. Default: 2.", default=2),
+                _arg(
+                    "max_queue_turns",
+                    False,
+                    "Maximum autonomous queue turns before stopping. Default: 12.",
+                    default=DEFAULT_MAX_QUEUE_TURNS,
+                ),
+                _arg(
+                    "max_concurrent_subsessions",
+                    False,
+                    "Maximum simultaneous subsessions before Hermes should batch work. Default: 4.",
+                    default=DEFAULT_MAX_CONCURRENT_SUBSESSIONS,
+                ),
+                _arg(
+                    "max_subsession_calls",
+                    False,
+                    "Maximum total subsession calls before partial report. Default: 48.",
+                    default=DEFAULT_MAX_SUBSESSION_CALLS,
+                ),
+                _arg(
+                    "context_policy",
+                    False,
+                    "Context carry-forward policy. Default: compressed-continuity.",
+                    default=DEFAULT_CONTEXT_POLICY,
+                ),
+                _arg(
+                    "frame_plan",
+                    False,
+                    "Optional user-defined plan/frame. Conservative default guardrail is used when omitted.",
+                ),
+                _arg(
+                    "termination_policy",
+                    False,
+                    "Termination policy. Default: chair_or_conclusion_or_queue_limit.",
+                    default=DEFAULT_TERMINATION_POLICY,
+                ),
+                _arg(
+                    "participant",
+                    False,
+                    "Participant/viewpoint. May be repeated by Hermes.",
+                    repeatable=True,
+                ),
+            ],
+            [
+                [
+                    "wsa",
+                    "orchestrator",
+                    "run",
+                    "{world_id}",
+                    "--workflow",
+                    "{workflow:meetup}",
+                    "--skill",
+                    "{skill:meetup}",
+                    "--topic",
+                    "{topic}",
+                    "--question",
+                    "{question:Synthesize proposals, conflicts, gaps, and approval options.}",
+                    "--rounds",
+                    "{rounds:2}",
+                    "--max-queue-turns",
+                    "{max_queue_turns:12}",
+                    "--max-concurrent-subsessions",
+                    "{max_concurrent_subsessions:4}",
+                    "--max-subsession-calls",
+                    "{max_subsession_calls:48}",
+                    "--context-policy",
+                    f"{{context_policy:{DEFAULT_CONTEXT_POLICY}}}",
+                    "--frame-plan",
+                    "{frame_plan}",
+                    "--termination-policy",
+                    f"{{termination_policy:{DEFAULT_TERMINATION_POLICY}}}",
+                    "--participant",
+                    "{participant}",
+                    "--subsession-policy",
+                    "ephemeral",
+                    "--canon-policy",
+                    "proposal-only",
+                    "--approval",
+                    "required",
+                    "--close-on",
+                    "complete",
+                ]
+            ],
+            [
+                "Manual trigger, then autonomous execution until review boundary or max queue turns.",
+                "WSA declares the orchestration contract and audit artifact; Hermes owns actual subagent invocation.",
+                "The template CLI produces local simulated subsession outputs unless a Hermes runtime uses the prompt packets to run real subagents.",
+                "Hermes should preserve a compressed meeting context inside this run and adapt prompt packets to its subagent syntax.",
+                "Hermes should not start without a plan/frame and hard limits; WSA supplies conservative defaults when the user has not customized them.",
+                "Treat the run as a live meeting floor: participants receive compressed continuity until the chair closes it or a hard limit stops it.",
+                "Subsession prompts should be short and precise; accumulate only outputs that pass the quality gate.",
+                "Temporary subsessions are closed after the report package is created.",
+                "Generated material stays proposal-only until explicit author approval.",
+            ],
+            runtime_contract=build_hermes_orchestrator_runtime_contract(),
+        ),
+        _command(
+            "/wsa_orchestrator_decide",
+            ["/wsa-orchestrator-decide", "/wsa_meetup_decide", "/wsa-meetup-decide"],
+            "Approve, retry, or hold an orchestrator package.",
+            "decide_autonomous_orchestrator",
+            "orchestrator",
+            "requires_approval",
+            [
+                _arg("run_id", True, "Orchestrator run ID."),
+                _arg("decision", True, "One of approve, retry, or hold."),
+                _arg("option", False, "Approved option ID, such as option-a."),
+            ],
+            [
+                [
+                    "wsa",
+                    "orchestrator",
+                    "decide",
+                    "{run_id}",
+                    "--decision",
+                    "{decision}",
+                    "--option",
+                    "{option}",
+                ]
+            ],
+            [
+                "Approval creates a candidate ticket only; canon mutation remains a later explicit step.",
+            ],
+        ),
+        _command(
+            "/fill_the_rest",
+            ["/fill-the-rest", "/filltherest", "/wsa_fill_the_rest", "/wsa-fill-the-rest"],
+            "Prepare lower-layer fill work until a destination checkpoint.",
+            "fill_remaining_lower_layer_candidates",
+            "operations",
+            "proposal_only",
             [
                 _arg("world_id", True, "World ID or active world selected by Hermes."),
                 _arg(
@@ -305,9 +738,109 @@ def _default_commands() -> List[Dict[str, Any]]:
                     "task",
                     "{world_id}",
                     "--task-type",
-                    "fill_the_rest",
+                    "fill_the_rest_plan",
                     "--title",
-                    "Fill the rest",
+                    "Plan fill-the-rest pass",
+                    "--instruction",
+                    "{destination}",
+                    "--background",
+                ]
+            ],
+            [
+                "Generates lower-layer candidate material only; it does not directly mutate canon.",
+                "Can be used at initial setup, mid-project, or late-project cleanup.",
+                "Compatibility command: Hermes should plan first, then use /filltherest_start after explicit approval for cron work.",
+                "At discretion level 5 Hermes must ask for the destination checkpoint before preparing automation.",
+                "Before completion, Hermes must diagnose whether the generated material actually satisfies the destination and quality bar.",
+                "After completion, Hermes should request user approval before canon conversion.",
+            ],
+            runtime_contract=fill_the_rest_contract(),
+            input_json_template={
+                "destination": "{destination}",
+                "scope": "{scope}",
+                "discretion_level": "{discretion_level:5}",
+                "cron_schedule": "{cron_schedule}",
+                "quality_bar": "{quality_bar}",
+                "quality_gate": "required_before_completion",
+                "completion": "plan_only_no_cron",
+            },
+        ),
+        _command(
+            "/filltherest_plan",
+            ["/filltherest-plan", "/fill-the-rest-plan", "/fillrest-plan", "/wsa_filltherest_plan"],
+            "Plan a lower-layer fill pass without starting cron automation.",
+            "plan_fill_remaining_lower_layer_candidates",
+            "operations",
+            "proposal_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg(
+                    "destination",
+                    True,
+                    "Natural-language endpoint, such as 'until every region has factions and hooks'.",
+                ),
+                _arg("scope", False, "Optional area to fill. Can be initial, midstream, or late-stage."),
+                _arg("discretion_level", False, "0-5 discretion level to evaluate for the plan."),
+                _arg("quality_bar", False, "Optional quality conditions Hermes must verify before stopping."),
+            ],
+            [
+                [
+                    "wsa",
+                    "hermes",
+                    "task",
+                    "{world_id}",
+                    "--task-type",
+                    "fill_the_rest_plan",
+                    "--title",
+                    "Plan fill-the-rest pass",
+                    "--instruction",
+                    "{destination}",
+                    "--background",
+                ]
+            ],
+            [
+                "Read-only from the user's canon perspective: it produces a plan and candidate checklist.",
+                "Hermes should report risks, stop conditions, and whether cron would be justified.",
+            ],
+            runtime_contract=fill_the_rest_contract(),
+            input_json_template={
+                "destination": "{destination}",
+                "scope": "{scope}",
+                "discretion_level": "{discretion_level:5}",
+                "quality_bar": "{quality_bar}",
+                "quality_gate": "required_before_completion",
+                "completion": "plan_only_no_cron",
+            },
+        ),
+        _command(
+            "/filltherest_start",
+            ["/filltherest-start", "/fill-the-rest-start", "/fillrest-start", "/wsa_filltherest_start"],
+            "Start an approved cron-capable fill pass toward a destination checkpoint.",
+            "start_fill_remaining_lower_layer_candidates",
+            "operations",
+            "requires_approval",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg(
+                    "destination",
+                    True,
+                    "Natural-language endpoint, such as 'until every region has factions and hooks'.",
+                ),
+                _arg("scope", False, "Optional area to fill. Can be initial, midstream, or late-stage."),
+                _arg("discretion_level", False, "0-5 discretion level. Level 5 enables cron-capable automation."),
+                _arg("cron_schedule", False, "Hermes-owned cron schedule for level 5."),
+                _arg("quality_bar", False, "Quality conditions Hermes must verify before stopping."),
+            ],
+            [
+                [
+                    "wsa",
+                    "hermes",
+                    "task",
+                    "{world_id}",
+                    "--task-type",
+                    "fill_the_rest_start",
+                    "--title",
+                    "Start fill-the-rest pass",
                     "--instruction",
                     "{destination}",
                     "--session-mode",
@@ -315,19 +848,24 @@ def _default_commands() -> List[Dict[str, Any]]:
                     "--runtime-source",
                     "cron",
                     "--background",
-                    "--input-json",
-                    "{\"destination\":\"{destination}\",\"scope\":\"{scope}\",\"discretion_level\":\"{discretion_level:5}\",\"quality_gate\":\"required_before_completion\",\"completion\":\"stop_cron_then_report_and_request_approval\"}",
                 ]
             ],
             [
-                "Generates lower-layer candidate material only; it does not directly mutate canon.",
-                "Can be used at initial setup, mid-project, or late-project cleanup.",
-                "At discretion level 5 Hermes must ask for the destination checkpoint before starting cron automation.",
+                "Requires explicit user approval before Hermes starts cron-capable work.",
                 "When the destination is met, Hermes must stop the cron job and explicitly report that it stopped.",
                 "Before completion, Hermes must diagnose whether the generated material actually satisfies the destination and quality bar.",
                 "After completion, Hermes should request user approval before canon conversion.",
             ],
             runtime_contract=fill_the_rest_contract(),
+            input_json_template={
+                "destination": "{destination}",
+                "scope": "{scope}",
+                "discretion_level": "{discretion_level:5}",
+                "cron_schedule": "{cron_schedule}",
+                "quality_bar": "{quality_bar}",
+                "quality_gate": "required_before_completion",
+                "completion": "stop_cron_then_report_and_request_approval",
+            },
         ),
         _command(
             "/wsa_meeting",
@@ -340,7 +878,12 @@ def _default_commands() -> List[Dict[str, Any]]:
                 _arg("world_id", True, "World ID or active world selected by Hermes."),
                 _arg("topic", True, "Meeting topic."),
                 _arg("question", False, "Question for representatives to discuss."),
-                _arg("participant", False, "Participant/viewpoint. May be repeated by Hermes."),
+                _arg(
+                    "participant",
+                    False,
+                    "Participant/viewpoint. May be repeated by Hermes.",
+                    repeatable=True,
+                ),
             ],
             [
                 [

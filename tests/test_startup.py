@@ -8,6 +8,8 @@ from wsa.startup import (
     format_startup_interview,
     format_startup_status,
     parse_startup_answer_text,
+    startup_interview_to_dict,
+    startup_status_to_dict,
 )
 from wsa.workspace import create_world
 
@@ -77,6 +79,31 @@ class StartupTests(TestCase):
             self.assertEqual(profile["dimensions"][1]["selected_choice"], "b")
             self.assertEqual(profile["freeform_notes"][0]["text"], "그리고 학교물은 조금 어둡게")
 
+    def test_easystartup_batch_can_start_without_prior_interview(self) -> None:
+        with TemporaryDirectory() as tmp:
+            world = create_world(Path(tmp) / "workspace", "Direct Easy Startup World")
+            manager = StartupProfileManager(world)
+
+            status = manager.answer_batch("0001f 첫 사건은 조용히 시작", mode="easystartup")
+            profile = json.loads(manager.profile_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(status.active_mode, "easystartup")
+            self.assertEqual(status.startup_ambiguity_percent, 90)
+            self.assertEqual(profile["active_mode"], "easystartup")
+            self.assertEqual(profile["dimensions"][0]["selected_choice"], "f")
+            self.assertIn("court intrigue", profile["dimensions"][0]["answer"])
+
+    def test_status_can_report_requested_mode_without_mutating_profile(self) -> None:
+        with TemporaryDirectory() as tmp:
+            world = create_world(Path(tmp) / "workspace", "Mode Status World")
+            manager = StartupProfileManager(world)
+
+            status = manager.status(mode="easystartup")
+            profile = json.loads(manager.profile_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(status.active_mode, "easystartup")
+            self.assertEqual(profile["active_mode"], "startup")
+
     def test_parse_parallel_answer_codes(self) -> None:
         selections, note = parse_startup_answer_text("0001a\n0002b\nQ003e 그리고 이런 점은 저렇게")
 
@@ -117,6 +144,21 @@ class StartupTests(TestCase):
 
             self.assertEqual(status.startup_ambiguity_percent, 0)
             self.assertTrue(status.startup_ready)
+
+    def test_startup_json_serializers_expose_machine_readable_fields(self) -> None:
+        with TemporaryDirectory() as tmp:
+            world = create_world(Path(tmp) / "workspace", "JSON Startup World")
+            manager = StartupProfileManager(world)
+
+            status_payload = startup_status_to_dict(manager.status(mode="easystartup"))
+            round_payload = startup_interview_to_dict(
+                manager.interview(budget=1, mode="easystartup")
+            )
+
+            self.assertEqual(status_payload["active_mode"], "easystartup")
+            self.assertEqual(round_payload["mode"], "easystartup")
+            self.assertEqual(round_payload["questions"][0]["question_id"], "0001")
+            self.assertEqual(round_payload["questions"][0]["choices"][5]["code"], "0001f")
 
     def test_agent_proposal_does_not_resolve_until_author_approval(self) -> None:
         with TemporaryDirectory() as tmp:

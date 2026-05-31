@@ -130,6 +130,18 @@ class ControlRepository:
             payload=payload or {},
         )
 
+    def update_runtime_session_status(self, session_id: str, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE runtime_sessions
+                SET status = ?, updated_at = ?
+                WHERE session_id = ?
+                """,
+                (status, utc_now(), session_id),
+            )
+            conn.commit()
+
     def add_runtime_message(
         self,
         session_id: str,

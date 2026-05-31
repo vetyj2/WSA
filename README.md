@@ -4,6 +4,10 @@ World Scene Actors is a local-first prototype for managing fictional worlds, sce
 
 The project is designed as a template. It does not include live agent credentials, Telegram/Docker runtime state, or real deployment data.
 
+## Harness Target
+
+WSA aims to be a compact agent harness template, not a heavy runtime. The template should give Hermes enough structure to do high-quality work with minimal code and minimal operator friction: clear goals, bounded queues, small prompt packets, explicit review boundaries, durable audit artifacts, and no hidden canon mutation. Live agent execution, scheduling, delivery, credentials, and provider-specific optimization belong to the user's Hermes runtime.
+
 ## Current MVP
 
 - Workspace and per-world SQLite scaffolding
@@ -16,6 +20,7 @@ The project is designed as a template. It does not include live agent credential
 - Startup and Easy Startup interview protocols with ambiguity scoring
 - CLI-first Hermes adapter template using task and callback JSON files
 - Non-mutating meeting mode for representative diagnosis and proposal gathering
+- Manual-trigger autonomous orchestrator lifecycle for meetup/subsession review packages
 - Template readiness checks for copied runtime instances
 
 ## Install From A Clone
@@ -52,7 +57,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-77 tests OK
+105 tests OK
 ```
 
 ## Quick Smoke Run
@@ -84,6 +89,7 @@ Start a worldbuilding interview without exhausting the author. `startup` is the 
 
 ```bash
 PYTHONPATH=src python3 -m wsa world startup status <world_id>
+PYTHONPATH=src python3 -m wsa world startup status <world_id> --format json
 PYTHONPATH=src python3 -m wsa world startup interview <world_id> --budget 4
 PYTHONPATH=src python3 -m wsa world startup answer <world_id> 0001 --text "A scholarship mage enters the capital academy."
 ```
@@ -92,6 +98,7 @@ PYTHONPATH=src python3 -m wsa world startup answer <world_id> 0001 --text "A sch
 
 ```bash
 PYTHONPATH=src python3 -m wsa world easystartup set-discretion <world_id> --level 3
+PYTHONPATH=src python3 -m wsa world easystartup status <world_id> --format json
 PYTHONPATH=src python3 -m wsa world easystartup interview <world_id> --budget 8
 PYTHONPATH=src python3 -m wsa world easystartup batch-answer <world_id> --text "0001a 0002b 0003e plus any free note"
 ```
@@ -115,11 +122,13 @@ The default discretion scale is customizable by the user's Hermes runtime:
 
 At level `5`, Hermes should ask for the destination checkpoint before starting automation, stop when that checkpoint is met, explicitly report that the cron job stopped, run a quality gate against the stated condition, and then request user approval before canon conversion.
 
-Hermes runtimes can also expose `/fill-the-rest` or `/filltherest` for anytime lower-layer filling. This is proposal-only: it prepares candidate generation for remaining details until a user-defined destination, then performs quality diagnosis before asking for approval.
+Hermes runtimes can also expose `/fill-the-rest` or `/filltherest` for anytime lower-layer filling. This is proposal-only by default: it prepares candidate generation for remaining details until a user-defined destination, then performs quality diagnosis before asking for approval. Runtimes that support automation should treat `/filltherest-plan` as the read-only planning step and `/filltherest-start` as the explicit-approval step that may start cron-capable work.
 
 ```text
-/fill-the-rest world=<world_id> destination="until every region has factions and hooks" discretion=5
+/fill-the-rest world=<world_id> destination="until every region has factions and hooks" discretion_level=5
 /filltherest world=<world_id> destination="until the academy has teachers, clubs, rivals, and exams"
+/filltherest-plan world=<world_id> destination="until the harbor has guilds, conflicts, and scene hooks"
+/filltherest-start world=<world_id> destination="until the harbor has guilds, conflicts, and scene hooks" cron_schedule="daily"
 ```
 
 Run a non-mutating meeting before committing world changes:
@@ -152,6 +161,15 @@ PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes commands --write
 
 The canonical command names use underscores, which are safer for bot command menus. Hyphenated forms such as `/wsa-easystartup` and `/wsa-easystart` are included as aliases for Hermes runtimes that parse free-form chat text.
 
+Hermes command adapters should treat the registry as an argv/template contract, not as shell text. This keeps Docker, VPS services, and local shells aligned:
+
+- Register canonical underscore commands in Telegram menus; treat hyphenated commands as free-form aliases.
+- Parse chat input into named arguments, then run CLI templates as argv arrays. Do not join templates into a shell string.
+- Omit optional flags when the user leaves them blank. For repeatable arguments such as meeting participants, repeat the flag once per value.
+- For commands with `input_json_template`, resolve placeholders into an object, JSON-serialize that object, and pass it as the `--input-json` argv value.
+- Set the working directory to the workspace root or set `WSA_WORKSPACE`; task packet paths are relative to the workspace root.
+- Prefer JSON outputs for startup/easystartup command handling, then summarize them for chat.
+
 Recommended first shortcuts:
 
 ```text
@@ -164,7 +182,13 @@ Recommended first shortcuts:
 /wsa_answer            Record an author-approved startup answer.
 /wsa_pick              Record parallel choices like 0001a 0002b plus notes.
 /wsa_autogen           Generate candidates until a natural-language checkpoint.
+/wsa_update            Run update preflight before a Hermes-owned WSA source upgrade.
+/wsa_update_backup     Create an approved workspace backup before source upgrade.
+/wsa_orchestrator      Run a manual-trigger autonomous orchestrator workflow.
+/wsa_orchestrator_decide Approve, retry, or hold an orchestrator package.
 /fill_the_rest         Prepare lower-layer fill work until a destination checkpoint.
+/filltherest_plan      Plan lower-layer fill work without starting cron automation.
+/filltherest_start     Start an approved cron-capable fill pass.
 /wsa_meeting           Run a non-mutating representative meeting.
 /wsa_meeting_decide    Approve, retry, or hold a meeting report.
 /wsa_reports           List reports for review.
@@ -173,7 +197,11 @@ Recommended first shortcuts:
 /wsa_snapshot          Request a version-control snapshot through Hermes policy.
 ```
 
+`/wsa_startup` and `/wsa_easystartup` are not pure read-only commands. They may create or update the active interview profile so progress can resume later; Hermes should not run them while `hermes/maintenance/update.lock` exists.
+
 `examples/hermes_command_registry.example.json` is the public reference manifest. `wsa hermes init-example` also writes it into `workspace/hermes/adapter_config/` next to the Hermes CLI adapter example.
+
+Runtime-specific shortcuts should live in `workspace/hermes/adapter_config/hermes_commands.local.json`, using the shape in `examples/hermes_command_registry.local.example.json`. Base updates may replace the generated example registry, but must preserve the local overlay. Local commands must not reuse a base command name or alias; `wsa update preflight` blocks that collision so a stale override cannot hide a new WSA command.
 
 ## Hermes Adapter Template
 
@@ -203,7 +231,7 @@ The generated task packet is written under:
 workspace/hermes/task_queue/
 ```
 
-Durable task status is written under `workspace/hermes/task_state/`. Callback validation failures are recorded as metadata under `workspace/hermes/quarantine/`; the quarantine record stores the callback reference and error, not a copied payload.
+Durable task status is written under `workspace/hermes/task_state/`. After a callback is collected successfully, WSA moves the completed task packet and callback file into `workspace/hermes/task_archive/` and `workspace/hermes/callback_archive/` so update preflight does not keep seeing normal completed work as pending runtime work. Callback validation failures are recorded as metadata under `workspace/hermes/quarantine/`; the quarantine record stores the callback reference and error, not a copied payload.
 
 Task packets and command previews use paths relative to the workspace root. A Hermes runtime should set its working directory to the workspace root, or set `WSA_WORKSPACE` explicitly, then treat packet paths as relative to that root. The example config includes an `agent_harness` contract describing allowed write roots and the policy that Hermes should not directly mutate world databases or world files.
 
@@ -227,11 +255,58 @@ See `examples/hermes_operation_policy.example.json` for a public-safe policy sha
 
 ## Meeting Mode
 
-`wsa meeting run` creates a representative meeting transcript, runtime session messages, and an inbox report. It is intended for Hermes manager and sub-agent work where characters, groups, factions, or loose viewpoints can discuss gaps before anything becomes canon.
+`wsa meeting run` creates a lightweight representative meeting transcript, runtime session messages, and an inbox report. It is intended for simple Hermes manager checks where characters, groups, factions, or loose viewpoints can discuss gaps before anything becomes canon. This is the cheap/static meeting path, not the full autonomous orchestrator lifecycle.
 
 Meeting mode is proposal-only: it does not create facts, scene events, tickets, or commits. Unknown participants are represented as unbound viewpoints so the transcript can ask what they should represent instead of silently creating new world entities.
 
 `wsa meeting decide` records the user-facing decision. `approve` marks the report approved and creates a `meeting_candidate` ticket for later explicit conversion into world changes. `retry` rejects the report so Hermes can run another meeting pass. `hold` keeps the report in pending review. None of these decisions directly writes canon facts.
+
+## Autonomous Orchestrator
+
+For full meetup/subsession work, use `wsa orchestrator run`. This is the manual-trigger/autonomous-execution workflow:
+
+```text
+manual trigger -> isolated orchestration session -> plan subagents -> carry compressed context -> run queue turns -> synthesize -> diagnose -> close subsessions -> await author review
+```
+
+Hermes may already know how to call subagents. WSA does not replace that runtime. WSA defines the durable protocol for using those calls as one continuing meeting floor: it records the isolated run scope, plan/frame, participant prompt packets, compressed context snapshots, queue limits, output quality gates, synthesis, and approval package. Hermes owns actual subagent invocation, delivery, scheduling, and user-facing execution policy. The template CLI creates deterministic local simulated subsession outputs so the contract can be tested before a live Hermes runtime is wired in.
+
+The meeting floor should feel like a real meeting or shooting set. Until the chair/author closes the session, a conclusion is reached, or a hard limit is hit, every participant should receive compressed continuity from the same floor. To control token use, subsession and sub-subsession prompts should be short and exact: usually one sentence or the specific requested field. WSA records only quality-gated outputs as accumulated meeting material.
+
+Every meetup or scene-start style run needs a plan/frame and hard limits before it begins. If the user has not customized them, WSA supplies conservative defaults: bounded queue turns, bounded total subsession calls, a maximum concurrency recommendation, explicit cleanup of ephemeral sessions, and partial-report behavior when no conclusion is reached. A runtime that cannot identify a frame, termination policy, cleanup policy, and concurrency limit should not start the run.
+
+Example:
+
+```bash
+wsa orchestrator run <world_id> \
+  --workflow meetup \
+  --skill meetup \
+  --topic "seven universities and the three major magic schools" \
+  --frame-plan "Compare universities against the three schools without canonizing new claims." \
+  --rounds 3 \
+  --max-queue-turns 12 \
+  --max-concurrent-subsessions 4 \
+  --max-subsession-calls 48 \
+  --context-policy compressed-continuity \
+  --participant "North University" \
+  --participant "South University"
+```
+
+The orchestrator creates a durable audit artifact under `worlds/<world_id>/orchestrator_runs/`, starts temporary runtime session records for participant viewpoints, gives each only the relevant context and prompt packet, runs up to the configured queue limit, carries a compressed meeting summary between turns, collects outputs, asks internal follow-up questions when uncertainty is high, diagnoses conflicts and gaps, closes temporary subsessions, and returns a synthesized report package. It does not canonize generated material.
+
+`--max-queue-turns` and `--max-subsession-calls` are infinite-loop and cost guards. `--max-concurrent-subsessions` tells Hermes when to batch work instead of running too many perspectives at once. If the requested round budget exceeds the limits, the run stops at the limit, closes or marks temporary sessions, and returns a partial review package instead of continuing indefinitely. Skills such as meetup or scene start can use the same orchestrator contract while keeping their run memory isolated to that specific task.
+
+Inspect or decide a package:
+
+```bash
+wsa orchestrator status <run_id> --format json
+wsa orchestrator report <run_id>
+wsa orchestrator decide <run_id> --decision approve --option option-a
+wsa orchestrator decide <run_id> --decision retry
+wsa orchestrator close <run_id> --reason "superseded"
+```
+
+Approval creates an `orchestrator_candidate` ticket only. Converting accepted options into facts, scenes, actor selections, or canonical world changes remains a later explicit ticket/apply step.
 
 ## Template Readiness
 
@@ -253,10 +328,14 @@ After cloning and installing the repository, run a short pre-use diagnostic befo
 
 ```bash
 python3 -m unittest discover -s tests
+PYTHONWARNINGS=error::ResourceWarning python3 -m unittest discover -s tests
+python3 -m compileall -q src tests examples/wsa_hermes_cli_reference.py
 wsa --workspace /tmp/wsa-template-check template check --write-missing
 wsa --workspace /tmp/wsa-template-check doctor
 wsa --workspace /tmp/wsa-template-check manager diagnose
+wsa --workspace /tmp/wsa-template-check update preflight --format json >/dev/null
 python3 -m json.tool examples/hermes_cli.example.json >/dev/null
+python3 -m json.tool examples/hermes_command_registry.example.json >/dev/null
 python3 -m json.tool examples/hermes_operation_policy.example.json >/dev/null
 ```
 
@@ -268,7 +347,25 @@ Confirm that local admin files, private env files, handoff notes, credentials, t
 
 ## Safe Updates
 
-Persistent workspaces can contain live SQLite databases, reports, runtime queues, and agent artifacts. Before pulling template updates into an instance that has live state, back up the workspace directory outside the repository, update the source, run tests against a temporary workspace, and run `wsa doctor` against the live workspace before resuming automation.
+Persistent workspaces can contain live SQLite databases, reports, runtime queues, custom command overlays, and agent artifacts. Before pulling template updates into an instance that has live state, run a read-only update preflight:
+
+```bash
+wsa --workspace <live-workspace> update preflight --source-root <wsa-source-root>
+wsa --workspace <live-workspace> update preflight --source-root <wsa-source-root> --format json
+wsa --workspace <live-workspace> update backup --output-dir <backup-root> --source-root <wsa-source-root>
+```
+
+For Hermes chat adapters, `/wsa_update` maps to this preflight. It does not pull, overwrite, migrate, or delete files. The user's Hermes runtime owns the actual source update and approval policy. If Hermes runs from the workspace root, pass the installed WSA source checkout explicitly as `source_root`; otherwise omit it rather than letting the workspace directory masquerade as source code.
+
+Safe update architecture:
+
+- Treat the source/package layer, live workspace, and runtime-local config as separate layers.
+- Preserve `workspace/hermes/adapter_config/hermes_commands.local.json`; refresh only generated base files such as `hermes_commands.example.json`.
+- Pause Hermes task intake, callbacks, and cron jobs before updating. Preflight blocks when pending task queue files, callback files, report outbox files, active task state, or active scheduler jobs are present.
+- Back up the live workspace outside the source checkout before updating. SQLite databases, world folders, reports, runtime queues, and local Hermes config should all be restorable.
+- During update or backup, mutating WSA CLI paths should respect `workspace/hermes/maintenance/update.lock`; if that lock exists, commands such as world creation, startup answers, task creation, callback collection, meeting decisions, and ticket approval must block.
+- Never update a live instance with destructive cleanup commands such as `git clean -fdx`, `rm -rf`, or a fresh copy over the workspace root.
+- After updating the source, regenerate base examples if needed, run `wsa update preflight` again, then run `wsa doctor` and `wsa manager diagnose` before resuming Hermes.
 
 WSA refuses to operate on workspace databases with a schema version newer than this build supports. If `wsa doctor` reports an unsupported schema, stop and use a compatible WSA version or an explicit migration path.
 

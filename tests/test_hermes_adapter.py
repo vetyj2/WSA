@@ -189,6 +189,17 @@ class HermesAdapterTests(TestCase):
             self.assertTrue(callback.report_id)
             self.assertEqual(task_state["status"], "completed")
             self.assertEqual(task_state["payload"]["callback_id"], callback.callback_id)
+            self.assertFalse(task.task_path.exists())
+            self.assertFalse(callback_path.exists())
+            self.assertTrue(
+                (
+                    adapter.task_archive_dir()
+                    / f"{task.task_id}.json"
+                ).exists()
+            )
+            self.assertTrue(callback.callback_path.exists())
+            self.assertIn("task_archive_ref", task_state["payload"]["archive_refs"])
+            self.assertIn("callback_archive_ref", task_state["payload"]["archive_refs"])
             self.assertEqual(repo.get_report(callback.report_id or "").purpose, "hermes_callback")
             self.assertEqual([item.message_type for item in outbox], ["final_report"])
             self.assertEqual(outbox[0].payload["report_id"], callback.report_id)

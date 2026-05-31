@@ -140,14 +140,17 @@
     },
     "write_roots": [
       "hermes/callbacks",
+      "hermes/callback_archive",
       "hermes/reports_outbox",
       "hermes/maintenance",
       "hermes/task_state",
+      "hermes/task_archive",
       "hermes/quarantine",
       "manager/runtime_sessions"
     ]
   },
   "callbacks": "hermes/callbacks",
+  "callback_archive": "hermes/callback_archive",
   "command": "wsa-hermes-cli",
   "command_registry": "hermes/adapter_config/hermes_commands.example.json",
   "cwd": ".",
@@ -237,6 +240,7 @@
     "schema": "wsa.sensitivity.v1"
   },
   "task_queue": "hermes/task_queue",
+  "task_archive": "hermes/task_archive",
   "task_state": "hermes/task_state",
   "timeout_seconds": 300,
   "workspace": {

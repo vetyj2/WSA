@@ -107,11 +107,17 @@ class HermesCliTemplateAdapter:
     def task_queue_dir(self) -> Path:
         return safe_child_path(self.workspace, "hermes", "task_queue")
 
+    def task_archive_dir(self) -> Path:
+        return safe_child_path(self.workspace, "hermes", "task_archive")
+
     def task_state_dir(self) -> Path:
         return safe_child_path(self.workspace, "hermes", "task_state")
 
     def callbacks_dir(self) -> Path:
         return safe_child_path(self.workspace, "hermes", "callbacks")
+
+    def callback_archive_dir(self) -> Path:
+        return safe_child_path(self.workspace, "hermes", "callback_archive")
 
     def quarantine_dir(self) -> Path:
         return safe_child_path(self.workspace, "hermes", "quarantine")
@@ -144,8 +150,10 @@ class HermesCliTemplateAdapter:
                 "path_policy": "relative_to_workspace_root",
             },
             "task_queue": "hermes/task_queue",
+            "task_archive": "hermes/task_archive",
             "task_state": "hermes/task_state",
             "callbacks": "hermes/callbacks",
+            "callback_archive": "hermes/callback_archive",
             "reports_outbox": "hermes/reports_outbox",
             "quarantine": "hermes/quarantine",
             "maintenance": "hermes/maintenance",
@@ -248,8 +256,10 @@ class HermesCliTemplateAdapter:
             "sensitivity": sensitivity,
             "paths": {
                 "task_queue": "hermes/task_queue",
+                "task_archive": "hermes/task_archive",
                 "task_state": "hermes/task_state",
                 "callbacks": "hermes/callbacks",
+                "callback_archive": "hermes/callback_archive",
                 "reports_outbox": "hermes/reports_outbox",
                 "quarantine": "hermes/quarantine",
                 "maintenance": "hermes/maintenance",
@@ -328,6 +338,10 @@ class HermesCliTemplateAdapter:
             artifact_refs=artifact_refs,
             status=status,
         )
+        archive_refs, archived_callback_path = self._archive_completed_task_files(
+            task_id,
+            callback_path,
+        )
         self._write_task_state(
             task_id,
             status,
@@ -336,11 +350,12 @@ class HermesCliTemplateAdapter:
                 "callback_ref": self._workspace_relative(callback_path),
                 "message_id": envelope.message_id,
                 "report_id": report_id,
+                "archive_refs": archive_refs,
             },
         )
         return HermesCallbackRecord(
             callback_id=self._required_str(callback, "callback_id"),
-            callback_path=callback_path,
+            callback_path=archived_callback_path or callback_path,
             task_id=task_id,
             session_id=route["session_id"],
             world_id=route["world_id"],
@@ -384,6 +399,33 @@ class HermesCliTemplateAdapter:
     def _load_task(self, task_id: str) -> Dict[str, Any]:
         task_path = safe_child_path(self.task_queue_dir(), f"{task_id}.json")
         return self._load_json(task_path)
+
+    def _archive_completed_task_files(
+        self,
+        task_id: str,
+        callback_path: Path,
+    ) -> tuple[Dict[str, str], Path | None]:
+        refs: Dict[str, str] = {}
+        archived_callback_path: Path | None = None
+        task_path = safe_child_path(self.task_queue_dir(), f"{task_id}.json")
+        if task_path.exists():
+            self.task_archive_dir().mkdir(parents=True, exist_ok=True)
+            task_target = safe_child_path(self.task_archive_dir(), task_path.name)
+            task_path.replace(task_target)
+            refs["task_archive_ref"] = self._workspace_relative(task_target)
+
+        try:
+            callback_path.resolve().relative_to(self.callbacks_dir().resolve())
+        except ValueError:
+            return refs, archived_callback_path
+
+        if callback_path.exists():
+            self.callback_archive_dir().mkdir(parents=True, exist_ok=True)
+            callback_target = safe_child_path(self.callback_archive_dir(), callback_path.name)
+            callback_path.replace(callback_target)
+            archived_callback_path = callback_target
+            refs["callback_archive_ref"] = self._workspace_relative(callback_target)
+        return refs, archived_callback_path
 
     def _resolve_callback_path(self, path: Path, allow_external_path: bool) -> Path:
         expanded = path.expanduser()
@@ -723,9 +765,11 @@ def build_agent_harness_contract() -> Dict[str, Any]:
         ],
         "write_roots": [
             "hermes/callbacks",
+            "hermes/callback_archive",
             "hermes/reports_outbox",
             "hermes/maintenance",
             "hermes/task_state",
+            "hermes/task_archive",
             "hermes/quarantine",
             "manager/runtime_sessions",
         ],

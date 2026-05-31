@@ -373,9 +373,10 @@ class StartupProfileManager:
         self._save(profile)
         return profile
 
-    def status(self) -> StartupStatus:
+    def status(self, mode: str | None = None) -> StartupStatus:
         profile = self.load_or_create()
-        return self._status(profile)
+        active_mode = self._validate_mode(mode) if mode is not None else None
+        return self._status(profile, active_mode=active_mode)
 
     def interview(self, budget: int = 8, mode: str = "startup") -> StartupInterviewRound:
         if budget <= 0:
@@ -430,14 +431,17 @@ class StartupProfileManager:
         text: str,
         answered_by: str = "author",
         choice: str | None = None,
+        mode: str | None = None,
     ) -> StartupStatus:
         if not text.strip():
             raise ValueError("answer text is required")
         profile = self.load_or_create()
+        active_mode = self._validate_mode(mode) if mode is not None else profile.get("active_mode", "startup")
+        profile["active_mode"] = active_mode
         item = self._dimension_by_question_id(profile, question_id)
         selected_choice = self._normalize_choice(choice) if choice else None
         if selected_choice is not None:
-            self._choice_text(item, profile.get("active_mode", "startup"), selected_choice)
+            self._choice_text(item, active_mode, selected_choice)
         item["answer"] = text.strip()
         item["selected_choice"] = selected_choice
         item["answered_by"] = answered_by
@@ -448,15 +452,21 @@ class StartupProfileManager:
         self._save(profile)
         return self._status(profile)
 
-    def answer_batch(self, text: str, answered_by: str = "author") -> StartupStatus:
+    def answer_batch(
+        self,
+        text: str,
+        answered_by: str = "author",
+        mode: str | None = None,
+    ) -> StartupStatus:
         selections, note = parse_startup_answer_text(text)
         if not selections and not note.strip():
             raise ValueError("answer text or answer codes are required")
         profile = self.load_or_create()
-        mode = profile.get("active_mode", "startup")
+        active_mode = self._validate_mode(mode) if mode is not None else profile.get("active_mode", "startup")
+        profile["active_mode"] = active_mode
         for question_id, choice in selections:
             item = self._dimension_by_question_id(profile, question_id)
-            option = self._choice_text(item, mode, choice)
+            option = self._choice_text(item, active_mode, choice)
             item["answer"] = f"{choice}) {option}"
             item["selected_choice"] = choice
             item["answered_by"] = answered_by
@@ -489,16 +499,22 @@ class StartupProfileManager:
         self._save(profile)
         return self._status(profile)
 
-    def set_discretion(self, level: int) -> StartupStatus:
+    def set_discretion(self, level: int, mode: str | None = None) -> StartupStatus:
         if level not in DISCRETION_LEVELS:
             raise ValueError("discretion level must be between 0 and 5")
         profile = self.load_or_create()
+        if mode is not None:
+            profile["active_mode"] = self._validate_mode(mode)
         profile["discretion_level"] = level
         profile["updated_at"] = utc_now()
         self._save(profile)
         return self._status(profile)
 
-    def _status(self, profile: Dict[str, Any]) -> StartupStatus:
+    def _status(
+        self,
+        profile: Dict[str, Any],
+        active_mode: str | None = None,
+    ) -> StartupStatus:
         required = [
             item for item in profile["dimensions"] if item.get("required_for_startup") is True
         ]
@@ -519,7 +535,7 @@ class StartupProfileManager:
             required_total=len(required),
             required_resolved=resolved_count,
             startup_ready=ambiguity == 0,
-            active_mode=str(profile.get("active_mode") or "startup"),
+            active_mode=str(active_mode or profile.get("active_mode") or "startup"),
             discretion_level=discretion_level,
             discretion_label=DISCRETION_LEVELS.get(discretion_level, "unknown"),
             profile_path=self.profile_path,
@@ -646,6 +662,67 @@ def choice_labels_for_question(item: Dict[str, Any], mode: str) -> List[Dict[str
         }
         for index, choice in enumerate(choices[:9])
     ]
+
+
+def startup_status_to_dict(status: StartupStatus) -> Dict[str, Any]:
+    return {
+        "startup_ambiguity_percent": status.startup_ambiguity_percent,
+        "interview_progress_percent": status.progress_percent,
+        "interview_remaining_percent": status.remaining_percent,
+        "required_resolved": status.required_resolved,
+        "required_total": status.required_total,
+        "startup_ready": status.startup_ready,
+        "active_mode": status.active_mode,
+        "discretion_level": status.discretion_level,
+        "discretion_label": status.discretion_label,
+        "profile_path": str(status.profile_path),
+    }
+
+
+def startup_interview_to_dict(round_: StartupInterviewRound) -> Dict[str, Any]:
+    questions = []
+    for item in round_.questions:
+        prompt_key = (
+            "easystartup_prompt" if round_.mode == "easystartup" else "startup_prompt"
+        )
+        questions.append(
+            {
+                "question_id": item["question_id"],
+                "legacy_question_id": item.get("legacy_question_id"),
+                "status": item["status"],
+                "dimension": item["dimension"],
+                "prompt": item[prompt_key],
+                "choices": choice_labels_for_question(item, round_.mode),
+                "free_text": round_.mode == "startup",
+                "agent_fill": round_.mode == "easystartup",
+            }
+        )
+    next_question = None
+    if round_.next_question is not None:
+        prompt_key = (
+            "easystartup_prompt" if round_.mode == "easystartup" else "startup_prompt"
+        )
+        next_question = {
+            "question_id": round_.next_question["question_id"],
+            "legacy_question_id": round_.next_question.get("legacy_question_id"),
+            "dimension": round_.next_question["dimension"],
+            "prompt": round_.next_question[prompt_key],
+            "choices": choice_labels_for_question(round_.next_question, round_.mode),
+        }
+    return {
+        "round_id": round_.round_id,
+        "mode": round_.mode,
+        "startup_ambiguity_before_percent": round_.ambiguity_before,
+        "interview_progress_before_percent": round_.progress_before,
+        "interview_remaining_after_percent": round_.remaining_after,
+        "question_budget": round_.question_budget,
+        "discretion_level": round_.discretion_level,
+        "discretion_label": round_.discretion_label,
+        "answer_format": "0001a 0002b 0003e plus optional free text",
+        "questions": questions,
+        "next_question": next_question,
+        "meeting_buckets": round_.meeting_buckets,
+    }
 
 
 def format_startup_status(status: StartupStatus) -> List[str]:

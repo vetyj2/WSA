@@ -22,6 +22,11 @@ MESSAGE_TYPES = {
     "meeting_agenda",
     "meeting_contribution",
     "meeting_summary",
+    "orchestrator_plan",
+    "orchestrator_status",
+    "subsession_context",
+    "subsession_output",
+    "orchestrator_synthesis",
 }
 
 DIRECTIONS = {"inbox", "outbox"}

@@ -50,6 +50,9 @@ class RuntimeTransport:
         self.ensure_session_dirs(session.session_id)
         return session.session_id
 
+    def close_session(self, session_id: str, status: str = "closed") -> None:
+        self.control.update_runtime_session_status(session_id, status)
+
     def resolve_message_route(
         self,
         session_id: str,

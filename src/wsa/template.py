@@ -75,8 +75,10 @@ class TemplateChecker:
             for item in (
                 "adapter_config",
                 "task_queue",
+                "task_archive",
                 "task_state",
                 "callbacks",
+                "callback_archive",
                 "reports_outbox",
                 "quarantine",
                 "maintenance",

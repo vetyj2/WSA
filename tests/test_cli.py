@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -23,6 +26,33 @@ class CliTests(TestCase):
             code = main([])
         self.assertEqual(code, 0)
         self.assertIn("World Scene Actors", stdout.getvalue())
+
+    def test_python_module_entrypoint_propagates_failure_exit_code(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            env = dict(os.environ)
+            env["PYTHONPATH"] = str(Path.cwd() / "src")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "wsa",
+                    "--workspace",
+                    str(workspace),
+                    "orchestrator",
+                    "run",
+                    "missing-world",
+                    "--topic",
+                    "blocked",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
 
     def test_doctor_returns_workspace(self) -> None:
         stdout = StringIO()
@@ -216,6 +246,103 @@ class CliTests(TestCase):
             self.assertIn("0001f=", interview_stdout.getvalue())
             self.assertIn("startup_ambiguity: 80%", batch_stdout.getvalue())
 
+    def test_world_easystartup_cli_is_mode_aware_without_prior_interview(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Direct Easy Startup World")
+
+            status_stdout = StringIO()
+            with patch("sys.stdout", status_stdout):
+                status_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "easystartup",
+                        "status",
+                        world.world_id,
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            answer_stdout = StringIO()
+            with patch("sys.stdout", answer_stdout):
+                answer_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "easystartup",
+                        "answer",
+                        world.world_id,
+                        "0001",
+                        "--choice",
+                        "f",
+                        "--text",
+                        "Use this easy pick.",
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            batch_stdout = StringIO()
+            with patch("sys.stdout", batch_stdout):
+                batch_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "easystartup",
+                        "batch-answer",
+                        world.world_id,
+                        "--text",
+                        "0002f",
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            status_payload = json.loads(status_stdout.getvalue())
+            answer_payload = json.loads(answer_stdout.getvalue())
+            batch_payload = json.loads(batch_stdout.getvalue())
+
+            self.assertEqual(status_code, 0)
+            self.assertEqual(answer_code, 0)
+            self.assertEqual(batch_code, 0)
+            self.assertEqual(status_payload["active_mode"], "easystartup")
+            self.assertEqual(answer_payload["status"]["active_mode"], "easystartup")
+            self.assertEqual(batch_payload["status"]["startup_ambiguity_percent"], 80)
+
+    def test_world_startup_interview_json_output_is_parseable(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Startup JSON World")
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "startup",
+                        "interview",
+                        world.world_id,
+                        "--budget",
+                        "1",
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["mode"], "startup")
+            self.assertEqual(payload["questions"][0]["question_id"], "0001")
+            self.assertEqual(payload["questions"][0]["choices"][0]["code"], "0001a")
+
     def test_world_startup_cli_set_status_can_approve_proposal(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -316,6 +443,107 @@ class CliTests(TestCase):
             self.assertIn("meeting_decision: approve", output)
             self.assertIn("report_status: approved", output)
             self.assertIn("ticket_type: meeting_candidate", output)
+
+    def test_orchestrator_cli_runs_status_report_and_decide(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Orchestrator World")
+            run_stdout = StringIO()
+            with patch("sys.stdout", run_stdout):
+                run_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "run",
+                        world.world_id,
+                        "--workflow",
+                        "meetup",
+                        "--skill",
+                        "meetup",
+                        "--topic",
+                        "seven universities",
+                        "--rounds",
+                        "2",
+                        "--max-queue-turns",
+                        "4",
+                        "--max-concurrent-subsessions",
+                        "2",
+                        "--max-subsession-calls",
+                        "12",
+                        "--context-policy",
+                        "compressed-continuity",
+                        "--frame-plan",
+                        "Run a bounded university comparison.",
+                        "--participant",
+                        "North University",
+                        "--participant",
+                        "South University",
+                    ]
+                )
+            run_id = ""
+            for line in run_stdout.getvalue().splitlines():
+                if line.startswith("orchestrator_run_id: "):
+                    run_id = line.split(": ", 1)[1]
+
+            status_stdout = StringIO()
+            with patch("sys.stdout", status_stdout):
+                status_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "status",
+                        run_id,
+                        "--format",
+                        "json",
+                    ]
+                )
+            report_stdout = StringIO()
+            with patch("sys.stdout", report_stdout):
+                report_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "report",
+                        run_id,
+                    ]
+                )
+            decide_stdout = StringIO()
+            with patch("sys.stdout", decide_stdout):
+                decide_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "decide",
+                        run_id,
+                        "--decision",
+                        "approve",
+                        "--option",
+                        "option-a",
+                    ]
+                )
+            status_payload = json.loads(status_stdout.getvalue())
+
+            self.assertEqual(run_code, 0)
+            self.assertEqual(status_code, 0)
+            self.assertEqual(report_code, 0)
+            self.assertEqual(decide_code, 0)
+            self.assertEqual(status_payload["execution"], "autonomous_until_boundary")
+            self.assertEqual(status_payload["skill"], "meetup")
+            self.assertEqual(status_payload["plan_frame"]["source"], "user_defined")
+            self.assertEqual(status_payload["queue_limits"]["max_queue_turns"], 4)
+            self.assertEqual(status_payload["queue_limits"]["max_subsession_calls"], 12)
+            self.assertEqual(status_payload["queue_limits"]["queue_turns_used"], 2)
+            self.assertEqual(
+                status_payload["concurrency_policy"]["max_concurrent_subsessions"],
+                2,
+            )
+            self.assertEqual(len(status_payload["subsession_outputs"]), 4)
+            self.assertIn("draft_option: option-a", report_stdout.getvalue())
+            self.assertIn("ticket_type: orchestrator_candidate", decide_stdout.getvalue())
 
     def test_report_and_ticket_list_cli_after_mock_scene(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -476,15 +704,57 @@ class CliTests(TestCase):
             self.assertIn("/wsa_easystartup", text_stdout.getvalue())
             self.assertIn("/wsa-easystart", text_stdout.getvalue())
             self.assertIn("/wsa_pick", text_stdout.getvalue())
+            self.assertIn("/wsa_update", text_stdout.getvalue())
+            self.assertIn("/wsa_update_backup", text_stdout.getvalue())
+            self.assertIn("/wsa_orchestrator", text_stdout.getvalue())
             self.assertIn("/fill_the_rest", text_stdout.getvalue())
             self.assertIn("/fill-the-rest", text_stdout.getvalue())
             self.assertIn("/filltherest", text_stdout.getvalue())
+            self.assertIn("/filltherest_plan", text_stdout.getvalue())
+            self.assertIn("/filltherest_start", text_stdout.getvalue())
             self.assertIn("/wsa_startup", commands)
             self.assertIn("/wsa_easystartup", commands)
+            self.assertEqual(commands["/wsa_startup"]["safety"], "workspace_mutating")
+            self.assertEqual(commands["/wsa_easystartup"]["safety"], "workspace_mutating")
+            self.assertIn(
+                "source_root",
+                commands["/wsa_update"]["cli_template_policy"]["optional_arguments"],
+            )
+            self.assertTrue(
+                commands["/wsa_update"]["cli_template_policy"][
+                    "optional_placeholder_rule"
+                ]
+            )
             self.assertIn("/wsa-easystart", commands["/wsa_easystartup"]["aliases"])
             self.assertIn("/wsa_pick", commands)
+            self.assertIn("/wsa_update", commands)
+            self.assertIn("/wsa_update_backup", commands)
+            self.assertIn("/wsa_orchestrator", commands)
+            self.assertIn("/wsa_orchestrator_decide", commands)
             self.assertIn("/fill_the_rest", commands)
+            self.assertIn("/filltherest_plan", commands)
+            self.assertIn("/filltherest_start", commands)
             self.assertIn("/filltherest", commands["/fill_the_rest"]["aliases"])
+            self.assertIn("/filltherest-plan", commands["/filltherest_plan"]["aliases"])
+            self.assertIn("/filltherest-start", commands["/filltherest_start"]["aliases"])
+            self.assertEqual(commands["/fill_the_rest"]["safety"], "proposal_only")
+            self.assertEqual(commands["/filltherest_plan"]["safety"], "proposal_only")
+            self.assertEqual(commands["/filltherest_start"]["safety"], "requires_approval")
+            self.assertEqual(
+                commands["/wsa_pick"]["cli_template_policy"]["execution"],
+                "choose_one_by_active_mode",
+            )
+            self.assertEqual(
+                commands["/filltherest_start"]["input_json_template"]["completion"],
+                "stop_cron_then_report_and_request_approval",
+            )
+            self.assertFalse(
+                any(
+                    item == "--input-json"
+                    for template in commands["/filltherest_start"]["cli_templates"]
+                    for item in template
+                )
+            )
             self.assertTrue(
                 commands["/fill_the_rest"]["runtime_contract"][
                     "requires_destination_checkpoint"
@@ -496,6 +766,42 @@ class CliTests(TestCase):
                 ]
             )
             self.assertEqual(commands["/wsa_autogen"]["safety"], "proposal_only")
+            self.assertEqual(commands["/wsa_update"]["safety"], "read_only")
+            self.assertEqual(commands["/wsa_update_backup"]["safety"], "requires_approval")
+            self.assertEqual(commands["/wsa_orchestrator"]["safety"], "proposal_only")
+            self.assertEqual(
+                commands["/wsa_orchestrator"]["runtime_contract"]["execution_owner"],
+                "user_hermes_runtime",
+            )
+            self.assertEqual(
+                commands["/wsa_orchestrator"]["runtime_contract"][
+                    "subagent_invocation_owner"
+                ],
+                "user_hermes_runtime",
+            )
+            self.assertEqual(
+                commands["/wsa_orchestrator"]["runtime_contract"]["queue_limits"][
+                    "default_max_queue_turns"
+                ],
+                12,
+            )
+            self.assertTrue(
+                commands["/wsa_orchestrator"]["runtime_contract"]["floor_continuity"][
+                    "all_participants_receive_compressed_context_until_close"
+                ]
+            )
+            self.assertEqual(
+                commands["/wsa_orchestrator"]["runtime_contract"]["micro_turn_policy"][
+                    "utterance_target"
+                ],
+                "one_sentence_or_requested_fields",
+            )
+            self.assertTrue(
+                commands["/wsa_orchestrator"]["runtime_contract"]["session_cleanup"][
+                    "no_abandoned_open_subsessions"
+                ]
+            )
+            self.assertEqual(commands["/wsa_orchestrator_decide"]["safety"], "requires_approval")
             self.assertTrue(
                 (
                     workspace
