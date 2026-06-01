@@ -294,6 +294,13 @@ wsa orchestrator run <world_id> \
 
 The orchestrator creates a durable audit artifact under `worlds/<world_id>/orchestrator_runs/`, starts temporary runtime session records for participant viewpoints, gives each only the relevant context and prompt packet, runs up to the configured queue limit, carries a compressed meeting summary between turns, collects outputs, asks internal follow-up questions when uncertainty is high, diagnoses conflicts and gaps, closes temporary subsessions, and returns a synthesized report package. It does not canonize generated material.
 
+There are two primary entrypoint profiles:
+
+- `meetup`: a representative meeting for worldbuilding facts, startup candidates, scene-prep questions, conflict diagnosis, or a specific creative objective. It emphasizes participant expansion, objections, grievances, compromise/fault-line discovery, manager checks, and approval choices.
+- `scene_generation` / `scene_start`: scene prep before script-like generation. It filters facts, history, memory, viewpoint knowledge, hidden truths, actor assignments, multi-role isolation, parallel actor/session recommendations, model/thinking guidance, and prep-complete checks before any draft or canon mutation.
+
+Each run records `workflow_profile`, `floor_state`, mixed `turn_records`, and `runtime_hook_packets`. Hook packets contain a Hermes-owned terminal command shape plus the bounded prompt that Hermes can adapt into its own subagent/session syntax. This keeps WSA as the state, prompt, audit, quality-gate, and approval harness while leaving actual actor/subagent calls to the user's Hermes runtime.
+
 `--max-queue-turns` and `--max-subsession-calls` are infinite-loop and cost guards. `--max-concurrent-subsessions` tells Hermes when to batch work instead of running too many perspectives at once. If the requested round budget exceeds the limits, the run stops at the limit, closes or marks temporary sessions, and returns a partial review package instead of continuing indefinitely. Skills such as meetup or scene start can use the same orchestrator contract while keeping their run memory isolated to that specific task.
 
 Inspect or decide a package:
@@ -301,6 +308,7 @@ Inspect or decide a package:
 ```bash
 wsa orchestrator status <run_id> --format json
 wsa orchestrator report <run_id>
+wsa orchestrator hooks <run_id> --format json
 wsa orchestrator decide <run_id> --decision approve --option option-a
 wsa orchestrator decide <run_id> --decision retry
 wsa orchestrator close <run_id> --reason "superseded"
@@ -321,6 +329,10 @@ Expected first line:
 ```text
 template_ready: yes
 ```
+
+## Patch Dashboards
+
+Versioned patches that change architecture, workflows, scripts, Hermes contracts, or runtime behavior should add a human-readable HTML dashboard under `change_log/` and link it from `change_log/index.html` before commit. These dashboards summarize module size, workflow shape, runtime ownership, and user-facing flow so reviewers do not need to reconstruct the product impact from raw diffs alone.
 
 ## Pre-Use Diagnostic
 

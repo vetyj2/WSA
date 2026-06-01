@@ -144,6 +144,7 @@ class HermesCommandSyntaxTests(TestCase):
             '/filltherest-plan world_id=wld_demo destination="until 3 regions exist"': "/filltherest_plan",
             '/wsa-meeting world_id=wld_demo topic="Succession gap" participant="Council" participant="Guild"': "/wsa_meeting",
             '/wsa-meetup world_id=wld_demo topic="seven universities" participant="North" participant="South"': "/wsa_orchestrator",
+            '/wsa-scene-start world_id=wld_demo topic="station opening" participant="Narrator"': "/wsa_scene_start",
         }
 
         for text, expected in cases.items():

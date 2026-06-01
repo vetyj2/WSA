@@ -390,6 +390,17 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         help="Output format.",
     )
+    orchestrator_hooks = orchestrator_subparsers.add_parser(
+        "hooks",
+        help="Print Hermes terminal/prompt hook packets for a run.",
+    )
+    orchestrator_hooks.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_hooks.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
     orchestrator_decide = orchestrator_subparsers.add_parser(
         "decide",
         help="Approve, retry, or hold an orchestrator package.",
@@ -995,6 +1006,8 @@ def run_orchestrator_status(workspace: Path, run_id: str, output_format: str) ->
     print(f"orchestrator_run_id: {payload['run_id']}")
     print(f"orchestrator_status: {payload['status']}")
     print(f"workflow: {payload['workflow']}")
+    if payload.get("workflow_requested") and payload.get("workflow_requested") != payload["workflow"]:
+        print(f"workflow_requested: {payload['workflow_requested']}")
     print(f"skill: {payload.get('skill', payload['workflow'])}")
     print(f"topic: {payload['topic']}")
     print(f"execution: {payload['execution']}")
@@ -1032,6 +1045,33 @@ def run_orchestrator_report(workspace: Path, run_id: str, output_format: str) ->
     print(f"requires_author_boundary: {payload['conflict_gap_diagnosis']['requires_author_boundary']}")
     for option in payload.get("draft_options", []):
         print(f"draft_option: {option['option_id']}\t{option['title']}")
+    return 0
+
+
+def run_orchestrator_hooks(workspace: Path, run_id: str, output_format: str) -> int:
+    payload = AutonomousOrchestrator.load_run(workspace, run_id)
+    hooks = payload.get("runtime_hook_packets", payload.get("round_prompt_packets", []))
+    result = {
+        "run_id": run_id,
+        "workflow": payload.get("workflow"),
+        "skill": payload.get("skill"),
+        "subsession_execution_mode": payload.get("subsession_execution_mode"),
+        "hook_count": len(hooks),
+        "hooks": hooks,
+    }
+    if output_format == "json":
+        print_json(result)
+        return 0
+    print(f"orchestrator_run_id: {run_id}")
+    print(f"workflow: {result['workflow']}")
+    print(f"subsession_execution_mode: {result['subsession_execution_mode']}")
+    print(f"hook_count: {len(hooks)}")
+    for hook in hooks:
+        command = hook.get("terminal_command", {}).get("argv", [])
+        print(f"hook: {hook.get('turn_id', hook.get('prompt_packet_id'))}")
+        print(f"turn_type: {hook.get('turn_type')}")
+        if command:
+            print(f"terminal_command: {' '.join(str(item) for item in command[:8])} ...")
     return 0
 
 
@@ -1505,6 +1545,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_orchestrator_status(config.workspace, args.run_id, args.format)
         if args.orchestrator_command == "report":
             return run_orchestrator_report(config.workspace, args.run_id, args.format)
+        if args.orchestrator_command == "hooks":
+            return run_orchestrator_hooks(config.workspace, args.run_id, args.format)
         if args.orchestrator_command == "decide":
             return run_orchestrator_decide(
                 config.workspace,

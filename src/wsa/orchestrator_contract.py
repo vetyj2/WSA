@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from .orchestrator_workflows import build_workflow_entrypoint_contracts
+
 
 ORCHESTRATOR_RUN_SCHEMA = "wsa.orchestrator.run.v1"
 ORCHESTRATOR_SESSION_CONTRACT_SCHEMA = "wsa.orchestrator.session_contract.v1"
@@ -23,18 +25,29 @@ def build_plan_frame(
     topic: str,
     question: str,
     frame_plan: str | None,
+    workflow_profile: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     if frame_plan and frame_plan.strip():
         source = "user_defined"
         content = frame_plan.strip()
     else:
         source = "default_guardrail"
-        content = (
-            f"Run a conservative {skill_name}/{workflow} pass on '{topic}'. "
-            f"Answer the controlling question: {question}. Keep all generated material "
-            "proposal-only, require clear uncertainty labels, and return to the author "
-            "before canon mutation."
-        )
+        profile_frame = ""
+        if workflow_profile:
+            profile_frame = str(workflow_profile.get("default_frame") or "").strip()
+        if profile_frame:
+            content = (
+                f"{profile_frame} Topic: '{topic}'. Controlling question: {question}. "
+                "Keep all generated material proposal-only, require clear uncertainty labels, "
+                "and return to the author before canon mutation."
+            )
+        else:
+            content = (
+                f"Run a conservative {skill_name}/{workflow} pass on '{topic}'. "
+                f"Answer the controlling question: {question}. Keep all generated material "
+                "proposal-only, require clear uncertainty labels, and return to the author "
+                "before canon mutation."
+            )
     return {
         "schema": "wsa.orchestrator.plan_frame.v1",
         "source": source,
@@ -46,6 +59,7 @@ def build_plan_frame(
             "no_unbounded_session_growth",
             "close_or_mark_all_ephemeral_sessions_at_boundary",
         ],
+        "workflow_profile": workflow_profile.get("workflow") if workflow_profile else workflow,
     }
 
 
@@ -152,8 +166,9 @@ def build_orchestrator_session_contract(
     plan_frame: Dict[str, Any],
     termination_contract: Dict[str, Any],
     session_cleanup: Dict[str, Any],
+    workflow_profile: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    return {
+    payload = {
         "schema": ORCHESTRATOR_SESSION_CONTRACT_SCHEMA,
         "execution_owner": "user_hermes_runtime",
         "wsa_role": "orchestration_contract_and_audit_artifacts_only",
@@ -259,6 +274,30 @@ def build_orchestrator_session_contract(
             "termination_on_max_queue_turns": True,
         },
     }
+    if workflow_profile is not None:
+        payload["workflow_profile_summary"] = {
+            "workflow": workflow_profile.get("workflow"),
+            "title": workflow_profile.get("title"),
+            "purpose": workflow_profile.get("purpose"),
+            "phase_ids": [
+                item.get("phase_id")
+                for item in workflow_profile.get("phase_model", [])
+                if isinstance(item, dict)
+            ],
+            "completion_criteria": workflow_profile.get("completion_criteria", []),
+        }
+        payload["active_facilitation"] = {
+            "orchestrator_is_not_stenographer": True,
+            "may_spend_turn_without_actor_call": True,
+            "may_pause_actor_for_manager_check": True,
+            "may_focus_skip_challenge_or_interview": True,
+            "dynamic_hooks": workflow_profile.get("dynamic_facilitation_hooks", []),
+        }
+        payload["participant_output_schema"] = workflow_profile.get(
+            "participant_output_schema",
+            {},
+        )
+    return payload
 
 
 def build_hermes_orchestrator_runtime_contract() -> Dict[str, Any]:
@@ -308,4 +347,5 @@ def build_hermes_orchestrator_runtime_contract() -> Dict[str, Any]:
             "no_abandoned_open_subsessions": True,
         },
         "side_effect_policy": "proposal_only_until_author_approval",
+        "workflow_entrypoints": build_workflow_entrypoint_contracts(),
     }

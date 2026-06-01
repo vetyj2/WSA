@@ -836,10 +836,260 @@
         },
         "side_effect_policy": "proposal_only_until_author_approval",
         "subagent_invocation_owner": "user_hermes_runtime",
+        "workflow_entrypoints": {
+          "entrypoints": {
+            "meetup": {
+              "manual_trigger": "/wsa_meetup or wsa orchestrator run --workflow meetup",
+              "purpose": "Worldbuilding fact proposals, conflict diagnosis, scene-prep planning, or target-oriented representative meetings.",
+              "runtime_boundary": "Hermes owns subagent execution; WSA owns state, prompt packets, audit, quality gates, and approval package."
+            },
+            "scene_generation": {
+              "manual_trigger": "/wsa_scene_start or wsa orchestrator run --workflow scene_generation --skill scene_start",
+              "purpose": "Scene-prep decision collection, cross-verification, actor/session assignment, role isolation, and script-generation readiness.",
+              "runtime_boundary": "Hermes owns actor/subagent calls and model selection; WSA records recommended packets, constraints, checks, and approval boundaries."
+            }
+          },
+          "schema": "wsa.orchestrator.workflow_entrypoints.v1",
+          "shared_guards": [
+            "proposal_only_until_author_approval",
+            "hard_queue_and_call_limits_required",
+            "ephemeral_sessions_must_close_or_mark_complete",
+            "mock_or_simulated_modes_must_be_labeled"
+          ]
+        },
         "wsa_role": "orchestration_contract_and_audit_artifacts_only"
       },
       "safety": "proposal_only",
       "title": "Run a manual-trigger autonomous orchestrator workflow."
+    },
+    {
+      "aliases": [
+        "/wsa-scene-start",
+        "/scene-start",
+        "/wsa_scene_prep",
+        "/wsa-scene-prep"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Scene or scene-prep topic.",
+          "name": "topic",
+          "required": true
+        },
+        {
+          "default": "Prepare scene facts, actor assignments, role isolation, model/thinking guidance, and approval choices.",
+          "description": "Scene-prep question to resolve before drafting.",
+          "name": "question",
+          "required": false
+        },
+        {
+          "default": 3,
+          "description": "Internal round budget. Default: 3.",
+          "name": "rounds",
+          "required": false
+        },
+        {
+          "default": 12,
+          "description": "Maximum autonomous queue turns before stopping. Default: 12.",
+          "name": "max_queue_turns",
+          "required": false
+        },
+        {
+          "default": 4,
+          "description": "Maximum simultaneous actor/subsession calls before batching. Default: 4.",
+          "name": "max_concurrent_subsessions",
+          "required": false
+        },
+        {
+          "default": 48,
+          "description": "Maximum total actor/subsession calls before partial report. Default: 48.",
+          "name": "max_subsession_calls",
+          "required": false
+        },
+        {
+          "description": "Optional user-defined scene frame, viewpoint, location, timeframe, or guardrail.",
+          "name": "frame_plan",
+          "required": false
+        },
+        {
+          "description": "Actor, narrator, crowd, continuity role, or scene-prep viewpoint. May be repeated.",
+          "name": "participant",
+          "repeatable": true,
+          "required": false
+        },
+        {
+          "description": "Run ID returned by the start command; used when fetching hook packets.",
+          "name": "run_id",
+          "required": false
+        }
+      ],
+      "category": "orchestrator",
+      "cli_template_policy": {
+        "execution": "run_start_then_fetch_hooks_after_run_id",
+        "optional_arguments": [
+          "question",
+          "rounds",
+          "max_queue_turns",
+          "max_concurrent_subsessions",
+          "max_subsession_calls",
+          "frame_plan",
+          "participant",
+          "run_id"
+        ],
+        "optional_placeholder_rule": "If an optional placeholder is unresolved or empty, omit that argv token; if the previous argv token is the option flag for that placeholder, omit the flag too.",
+        "repeatable_arguments": [
+          "participant"
+        ],
+        "repeatable_placeholder_rule": "For repeatable placeholders, emit one flag/value pair per value rather than joining."
+      },
+      "cli_templates": [
+        [
+          "wsa",
+          "orchestrator",
+          "run",
+          "{world_id}",
+          "--workflow",
+          "scene_generation",
+          "--skill",
+          "scene_start",
+          "--topic",
+          "{topic}",
+          "--question",
+          "{question:Prepare scene facts, actor assignments, role isolation, model/thinking guidance, and approval choices.}",
+          "--rounds",
+          "{rounds:3}",
+          "--max-queue-turns",
+          "{max_queue_turns:12}",
+          "--max-concurrent-subsessions",
+          "{max_concurrent_subsessions:4}",
+          "--max-subsession-calls",
+          "{max_subsession_calls:48}",
+          "--frame-plan",
+          "{frame_plan}",
+          "--participant",
+          "{participant}",
+          "--subsession-policy",
+          "ephemeral",
+          "--canon-policy",
+          "proposal-only",
+          "--approval",
+          "required",
+          "--close-on",
+          "complete"
+        ],
+        [
+          "wsa",
+          "orchestrator",
+          "hooks",
+          "{run_id}",
+          "--format",
+          "json"
+        ]
+      ],
+      "command": "/wsa_scene_start",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "input_json_policy": {
+        "omit_unresolved_optional_keys": true,
+        "serialization": "json_object_argv_value",
+        "target_flag": "--input-json"
+      },
+      "input_json_template": {
+        "boundary": "prep_package_before_scene_draft_or_canon_mutation",
+        "frame_plan": "{frame_plan}",
+        "participant": "{participant}",
+        "question": "{question:Prepare scene facts, actor assignments, role isolation, model/thinking guidance, and approval choices.}",
+        "skill": "scene_start",
+        "topic": "{topic}",
+        "workflow": "scene_generation"
+      },
+      "intent": "run_scene_generation_orchestrator",
+      "notes": [
+        "Manual trigger for scene-prep, not direct script canonization.",
+        "The first template starts the run; after Hermes has the returned run_id, the second template can fetch terminal/prompt hook packets.",
+        "Scene prep should filter facts/history/memory by viewpoint, cross-check contradictions, assign actors, isolate multi-role sessions, recommend model/thinking levels, and stop at approval boundary.",
+        "Hermes owns actual actor/subagent calls. WSA records prompt packets, floor state, turn records, quality gates, and approval package."
+      ],
+      "runtime_contract": {
+        "context_continuity": {
+          "compression": "rolling_summary_plus_recent_outputs",
+          "default_policy": "compressed-continuity",
+          "memory_scope": "orchestrator_run_only",
+          "share_policy": "participant_relevant_context_only"
+        },
+        "execution": "autonomous_until_boundary",
+        "execution_owner": "user_hermes_runtime",
+        "floor_continuity": {
+          "all_participants_receive_compressed_context_until_close": true,
+          "chair_closes_floor_or_hard_limit_stops": true,
+          "model": "live_meeting_floor"
+        },
+        "isolation": "per_orchestrator_run",
+        "manual_trigger": true,
+        "micro_turn_policy": {
+          "accumulate_only_quality_gated_outputs": true,
+          "prompt_budget_posture": "minimal_precise_subsession_calls",
+          "utterance_target": "one_sentence_or_requested_fields"
+        },
+        "plan_frame_policy": {
+          "default_guardrail_allowed_when_user_frame_missing": true,
+          "required_before_start": true,
+          "start_without_frame_recommendation": "do_not_start"
+        },
+        "prompt_coordination": {
+          "hermes_adapts_prompt_packets_to_subagent_syntax": true,
+          "owner": "orchestrator_manager",
+          "user_babysitting": "not_required_until_author_boundary"
+        },
+        "queue_limits": {
+          "default_max_concurrent_subsessions": 4,
+          "default_max_queue_turns": 12,
+          "default_max_subsession_calls": 48,
+          "infinite_loop_guard": true,
+          "termination_on_max_queue_turns": true
+        },
+        "schema": "wsa.hermes.orchestrator_runtime_contract.v1",
+        "session_cleanup": {
+          "cleanup_required": true,
+          "no_abandoned_open_subsessions": true
+        },
+        "side_effect_policy": "proposal_only_until_author_approval",
+        "subagent_invocation_owner": "user_hermes_runtime",
+        "workflow_entrypoints": {
+          "entrypoints": {
+            "meetup": {
+              "manual_trigger": "/wsa_meetup or wsa orchestrator run --workflow meetup",
+              "purpose": "Worldbuilding fact proposals, conflict diagnosis, scene-prep planning, or target-oriented representative meetings.",
+              "runtime_boundary": "Hermes owns subagent execution; WSA owns state, prompt packets, audit, quality gates, and approval package."
+            },
+            "scene_generation": {
+              "manual_trigger": "/wsa_scene_start or wsa orchestrator run --workflow scene_generation --skill scene_start",
+              "purpose": "Scene-prep decision collection, cross-verification, actor/session assignment, role isolation, and script-generation readiness.",
+              "runtime_boundary": "Hermes owns actor/subagent calls and model selection; WSA records recommended packets, constraints, checks, and approval boundaries."
+            }
+          },
+          "schema": "wsa.orchestrator.workflow_entrypoints.v1",
+          "shared_guards": [
+            "proposal_only_until_author_approval",
+            "hard_queue_and_call_limits_required",
+            "ephemeral_sessions_must_close_or_mark_complete",
+            "mock_or_simulated_modes_must_be_labeled"
+          ]
+        },
+        "wsa_role": "orchestration_contract_and_audit_artifacts_only"
+      },
+      "safety": "proposal_only",
+      "title": "Prepare a scene-generation lifecycle through the WSA orchestrator."
     },
     {
       "aliases": [

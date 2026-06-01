@@ -43,6 +43,25 @@ class AutonomousOrchestratorTests(TestCase):
                 "orchestration_contract_and_audit_artifacts_only",
             )
             self.assertEqual(payload["skill"], "meetup")
+            self.assertEqual(payload["workflow_profile"]["workflow"], "meetup")
+            self.assertTrue(payload["workflow_profile"]["dynamic_facilitation_hooks"])
+            self.assertIn("floor_state", payload)
+            self.assertEqual(payload["floor_state"]["workflow"], "meetup")
+            self.assertTrue(
+                any(
+                    item["turn_type"] == "orchestrator_turn"
+                    for item in payload["turn_records"]
+                )
+            )
+            self.assertTrue(
+                any(item["turn_type"] == "actor_turn" for item in payload["turn_records"])
+            )
+            self.assertEqual(
+                payload["session_contract"]["active_facilitation"][
+                    "may_pause_actor_for_manager_check"
+                ],
+                True,
+            )
             self.assertEqual(payload["plan"]["round_budget"], 3)
             self.assertEqual(payload["plan_frame"]["source"], "default_guardrail")
             self.assertEqual(payload["start_preflight"]["status"], "ready")
@@ -70,6 +89,9 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertIn("prompt_packet", payload["context_packets"][0])
             self.assertEqual(len(payload["compressed_context_snapshots"]), 3)
             self.assertEqual(len(payload["round_prompt_packets"]), 6)
+            self.assertEqual(len(payload["runtime_hook_packets"]), 6)
+            self.assertIn("terminal_command", payload["runtime_hook_packets"][0])
+            self.assertIn("--task-type", payload["runtime_hook_packets"][0]["terminal_command"]["argv"])
             self.assertEqual(len(payload["subsession_outputs"]), 6)
             self.assertTrue(
                 all(
@@ -83,6 +105,52 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(repo.list_tickets(), [])
             for session_id in result.subsession_session_ids:
                 self.assertEqual(control.get_runtime_session(session_id).status, "closed")
+
+    def test_scene_generation_workflow_records_scene_prep_lifecycle(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Scene Prep World")
+
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="scene_start",
+                topic="opening scene at the flooded station",
+                question="Prepare actor packets and scene-prep decisions.",
+                participants=["Narrator", "Crowd extras"],
+                rounds=2,
+                skill="scene_start",
+            )
+            payload = json.loads(result.run_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(payload["workflow"], "scene_generation")
+            self.assertEqual(payload["workflow_requested"], "scene_start")
+            self.assertEqual(payload["workflow_profile"]["workflow"], "scene_generation")
+            self.assertIn("actor_session_policy", payload["workflow_profile"])
+            self.assertEqual(payload["floor_state"]["workflow"], "scene_generation")
+            self.assertEqual(payload["floor_state"]["conclusion_status"], "author_review_ready")
+            self.assertTrue(
+                any(
+                    item["phase_id"] == "actor_assignment"
+                    for item in payload["workflow_profile"]["phase_model"]
+                )
+            )
+            self.assertIn(
+                "role_isolation",
+                payload["context_packets"][0]["expected_output"],
+            )
+            self.assertIn(
+                "model_thinking_recommendation",
+                payload["subsession_outputs"][0],
+            )
+            self.assertIn(
+                "orchestrator_scene_generation_actor_turn",
+                payload["runtime_hook_packets"][0]["terminal_command"]["argv"],
+            )
+            self.assertTrue(
+                any(
+                    item["turn_type"] == "manager_check_turn"
+                    for item in payload["turn_records"]
+                )
+            )
 
     def test_max_queue_turns_caps_autonomous_rounds_and_returns_boundary(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA Patch Dashboards</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #697386;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #7c3aed;
+      --warn: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    h1, h2 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(28px, 4vw, 46px); }
+    h2 { font-size: 22px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .release {
+      display: grid;
+      gap: 12px;
+    }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      color: var(--muted);
+      background: #fbfcfe;
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); border-color: #99d6cf; background: #eefaf8; }
+    .badge.warn { color: var(--warn); border-color: #f1c27d; background: #fff8ed; }
+    a {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    ul {
+      margin: 10px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+    code {
+      background: #eef1f5;
+      border-radius: 5px;
+      padding: 2px 5px;
+      color: #253041;
+    }
+    .rule {
+      border-left: 4px solid var(--accent-2);
+      padding-left: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>WSA Patch Dashboards</h1>
+      <p>Human-readable release dashboards for architecture, workflow, module, and script changes.</p>
+    </header>
+
+    <section class="grid">
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.2-meetup-scene-orchestrator.html">v0.2.2 Meetup + Scene Orchestrator</a></h2>
+          <p>Defines the two primary orchestrator entrypoints and visualizes the new workflow/hook split.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">workflow profiles</span>
+          <span class="badge accent">runtime hook packets</span>
+          <span class="badge">scene_start</span>
+          <span class="badge warn">Hermes executes subagents</span>
+        </div>
+        <ul>
+          <li>New tracked workflow profile layer for <code>meetup</code> and <code>scene_generation</code>.</li>
+          <li>New turn/hook packet layer for floor state, turn records, prompts, and terminal command shapes.</li>
+          <li>Dashboard-first summary for reviewers who need architecture context faster than a raw diff.</li>
+        </ul>
+      </article>
+
+      <article class="card rule">
+        <h2>Patch Rule</h2>
+        <p>For every versioned patch that changes architecture, workflow, scripts, Hermes contracts, or user-facing runtime behavior, add a new dashboard HTML under <code>change_log/</code> and link it here before committing.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

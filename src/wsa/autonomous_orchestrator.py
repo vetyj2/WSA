@@ -22,6 +22,20 @@ from .orchestrator_contract import (
     build_start_preflight,
     build_termination_contract,
 )
+from .orchestrator_turns import (
+    build_actor_turn_record,
+    build_initial_floor_state,
+    build_manager_check_turn_records,
+    build_orchestrator_turn_record,
+    build_round_prompt_packet,
+    update_floor_state,
+)
+from .orchestrator_workflows import (
+    build_workflow_profile,
+    default_participants_for_profile,
+    normalize_workflow,
+    profile_expected_output_fields,
+)
 from .paths import safe_child_path
 from .reports import ReportMailbox
 from .repositories import EntityRecord, TicketRecord, WorldRepository, new_id
@@ -95,8 +109,16 @@ class AutonomousOrchestrator:
             raise ValueError("approval must be required for this MVP workflow")
 
         run_id = new_id("orun")
+        workflow_requested = workflow
+        workflow = normalize_workflow(workflow)
         skill_name = skill or workflow
-        participant_plan = self._plan_participants(participants, topic, workflow)
+        workflow_profile = build_workflow_profile(workflow_requested, skill_name)
+        participant_plan = self._plan_participants(
+            participants,
+            topic,
+            workflow,
+            workflow_profile,
+        )
         if len(participant_plan) > max_subsession_calls:
             raise ValueError(
                 "max_subsession_calls must be at least the participant count "
@@ -111,7 +133,14 @@ class AutonomousOrchestrator:
         if rounds > call_budget_turns:
             budget_exhausted_reasons.append("max_subsession_calls_reached_before_requested_rounds")
         budget_exhausted = bool(budget_exhausted_reasons)
-        plan_frame = build_plan_frame(workflow, skill_name, topic, question, frame_plan)
+        plan_frame = build_plan_frame(
+            workflow,
+            skill_name,
+            topic,
+            question,
+            frame_plan,
+            workflow_profile,
+        )
         concurrency_policy = build_concurrency_policy(
             participant_plan,
             max_concurrent_subsessions,
@@ -141,6 +170,7 @@ class AutonomousOrchestrator:
             plan_frame,
             termination_contract,
             session_cleanup,
+            workflow_profile,
         )
         run_dir = safe_child_path(
             self.world.path,
@@ -167,7 +197,9 @@ class AutonomousOrchestrator:
         plan = {
             "run_id": run_id,
             "workflow": workflow,
+            "workflow_requested": workflow_requested,
             "skill": skill_name,
+            "workflow_profile": workflow_profile,
             "world_id": self.world.world_id,
             "topic": topic,
             "question": question,
@@ -270,6 +302,7 @@ class AutonomousOrchestrator:
                 question,
                 queue_turns,
                 context_policy,
+                workflow_profile,
             )
             context_packets.append({**context_packet, "session_id": session_id})
             self.transport.send(
@@ -285,6 +318,13 @@ class AutonomousOrchestrator:
         lifecycle.append({"state": "subsessions_running", "at": utc_now()})
         compressed_context_snapshots = []
         round_prompt_packets = []
+        turn_records = []
+        floor_state = build_initial_floor_state(
+            workflow_profile,
+            topic,
+            question,
+            participant_plan,
+        )
         for round_index in range(1, queue_turns + 1):
             if round_index > 1:
                 lifecycle.append(
@@ -294,12 +334,22 @@ class AutonomousOrchestrator:
                         "round": round_index,
                     }
                 )
+            turn_records.append(
+                build_orchestrator_turn_record(
+                    run_id,
+                    round_index,
+                    workflow_profile,
+                    floor_state,
+                )
+            )
             round_outputs = []
             for context_packet in context_packets:
-                round_prompt_packet = self._round_prompt_packet(
+                round_prompt_packet = build_round_prompt_packet(
                     context_packet,
                     round_index,
                     compressed_context_snapshots[-1] if compressed_context_snapshots else None,
+                    workflow_profile,
+                    self.world.world_id,
                 )
                 round_prompt_packets.append(round_prompt_packet)
                 output = self._subsession_output(context_packet, round_index)
@@ -308,6 +358,9 @@ class AutonomousOrchestrator:
                 if output["quality_gate"]["accepted"]:
                     subsession_outputs.append(output)
                     round_outputs.append(output)
+                turn_records.append(
+                    build_actor_turn_record(round_prompt_packet, output)
+                )
                 self.transport.send(
                     str(context_packet["session_id"]),
                     "outbox",
@@ -320,9 +373,24 @@ class AutonomousOrchestrator:
             compressed_context_snapshots.append(
                 self._compressed_context_snapshot(round_index, round_outputs, context_policy)
             )
+            turn_records.extend(
+                build_manager_check_turn_records(run_id, round_index, round_outputs)
+            )
+            floor_state = update_floor_state(
+                floor_state,
+                round_index,
+                round_outputs,
+                turn_records,
+            )
 
         lifecycle.append({"state": "synthesizing", "at": utc_now()})
-        synthesis = self._synthesize(topic, question, participant_plan, subsession_outputs)
+        synthesis = self._synthesize(
+            topic,
+            question,
+            participant_plan,
+            subsession_outputs,
+            workflow_profile,
+        )
         lifecycle.append({"state": "diagnosing_conflicts", "at": utc_now()})
         diagnosis = self._diagnose_conflicts(
             subsession_outputs,
@@ -340,7 +408,9 @@ class AutonomousOrchestrator:
             "status": "awaiting_author_review",
             "world_id": self.world.world_id,
             "workflow": workflow,
+            "workflow_requested": workflow_requested,
             "skill": skill_name,
+            "workflow_profile": workflow_profile,
             "topic": topic,
             "question": question,
             "manual_trigger": True,
@@ -350,6 +420,7 @@ class AutonomousOrchestrator:
             "execution_owner": "user_hermes_runtime",
             "wsa_role": "orchestration_contract_and_audit_artifacts_only",
             "plan_frame": plan_frame,
+            "floor_state": floor_state,
             "start_preflight": start_preflight,
             "session_contract": session_contract,
             "context_continuity": session_contract["context_continuity"],
@@ -368,6 +439,8 @@ class AutonomousOrchestrator:
                 context_packet["prompt_packet"] for context_packet in context_packets
             ],
             "round_prompt_packets": round_prompt_packets,
+            "runtime_hook_packets": round_prompt_packets,
+            "turn_records": turn_records,
             "subsession_outputs": subsession_outputs,
             "accepted_outputs_only": True,
             "followup_questions": self._followup_questions(subsession_outputs),
@@ -521,6 +594,7 @@ class AutonomousOrchestrator:
         participants: Iterable[str],
         topic: str,
         workflow: str,
+        workflow_profile: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         labels = [item.strip() for item in participants if item.strip()]
         if not labels:
@@ -531,17 +605,14 @@ class AutonomousOrchestrator:
             ]
             labels = entity_labels[:8]
         if not labels:
-            labels = [
-                "canon_guardian",
-                "conflict_diagnostician",
-                f"{workflow}_proposal_builder",
-            ]
+            labels = default_participants_for_profile(workflow_profile, workflow)
         return [
             {
                 "participant_id": f"P{index:03d}",
                 "label": label,
                 "role": "representative_voice",
                 "scope": "topic_relevant_context_only",
+                "workflow_role": workflow_profile.get("workflow", workflow),
             }
             for index, label in enumerate(labels, start=1)
         ]
@@ -557,6 +628,7 @@ class AutonomousOrchestrator:
         question: str,
         rounds: int,
         context_policy: str,
+        workflow_profile: Dict[str, Any],
     ) -> Dict[str, Any]:
         anchors = []
         if entity is not None:
@@ -568,17 +640,20 @@ class AutonomousOrchestrator:
                 }
                 for fact in self.repo.list_facts(entity.entity_id)[:8]
             ]
+        expected_fields = profile_expected_output_fields(workflow_profile)
         prompt_packet = {
             "schema": "wsa.orchestrator.subagent_prompt_packet.v1",
             "run_id": run_id,
             "skill": skill_name,
             "workflow": workflow,
+            "workflow_profile": workflow_profile.get("workflow", workflow),
             "participant_id": participant["participant_id"],
             "represents": participant["label"],
             "execution_owner": "user_hermes_runtime",
             "role_instruction": (
                 f"Represent {participant['label']} for this isolated WSA {skill_name} session. "
-                "Stay within the relevant context and mark uncertain claims as provisional."
+                "Stay within the relevant context, mark uncertain claims as provisional, "
+                "and answer only the bounded fields requested by the orchestrator."
             ),
             "relevant_context": {
                 "topic": topic,
@@ -589,13 +664,9 @@ class AutonomousOrchestrator:
                 "meeting_floor": "same_live_floor_until_chair_close_or_hard_limit",
                 "context_mode": "compressed_floor_summary_plus_relevant_recent_outputs",
             },
-            "expected_output": [
-                "position",
-                "objections",
-                "proposals",
-                "gaps",
-                "uncertainty",
-            ],
+            "expected_output": expected_fields,
+            "workflow_phase_model": workflow_profile.get("phase_model", []),
+            "facilitation_hooks": workflow_profile.get("dynamic_facilitation_hooks", []),
             "response_shape": {
                 "utterance_target": DEFAULT_UTTERANCE_TARGET,
                 "prefer_one_sentence": True,
@@ -619,6 +690,12 @@ class AutonomousOrchestrator:
             "topic": topic,
             "question": question,
             "round_budget": rounds,
+            "expected_output": expected_fields,
+            "workflow_profile": {
+                "workflow": workflow_profile.get("workflow", workflow),
+                "title": workflow_profile.get("title"),
+                "purpose": workflow_profile.get("purpose"),
+            },
             "context_scope": "minimal_relevant_context",
             "context_continuity": {
                 "policy": context_policy,
@@ -630,41 +707,11 @@ class AutonomousOrchestrator:
             "proposal_policy": "do_not_mutate_canon",
         }
 
-    def _round_prompt_packet(
-        self,
-        context_packet: Dict[str, Any],
-        round_index: int,
-        previous_snapshot: Dict[str, Any] | None,
-    ) -> Dict[str, Any]:
-        participant_id = context_packet["participant_id"]
-        return {
-            "schema": "wsa.orchestrator.round_prompt_packet.v1",
-            "prompt_packet_id": f"{context_packet['run_id']}:{participant_id}:round-{round_index}",
-            "run_id": context_packet["run_id"],
-            "participant_id": participant_id,
-            "represents": context_packet["represents"],
-            "round": round_index,
-            "live_floor_state": {
-                "floor_open": True,
-                "chair_has_closed": False,
-                "previous_compressed_snapshot": previous_snapshot,
-            },
-            "instruction": (
-                "Respond with only the requested bounded fields. Prefer one precise sentence "
-                "for each field unless the expected value requires a list."
-            ),
-            "expected_response_shape": DEFAULT_UTTERANCE_TARGET,
-            "quality_gate": {
-                "accepted_only_if_complete": True,
-                "missing_or_unbounded_output_requires_retry": True,
-            },
-        }
-
     def _subsession_output(self, context_packet: Dict[str, Any], round_index: int) -> Dict[str, Any]:
         label = context_packet["represents"]
         grounded = bool(context_packet.get("canon_anchors"))
         uncertainty = "medium" if grounded else "high"
-        return {
+        output = {
             "run_id": context_packet["run_id"],
             "participant_id": context_packet["participant_id"],
             "represents": label,
@@ -688,6 +735,57 @@ class AutonomousOrchestrator:
             ],
             "uncertainty": uncertainty,
         }
+        workflow = context_packet.get("workflow_profile", {}).get("workflow")
+        if workflow == "scene_generation":
+            output.update(
+                {
+                    "scene_relevance": (
+                        f"{label} identifies which facts or memories should affect the scene prep."
+                    ),
+                    "facts_to_include": [
+                        "Use only facts that affect scene stakes, viewpoint, or causality."
+                    ],
+                    "facts_to_hide": [
+                        "Keep hidden truths out of actor packets unless the viewpoint should know them."
+                    ],
+                    "memory_filter": "Separate character memory from author/workflow notes.",
+                    "actor_assignment": f"Treat {label} as a bounded scene-prep role until casting is approved.",
+                    "role_isolation": "If one session plays multiple roles, isolate voice, memory, and objectives per role.",
+                    "viewpoint_constraints": "Do not reveal unavailable knowledge to the viewpoint actor.",
+                    "scene_beat": f"Draft one provisional beat pressure for {label}.",
+                    "model_thinking_recommendation": (
+                        "Use higher thinking for canon or hidden-truth checks; use bounded turns for single-role actors."
+                    ),
+                    "risk_flags": [
+                        "verify timeline/location before script drafting",
+                        "avoid mixing multi-role memory",
+                    ],
+                    "confidence": "medium" if grounded else "low",
+                }
+            )
+        else:
+            output.update(
+                {
+                    "stance": "support_with_conditions" if grounded else "provisional",
+                    "answer": (
+                        f"{label} can contribute if its authority, needs, and constraints are explicit."
+                    ),
+                    "new_claims": [],
+                    "dependencies": [
+                        "author approval before canon conversion",
+                        "manager check for unsupported claims",
+                    ],
+                    "conflicts": [],
+                    "worldbuilding_use": "candidate meeting material only",
+                    "confidence": "medium" if grounded else "low",
+                    "next_actor_suggestion": "conflict_diagnostician"
+                    if uncertainty == "high"
+                    else "proposal_builder",
+                }
+            )
+        for field in context_packet.get("expected_output", []):
+            output.setdefault(field, [] if field.endswith("s") else "provisional")
+        return output
 
     def _quality_gate(self, output: Dict[str, Any]) -> Dict[str, Any]:
         required = ["position", "objections", "proposals", "gaps", "uncertainty"]
@@ -702,6 +800,9 @@ class AutonomousOrchestrator:
             "uncertainty_labeled": uncertainty_ok,
             "canon_mutation_attempt": canon_attempt,
             "accumulation_policy": "accepted_outputs_only",
+            "rejects_empty_agreement": True,
+            "rejects_unbounded_lore_dump": True,
+            "rejects_unlabeled_uncertainty": True,
         }
 
     def _compressed_context_snapshot(
@@ -750,17 +851,29 @@ class AutonomousOrchestrator:
         question: str,
         participants: List[Dict[str, Any]],
         outputs: List[Dict[str, Any]],
+        workflow_profile: Dict[str, Any],
     ) -> Dict[str, Any]:
         participant_labels = [item["label"] for item in participants]
-        return {
-            "summary": (
-                f"Autonomous orchestrator ran {len(outputs)} subsession outputs "
-                f"for {len(participants)} participants."
-            ),
-            "topic": topic,
-            "question": question,
-            "participant_labels": participant_labels,
-            "draft_options": [
+        if workflow_profile.get("workflow") == "scene_generation":
+            draft_options = [
+                {
+                    "option_id": "option-a",
+                    "title": "Approve scene-prep package only",
+                    "description": "Accept filtered facts, actor packets, role isolation notes, and stop before drafting.",
+                },
+                {
+                    "option_id": "option-b",
+                    "title": "Retry focused prep on risky actor assignments",
+                    "description": "Run another pass on multi-role isolation, hidden information, or model/thinking allocation.",
+                },
+                {
+                    "option_id": "option-c",
+                    "title": "Hold for author scene direction",
+                    "description": "Pause before actor/session calls until the author clarifies scene goal or viewpoint.",
+                },
+            ]
+        else:
+            draft_options = [
                 {
                     "option_id": "option-a",
                     "title": "Conservative canon-grounded structure",
@@ -776,7 +889,28 @@ class AutonomousOrchestrator:
                     "title": "Retry with narrower participants",
                     "description": "Run another pass focused on the highest-uncertainty voices.",
                 },
-            ],
+            ]
+        return {
+            "summary": (
+                f"Autonomous orchestrator ran {len(outputs)} subsession outputs "
+                f"for {len(participants)} participants in {workflow_profile.get('workflow')} mode."
+            ),
+            "topic": topic,
+            "question": question,
+            "workflow": workflow_profile.get("workflow"),
+            "workflow_title": workflow_profile.get("title"),
+            "participant_labels": participant_labels,
+            "draft_options": draft_options,
+            "structured_appendix": {
+                "canon_anchors": "kept separate from generated proposals",
+                "participant_proposals": "proposal_only_until_author_approval",
+                "turn_record_count": "see turn_records",
+                "workflow_phase_ids": [
+                    item.get("phase_id")
+                    for item in workflow_profile.get("phase_model", [])
+                    if isinstance(item, dict)
+                ],
+            },
         }
 
     def _diagnose_conflicts(

@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.2 Patch Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-2: #fdfefe;
+      --ink: #17202a;
+      --muted: #657184;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --blue: #1d4ed8;
+      --violet: #7c3aed;
+      --amber: #b45309;
+      --green: #15803d;
+      --red: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 50px); letter-spacing: 0; }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 15px; }
+    p { margin: 0; color: var(--muted); }
+    code {
+      background: #eef1f5;
+      border-radius: 5px;
+      padding: 2px 5px;
+      color: #253041;
+    }
+    .topline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .badge.green { color: var(--green); border-color: #a8d9b7; background: #effaf2; }
+    .badge.blue { color: var(--blue); border-color: #b9cdf8; background: #f1f6ff; }
+    .badge.violet { color: var(--violet); border-color: #d3c0fb; background: #f8f4ff; }
+    .badge.amber { color: var(--amber); border-color: #f1c27d; background: #fff8ed; }
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 16px 0;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .metric {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 104px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      line-height: 1;
+      margin: 8px 0 6px;
+    }
+    .flow {
+      display: grid;
+      gap: 10px;
+    }
+    .flow-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 12px;
+      min-height: 86px;
+    }
+    .node b { display: block; margin-bottom: 6px; }
+    .node p { font-size: 13px; }
+    .node.wsa { border-color: #99d6cf; background: #eefaf8; }
+    .node.hermes { border-color: #b9cdf8; background: #f1f6ff; }
+    .node.author { border-color: #d3c0fb; background: #f8f4ff; }
+    .node.guard { border-color: #f1c27d; background: #fff8ed; }
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-weight: 700;
+      min-height: 20px;
+    }
+    .modules {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .modules th, .modules td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .modules th { background: #f0f3f7; color: #344054; }
+    .modules tr:last-child td { border-bottom: 0; }
+    .bar {
+      display: grid;
+      grid-template-columns: minmax(110px, 160px) 1fr minmax(46px, auto);
+      gap: 10px;
+      align-items: center;
+      margin: 8px 0;
+    }
+    .track {
+      height: 12px;
+      background: #eef1f5;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--blue));
+    }
+    .list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .list li {
+      border-left: 4px solid var(--accent);
+      background: #fbfcfe;
+      padding: 10px 12px;
+      border-radius: 0 8px 8px 0;
+      color: var(--muted);
+    }
+    .callout {
+      border-left: 4px solid var(--amber);
+      padding-left: 14px;
+    }
+    @media (max-width: 780px) {
+      .flow-row { grid-template-columns: 1fr; }
+      .arrow { justify-content: flex-start; }
+      .bar { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="topline">
+        <span class="badge green">version v0.2.2</span>
+        <span class="badge blue">prepared 2026-06-02</span>
+        <span class="badge violet">patch dashboard</span>
+        <span class="badge amber">proposal-only runtime boundary</span>
+      </div>
+      <h1>Meetup + Scene Orchestrator Dashboard</h1>
+      <p>This patch turns the orchestrator from one generic simulated meeting path into two explicit workflow entrypoints with visualizable state, turn, prompt, and Hermes hook boundaries.</p>
+    </header>
+
+    <section class="section">
+      <h2>Patch Intent</h2>
+      <div class="grid">
+        <article class="metric">
+          <h3>Primary Change</h3>
+          <strong>2</strong>
+          <p>Official orchestrator entrypoints: <code>meetup</code> and <code>scene_generation</code>.</p>
+        </article>
+        <article class="metric">
+          <h3>Execution Boundary</h3>
+          <strong>WSA/Hermes</strong>
+          <p>WSA records state, prompts, hooks, quality gates, and approvals. Hermes owns real subagent execution.</p>
+        </article>
+        <article class="metric">
+          <h3>Review Surface</h3>
+          <strong>HTML</strong>
+          <p>Patch changes are summarized as architecture and workflow diagrams, not only raw code diffs.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Workflow Frames</h2>
+      <div class="grid">
+        <article class="node wsa">
+          <b>Meetup</b>
+          <p>Worldbuilding facts, startup candidates, conflict diagnosis, participant expansion, objections, manager checks, and approval options.</p>
+        </article>
+        <article class="node wsa">
+          <b>Scene Generation Prep</b>
+          <p>Scene goal, fact/history/memory filtering, hidden-truth boundaries, actor assignment, multi-role isolation, model/thinking guidance, and prep-complete checks.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section flow">
+      <h2>Runtime Ownership Flow</h2>
+      <div class="flow-row">
+        <div class="node author">
+          <b>Author / Operator</b>
+          <p>Manually starts a meetup or scene-start run and remains the approval authority.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node wsa">
+          <b>WSA Orchestrator</b>
+          <p>Creates plan, workflow profile, floor state, turn records, prompt packets, and report package.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node hermes">
+          <b>Hermes Runtime</b>
+          <p>Adapts hook packets into actual subagent or actor-session calls.</p>
+        </div>
+      </div>
+      <div class="flow-row">
+        <div class="node hermes">
+          <b>Callback / Output</b>
+          <p>Hermes returns bounded actor output or manager-check results.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node wsa">
+          <b>Quality Gate</b>
+          <p>WSA accepts only bounded, uncertainty-labeled, non-mutating outputs.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node guard">
+          <b>Approval Boundary</b>
+          <p>Canon, facts, scene drafts, and tickets stay proposal-only until explicit approval.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Module Impact</h2>
+      <table class="modules">
+        <thead>
+          <tr>
+            <th>Area</th>
+            <th>Changed Shape</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>orchestrator_workflows.py</code></td>
+            <td>New workflow profile registry for meetup and scene generation.</td>
+            <td>Keeps product process definition separate from run lifecycle IO.</td>
+          </tr>
+          <tr>
+            <td><code>orchestrator_turns.py</code></td>
+            <td>New pure helpers for floor state, turn records, runtime prompts, and terminal hook packets.</td>
+            <td>Prepares the future <code>next/submit</code> callback loop without bloating the orchestrator core.</td>
+          </tr>
+          <tr>
+            <td><code>autonomous_orchestrator.py</code></td>
+            <td>Now attaches <code>workflow_profile</code>, <code>floor_state</code>, <code>turn_records</code>, and <code>runtime_hook_packets</code>.</td>
+            <td>Run artifacts can show how the meeting or scene-prep floor is supposed to continue.</td>
+          </tr>
+          <tr>
+            <td><code>hermes_commands.py</code></td>
+            <td>Adds <code>/wsa_scene_start</code> and expands runtime contract entrypoints.</td>
+            <td>Hermes can present scene prep as a first-class skill without pretending WSA executes subagents itself.</td>
+          </tr>
+          <tr>
+            <td><code>cli.py</code></td>
+            <td>Adds <code>wsa orchestrator hooks &lt;run_id&gt;</code>.</td>
+            <td>Operators and Hermes wrappers can inspect prompt/terminal hook packets directly.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>Script Size Snapshot</h2>
+      <div class="bar">
+        <span><code>cli.py</code></span>
+        <div class="track"><div class="fill" style="width: 100%"></div></div>
+        <span>1663</span>
+      </div>
+      <div class="bar">
+        <span><code>hermes_commands.py</code></span>
+        <div class="track"><div class="fill" style="width: 65%"></div></div>
+        <span>1085</span>
+      </div>
+      <div class="bar">
+        <span><code>autonomous_orchestrator.py</code></span>
+        <div class="track"><div class="fill" style="width: 59%"></div></div>
+        <span>988</span>
+      </div>
+      <div class="bar">
+        <span><code>orchestrator_workflows.py</code></span>
+        <div class="track"><div class="fill" style="width: 23%"></div></div>
+        <span>386</span>
+      </div>
+      <div class="bar">
+        <span><code>orchestrator_turns.py</code></span>
+        <div class="track"><div class="fill" style="width: 14%"></div></div>
+        <span>237</span>
+      </div>
+      <p>The orchestrator core was split so turn/hook packet logic lives in a smaller execution-facing module. The next safe split candidates are CLI routing and Hermes registry data, but those should be separate patches.</p>
+    </section>
+
+    <section class="section">
+      <h2>User-Facing Flow</h2>
+      <ul class="list">
+        <li><code>wsa orchestrator run --workflow meetup</code> starts a representative worldbuilding meeting and records proposal-only outputs.</li>
+        <li><code>wsa orchestrator run --workflow scene_generation --skill scene_start</code> starts scene-prep orchestration before script-like drafting.</li>
+        <li><code>wsa orchestrator hooks &lt;run_id&gt; --format json</code> exposes Hermes-owned terminal/prompt hook packets.</li>
+        <li><code>/wsa_scene_start</code> becomes a public Hermes shortcut in the command registry.</li>
+      </ul>
+    </section>
+
+    <section class="section callout">
+      <h2>Still Not Implemented</h2>
+      <p>This patch does not make WSA call real Hermes subagents. The real runtime loop still needs callback ingestion and resume commands such as <code>orchestrator next</code> and <code>orchestrator submit</code>. The important improvement is that the workflow frame and hook packets are now visible, auditable, and ready for Hermes adaptation.</p>
+    </section>
+
+    <section class="section">
+      <h2>Verification Checklist</h2>
+      <div class="topline">
+        <span class="badge green">106 tests OK</span>
+        <span class="badge green">ResourceWarning mode OK</span>
+        <span class="badge green">compileall OK</span>
+        <span class="badge green">JSON examples OK</span>
+        <span class="badge green">template check OK</span>
+        <span class="badge green">update preflight OK</span>
+        <span class="badge green">sensitive scan OK</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

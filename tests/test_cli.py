@@ -510,6 +510,19 @@ class CliTests(TestCase):
                         run_id,
                     ]
                 )
+            hooks_stdout = StringIO()
+            with patch("sys.stdout", hooks_stdout):
+                hooks_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "hooks",
+                        run_id,
+                        "--format",
+                        "json",
+                    ]
+                )
             decide_stdout = StringIO()
             with patch("sys.stdout", decide_stdout):
                 decide_code = main(
@@ -526,10 +539,12 @@ class CliTests(TestCase):
                     ]
                 )
             status_payload = json.loads(status_stdout.getvalue())
+            hooks_payload = json.loads(hooks_stdout.getvalue())
 
             self.assertEqual(run_code, 0)
             self.assertEqual(status_code, 0)
             self.assertEqual(report_code, 0)
+            self.assertEqual(hooks_code, 0)
             self.assertEqual(decide_code, 0)
             self.assertEqual(status_payload["execution"], "autonomous_until_boundary")
             self.assertEqual(status_payload["skill"], "meetup")
@@ -542,6 +557,8 @@ class CliTests(TestCase):
                 2,
             )
             self.assertEqual(len(status_payload["subsession_outputs"]), 4)
+            self.assertEqual(hooks_payload["hook_count"], 4)
+            self.assertEqual(hooks_payload["hooks"][0]["turn_type"], "actor_turn")
             self.assertIn("draft_option: option-a", report_stdout.getvalue())
             self.assertIn("ticket_type: orchestrator_candidate", decide_stdout.getvalue())
 
@@ -707,6 +724,7 @@ class CliTests(TestCase):
             self.assertIn("/wsa_update", text_stdout.getvalue())
             self.assertIn("/wsa_update_backup", text_stdout.getvalue())
             self.assertIn("/wsa_orchestrator", text_stdout.getvalue())
+            self.assertIn("/wsa_scene_start", text_stdout.getvalue())
             self.assertIn("/fill_the_rest", text_stdout.getvalue())
             self.assertIn("/fill-the-rest", text_stdout.getvalue())
             self.assertIn("/filltherest", text_stdout.getvalue())
@@ -730,6 +748,7 @@ class CliTests(TestCase):
             self.assertIn("/wsa_update", commands)
             self.assertIn("/wsa_update_backup", commands)
             self.assertIn("/wsa_orchestrator", commands)
+            self.assertIn("/wsa_scene_start", commands)
             self.assertIn("/wsa_orchestrator_decide", commands)
             self.assertIn("/fill_the_rest", commands)
             self.assertIn("/filltherest_plan", commands)
@@ -769,9 +788,20 @@ class CliTests(TestCase):
             self.assertEqual(commands["/wsa_update"]["safety"], "read_only")
             self.assertEqual(commands["/wsa_update_backup"]["safety"], "requires_approval")
             self.assertEqual(commands["/wsa_orchestrator"]["safety"], "proposal_only")
+            self.assertEqual(commands["/wsa_scene_start"]["safety"], "proposal_only")
+            self.assertEqual(
+                commands["/wsa_scene_start"]["cli_template_policy"]["execution"],
+                "run_start_then_fetch_hooks_after_run_id",
+            )
             self.assertEqual(
                 commands["/wsa_orchestrator"]["runtime_contract"]["execution_owner"],
                 "user_hermes_runtime",
+            )
+            self.assertIn(
+                "scene_generation",
+                commands["/wsa_orchestrator"]["runtime_contract"][
+                    "workflow_entrypoints"
+                ]["entrypoints"],
             )
             self.assertEqual(
                 commands["/wsa_orchestrator"]["runtime_contract"][
