@@ -104,6 +104,44 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.4-hermes-bridge-loop.html">v0.2.4 Hermes Bridge Loop</a></h2>
+          <p>Adds the first real next/submit callback loop so Hermes can execute actor turns while WSA preserves state and review boundaries.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">orchestrator next</span>
+          <span class="badge accent">orchestrator submit</span>
+          <span class="badge">hermes-bridge</span>
+          <span class="badge warn">Hermes owns execution</span>
+        </div>
+        <ul>
+          <li>Bridge mode creates a pending hook instead of local simulated outputs.</li>
+          <li>Callback files under <code>hermes/callbacks</code> can advance the run and update floor state.</li>
+          <li>No new user-visible shortcut is required; next/submit are internal CLI routes.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.3-compact-command-surface.html">v0.2.3 Compact Command Surface</a></h2>
+          <p>Compresses the recommended Hermes menu into six entrypoints while keeping existing detailed routes as compatibility/internal commands.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">Startup</span>
+          <span class="badge accent">Meetup</span>
+          <span class="badge accent">Scene</span>
+          <span class="badge">Patrol</span>
+          <span class="badge">Doctor</span>
+          <span class="badge">Database</span>
+        </div>
+        <ul>
+          <li>Publishes <code>canonical_menu_surface</code> in the Hermes command registry.</li>
+          <li>Folds easystartup into Startup as easy mode instead of a separate product surface.</li>
+          <li>Clarifies that new features should route by workflow/mode/scope before adding visible commands.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.2-meetup-scene-orchestrator.html">v0.2.2 Meetup + Scene Orchestrator</a></h2>
           <p>Defines the two primary orchestrator entrypoints and visualizes the new workflow/hook split.</p>
         </div>

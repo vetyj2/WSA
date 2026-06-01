@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 from .ids import slugify
+from .orchestrator_bridge import initialize_bridge_payload, is_hermes_bridge_mode
 from .orchestrator_contract import (
     DEFAULT_CONTEXT_POLICY,
     DEFAULT_MAX_CONCURRENT_SUBSESSIONS,
@@ -313,9 +314,92 @@ class AutonomousOrchestrator:
                 world_id=self.world.world_id,
                 payload=context_packet,
                 parent_message_id=plan_envelope.message_id,
-            )
+        )
 
         lifecycle.append({"state": "subsessions_running", "at": utc_now()})
+        if is_hermes_bridge_mode(mode):
+            floor_state = build_initial_floor_state(
+                workflow_profile,
+                topic,
+                question,
+                participant_plan,
+            )
+            lifecycle.append({"state": "awaiting_hermes_callback", "at": utc_now()})
+            run_payload = {
+                "schema": ORCHESTRATOR_RUN_SCHEMA,
+                "run_id": run_id,
+                "status": "awaiting_callback",
+                "world_id": self.world.world_id,
+                "workflow": workflow,
+                "workspace_id": "local",
+                "workflow_requested": workflow_requested,
+                "skill": skill_name,
+                "workflow_profile": workflow_profile,
+                "topic": topic,
+                "question": question,
+                "manual_trigger": True,
+                "execution": "autonomous_until_boundary",
+                "subsession_execution_mode": "hermes_bridge_pending_callbacks",
+                "real_subagent_execution": "pending_user_hermes_runtime_callbacks",
+                "execution_owner": "user_hermes_runtime",
+                "wsa_role": "orchestration_contract_and_audit_artifacts_only",
+                "plan_frame": plan_frame,
+                "floor_state": floor_state,
+                "start_preflight": start_preflight,
+                "session_contract": session_contract,
+                "context_continuity": session_contract["context_continuity"],
+                "floor_continuity": session_contract["floor_continuity"],
+                "prompt_coordination": session_contract["prompt_coordination"],
+                "micro_turn_policy": session_contract["micro_turn_policy"],
+                "quality_gate": session_contract["quality_gate"],
+                "termination_policy": termination_contract,
+                "session_cleanup": session_cleanup,
+                "concurrency_policy": concurrency_policy,
+                "queue_limits": plan["queue_limits"],
+                "lifecycle": lifecycle,
+                "plan": plan,
+                "context_packets": context_packets,
+                "manager_session_id": manager_session_id,
+                "subsession_session_ids": subsession_session_ids,
+                "subagent_prompt_packets": [
+                    context_packet["prompt_packet"] for context_packet in context_packets
+                ],
+                "closed_subsessions": [],
+                "close_reason": None,
+                "canon_policy": "proposal_only_until_author_approval",
+                "world_mutations": [],
+                "report_id": None,
+            }
+            initialize_bridge_payload(run_payload, self.world.world_id)
+            run_path = safe_child_path(run_dir, "run.json")
+            run_path.write_text(
+                json.dumps(run_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            self.transport.send(
+                manager_session_id,
+                "outbox",
+                role="orchestrator_manager",
+                message_type="orchestrator_status",
+                world_id=self.world.world_id,
+                payload={
+                    "run_id": run_id,
+                    "status": "awaiting_callback",
+                    "execution_status": "waiting_for_hermes",
+                },
+                artifact_refs=[str(run_path)],
+            )
+            safe_child_path(run_dir, ".wsa_bridge").write_text("waiting_for_hermes\n", encoding="utf-8")
+            return OrchestratorRunResult(
+                run_id=run_id,
+                status="awaiting_callback",
+                run_dir=run_dir,
+                run_path=run_path,
+                report_id="",
+                manager_session_id=manager_session_id,
+                subsession_session_ids=subsession_session_ids,
+            )
+
         compressed_context_snapshots = []
         round_prompt_packets = []
         turn_records = []

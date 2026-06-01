@@ -4,8 +4,10 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from wsa.autonomous_orchestrator import AutonomousOrchestrator
+from wsa.hermes_adapter import HERMES_CALLBACK_SCHEMA
+from wsa.orchestrator_bridge import OrchestratorBridge
 from wsa.repositories import ControlRepository, WorldRepository
-from wsa.workspace import create_world
+from wsa.workspace import create_world, utc_now
 
 
 class AutonomousOrchestratorTests(TestCase):
@@ -105,6 +107,154 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(repo.list_tickets(), [])
             for session_id in result.subsession_session_ids:
                 self.assertEqual(control.get_runtime_session(session_id).status, "closed")
+
+    def test_hermes_bridge_next_submit_loop_reaches_author_review(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Bridge World")
+            repo = WorldRepository(world.world_id, world.path)
+
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="meetup",
+                topic="council bridge pass",
+                question="Collect Hermes-backed participant output.",
+                participants=["Council"],
+                rounds=2,
+                mode="hermes-bridge",
+            )
+            bridge = OrchestratorBridge(workspace)
+            first_next = bridge.next(result.run_id)
+
+            self.assertEqual(result.report_id, "")
+            self.assertEqual(first_next["status"], "awaiting_callback")
+            self.assertEqual(first_next["execution_status"], "waiting_for_hermes")
+            self.assertEqual(first_next["hook"]["round"], 1)
+            self.assertEqual(first_next["hook"]["participant_id"], "P001")
+
+            first_callback = _write_bridge_callback(
+                workspace,
+                world.world_id,
+                first_next["hook"],
+                "Bridge output round one.",
+                uncertainty="medium",
+            )
+            first_submit = bridge.submit(result.run_id, first_callback)
+            second_next = bridge.next(result.run_id)
+
+            self.assertTrue(first_submit["accepted"])
+            self.assertEqual(first_submit["status"], "awaiting_callback")
+            self.assertEqual(second_next["hook"]["round"], 2)
+            self.assertIn("Bridge round 1 accepted", second_next["hook"]["prompt"])
+
+            second_callback = _write_bridge_callback(
+                workspace,
+                world.world_id,
+                second_next["hook"],
+                "Bridge output round two.",
+                uncertainty="low",
+            )
+            second_submit = bridge.submit(result.run_id, second_callback)
+            final_payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
+
+            self.assertTrue(second_submit["accepted"])
+            self.assertEqual(second_submit["status"], "awaiting_author_review")
+            self.assertEqual(second_submit["execution_status"], "completed_by_hermes")
+            self.assertEqual(final_payload["subsession_execution_mode"], "hermes_bridge_pending_callbacks")
+            self.assertEqual(final_payload["execution_status"], "completed_by_hermes")
+            self.assertEqual(len(final_payload["subsession_outputs"]), 2)
+            self.assertEqual(len(final_payload["submitted_callbacks"]), 2)
+            self.assertEqual(final_payload["pending_hooks"], [])
+            self.assertTrue(final_payload["report_id"])
+            self.assertEqual(repo.get_report(final_payload["report_id"]).purpose, "orchestrator_run")
+            self.assertEqual(repo.list_facts(), [])
+            control = ControlRepository(workspace)
+            for session_id in result.subsession_session_ids:
+                self.assertEqual(control.get_runtime_session(session_id).status, "closed")
+            self.assertEqual(
+                control.get_runtime_session(result.manager_session_id).status,
+                "awaiting_author_review",
+            )
+
+    def test_hermes_bridge_rejects_external_callback_path(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Bridge Path World")
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="meetup",
+                topic="path check",
+                question="Check callback path.",
+                participants=["Council"],
+                rounds=1,
+                mode="hermes-bridge",
+            )
+            outside = Path(tmp) / "outside.json"
+            outside.write_text("{}", encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                OrchestratorBridge(workspace).submit(result.run_id, outside)
+
+    def test_hermes_bridge_requires_callback_world_route(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Bridge Route World")
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="meetup",
+                topic="route check",
+                question="Check callback route.",
+                participants=["Council"],
+                rounds=1,
+                mode="hermes-bridge",
+            )
+            bridge = OrchestratorBridge(workspace)
+            next_payload = bridge.next(result.run_id)
+            callback = _write_bridge_callback(
+                workspace,
+                world.world_id,
+                next_payload["hook"],
+                "Route test output.",
+            )
+            payload = json.loads(callback.read_text(encoding="utf-8"))
+            payload.pop("route")
+            callback.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError):
+                bridge.submit(result.run_id, callback)
+
+    def test_hermes_bridge_rejected_callback_keeps_hook_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Bridge Reject World")
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="meetup",
+                topic="quality check",
+                question="Check rejected callback.",
+                participants=["Council"],
+                rounds=1,
+                mode="hermes-bridge",
+            )
+            bridge = OrchestratorBridge(workspace)
+            next_payload = bridge.next(result.run_id)
+            callback = _write_bridge_callback(
+                workspace,
+                world.world_id,
+                next_payload["hook"],
+                "Rejected output.",
+                uncertainty="unlabeled",
+            )
+
+            submitted = bridge.submit(result.run_id, callback)
+            run_payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
+
+            self.assertFalse(submitted["accepted"])
+            self.assertEqual(submitted["execution_status"], "callback_retry_required")
+            self.assertEqual(submitted["pending_hook_count"], 1)
+            self.assertEqual(run_payload["subsession_outputs"], [])
+            self.assertEqual(run_payload["pending_hooks"][0]["turn_id"], next_payload["hook"]["turn_id"])
+            self.assertEqual(run_payload["rejected_callbacks"][0]["turn_id"], next_payload["hook"]["turn_id"])
+            self.assertIsNone(run_payload["report_id"])
 
     def test_scene_generation_workflow_records_scene_prep_lifecycle(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -308,3 +458,50 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(closed["status"], "closed")
             self.assertEqual(closed["close_reason"], "done")
             self.assertEqual(repo.list_facts(), [])
+
+
+def _write_bridge_callback(
+    workspace: Path,
+    world_id: str,
+    hook: dict,
+    position: str,
+    uncertainty: str = "medium",
+) -> Path:
+    callbacks_dir = workspace / "hermes" / "callbacks"
+    callbacks_dir.mkdir(parents=True, exist_ok=True)
+    path = callbacks_dir / f"{hook['turn_id'].replace(':', '_')}.json"
+    payload = {
+        "schema": HERMES_CALLBACK_SCHEMA,
+        "callback_id": f"callback_{hook['turn_id'].replace(':', '_')}",
+        "task_id": f"task_{hook['turn_id'].replace(':', '_')}",
+        "workspace_id": "local",
+        "created_at": utc_now(),
+        "status": "completed",
+            "route": {
+                "world_id": world_id,
+                "scene_id": None,
+                "session_id": hook["session_id"],
+                "role": "orchestrator_subsession",
+            },
+        "payload": {
+            "turn_id": hook["turn_id"],
+            "output": {
+                "position": position,
+                "stance": "support_with_conditions",
+                "answer": position,
+                "new_claims": [],
+                "objections": ["Keep this proposal-only."],
+                "dependencies": ["Author approval."],
+                "conflicts": [],
+                "worldbuilding_use": "candidate material",
+                "confidence": "medium",
+                "next_actor_suggestion": "none",
+                "proposals": ["Carry this into the review package."],
+                "gaps": ["Needs author review."],
+                "uncertainty": uncertainty,
+            },
+        },
+        "artifact_refs": [],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path

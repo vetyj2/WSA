@@ -30,11 +30,15 @@ def build_hermes_command_registry() -> Dict[str, Any]:
         "parser_policy": {
             "canonical_style": "telegram_safe_underscore",
             "aliases_may_include_hyphen": True,
-            "telegram_menu_policy": "register_canonical_underscore_commands_only",
+            "telegram_menu_policy": (
+                "prefer_canonical_menu_surface; keep compatibility commands available "
+                "for free-form parsing"
+            ),
             "unknown_command_policy": "show_help_without_execution",
             "execution_owner": "user_hermes_runtime",
             "wsa_role": "declare_intents_and_cli_templates_only",
         },
+        "canonical_menu_surface": _canonical_menu_surface(),
         "cli_template_policy": {
             "argv_array_required": True,
             "shell_joining": "forbidden_by_default",
@@ -70,6 +74,95 @@ def build_hermes_command_registry() -> Dict[str, Any]:
         },
         "fill_the_rest": fill_the_rest_contract(),
         "commands": _default_commands(),
+    }
+
+
+def _canonical_menu_surface() -> Dict[str, Any]:
+    return {
+        "schema": "wsa.hermes.canonical_menu_surface.v1",
+        "purpose": (
+            "Keep the user-facing Hermes command surface small while allowing internal "
+            "workflow, mode, scope, and action routing to grow."
+        ),
+        "max_visible_entrypoints": 6,
+        "entries": [
+            {
+                "label": "Startup",
+                "primary_command": "/wsa_startup",
+                "modes": ["open", "easy"],
+                "current_routes": ["/wsa_startup", "/wsa_easystartup", "/wsa_answer", "/wsa_pick"],
+                "intent": "initial_world_setup_and_interview_progress",
+                "notes": [
+                    "Easystartup is Startup with easy-pick mode, not a separate top-level product surface.",
+                ],
+            },
+            {
+                "label": "Meetup",
+                "primary_command": "/wsa_orchestrator",
+                "modes": ["meetup", "retry", "fill_the_rest", "decision_meeting"],
+                "current_routes": [
+                    "/wsa_orchestrator",
+                    "/wsa_meeting",
+                    "/fill_the_rest",
+                    "/filltherest_plan",
+                    "/filltherest_start",
+                ],
+                "intent": "non_canon_worldbuilding_discussion_and_candidate_generation",
+                "notes": [
+                    "Meetup is a working belief or intermediate orchestration surface; it does not directly commit canon.",
+                ],
+            },
+            {
+                "label": "Scene",
+                "primary_command": "/wsa_scene_start",
+                "modes": ["prep", "actor_assignment", "viewpoint_filter", "draft_boundary"],
+                "current_routes": ["/wsa_scene_start"],
+                "intent": "scene_prep_scene_data_logs_actor_context_and_localized_viewpoint_work",
+                "notes": [
+                    "Scene is the reliability layer for localized scene data, actor packets, viewpoints, and script-prep scope.",
+                ],
+            },
+            {
+                "label": "Patrol",
+                "primary_command": None,
+                "modes": ["scheduled", "world_health", "gap_scan", "stale_work_review"],
+                "current_routes": ["/wsa_autogen", "/filltherest_plan"],
+                "intent": "reactive_and_periodic_world_hygiene_patrol",
+                "status": "route_group_no_single_command_yet",
+                "notes": [
+                    "Patrol should become a visible entrypoint before adding more narrow patrol-style slash commands.",
+                ],
+            },
+            {
+                "label": "Doctor",
+                "primary_command": "/wsa_doctor",
+                "modes": ["readiness", "update_preflight", "runtime_contract", "template_check"],
+                "current_routes": ["/wsa_doctor", "/wsa_update", "/wsa_update_backup"],
+                "intent": "installation_runtime_update_and_contract_diagnostics",
+            },
+            {
+                "label": "Database",
+                "primary_command": None,
+                "modes": ["query", "reports", "tickets", "facts", "export", "migration"],
+                "current_routes": ["/wsa_worlds", "/wsa_reports", "/wsa_tickets", "/wsa_approve_ticket"],
+                "intent": "world_data_inspection_review_and_structural_management",
+                "status": "route_group_no_single_command_yet",
+                "notes": [
+                    "Database is separate from Doctor: Doctor diagnoses health; Database inspects and manages world data.",
+                ],
+            },
+        ],
+        "compatibility_policy": {
+            "keep_existing_commands_available": True,
+            "do_not_expand_visible_menu_for_every_new_feature": True,
+            "new_capability_rule": (
+                "First attach new behavior to an existing entrypoint with workflow, mode, "
+                "scope, target, or action before creating a new user-visible command."
+            ),
+            "telegram_menu_policy": "show_entrypoints_or_primary_commands_only",
+            "free_form_alias_policy": "hyphenated_and_legacy_aliases_may_remain_for_parsing",
+        },
+        "hierarchy": ["entrypoint", "workflow", "mode", "scope", "target", "action"],
     }
 
 

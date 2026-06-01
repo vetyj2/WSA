@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.3 Compact Command Surface</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #657184;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --blue: #1d4ed8;
+      --violet: #7c3aed;
+      --amber: #b45309;
+      --green: #15803d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header { display: grid; gap: 12px; margin-bottom: 20px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 50px); letter-spacing: 0; }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 15px; }
+    p { margin: 0; color: var(--muted); }
+    code {
+      background: #eef1f5;
+      border-radius: 5px;
+      padding: 2px 5px;
+      color: #253041;
+    }
+    .topline, .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .badge.green { color: var(--green); border-color: #a8d9b7; background: #effaf2; }
+    .badge.blue { color: var(--blue); border-color: #b9cdf8; background: #f1f6ff; }
+    .badge.violet { color: var(--violet); border-color: #d3c0fb; background: #f8f4ff; }
+    .badge.amber { color: var(--amber); border-color: #f1c27d; background: #fff8ed; }
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 16px 0;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 14px;
+      min-height: 118px;
+      display: grid;
+      gap: 8px;
+    }
+    .card.primary { border-color: #99d6cf; background: #eefaf8; }
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 14px;
+      min-height: 116px;
+    }
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f0f3f7; color: #344054; }
+    tr:last-child td { border-bottom: 0; }
+    ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+    .callout {
+      border-left: 4px solid var(--amber);
+      padding-left: 14px;
+    }
+    @media (max-width: 820px) {
+      .flow { grid-template-columns: 1fr; }
+      .arrow { justify-content: flex-start; min-height: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="topline">
+        <span class="badge green">version v0.2.3</span>
+        <span class="badge blue">prepared 2026-06-02</span>
+        <span class="badge violet">command surface compression</span>
+        <span class="badge amber">existing routes preserved</span>
+      </div>
+      <h1>Compact Hermes Command Surface</h1>
+      <p>This patch prevents WSA from growing a new user-visible shortcut for every capability. It defines a small command surface and lets Hermes route dynamically by workflow, mode, scope, target, and action.</p>
+    </header>
+
+    <section class="section">
+      <h2>Canonical Entry Points</h2>
+      <div class="grid">
+        <article class="card primary">
+          <h3>Startup</h3>
+          <p>Initial world setup. Easystartup is Startup with easy-pick mode, not a separate top-level product surface.</p>
+          <div class="badges"><span class="badge">open</span><span class="badge">easy</span></div>
+        </article>
+        <article class="card primary">
+          <h3>Meetup</h3>
+          <p>Non-canon working meetings, worldbuilding candidates, fill work, re-meetups, and decision discussions.</p>
+          <div class="badges"><span class="badge">proposal-only</span><span class="badge">working belief</span></div>
+        </article>
+        <article class="card primary">
+          <h3>Scene</h3>
+          <p>Scene prep, actor packets, viewpoint filtering, scene data logs, and localized scene reliability.</p>
+          <div class="badges"><span class="badge">prep</span><span class="badge">local scope</span></div>
+        </article>
+        <article class="card">
+          <h3>Patrol</h3>
+          <p>Periodic or reactive world hygiene, stale work review, unresolved gaps, and queue checks.</p>
+          <div class="badges"><span class="badge">reserved route group</span></div>
+        </article>
+        <article class="card">
+          <h3>Doctor</h3>
+          <p>Install, runtime, update, adapter, template, and contract diagnostics.</p>
+          <div class="badges"><span class="badge">readiness</span><span class="badge">preflight</span></div>
+        </article>
+        <article class="card">
+          <h3>Database</h3>
+          <p>World data inspection and structural management: worlds, reports, tickets, facts, export, import, migration.</p>
+          <div class="badges"><span class="badge">data</span><span class="badge">review</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Routing Hierarchy</h2>
+      <div class="flow">
+        <div class="node">
+          <h3>Visible Entry Point</h3>
+          <p>Startup, Meetup, Scene, Patrol, Doctor, or Database.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node">
+          <h3>Dynamic Route</h3>
+          <p>Hermes resolves workflow, mode, scope, target, and action from the user's natural-language request.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node">
+          <h3>Compatibility Command</h3>
+          <p>Existing slash commands and CLI templates execute the actual route without expanding the visible menu.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Registry Changes</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>canonical_menu_surface</code></td>
+            <td>New registry section defining the six visible entrypoints and their internal route groups.</td>
+          </tr>
+          <tr>
+            <td><code>max_visible_entrypoints</code></td>
+            <td>Set to <code>6</code> so menu design resists command sprawl.</td>
+          </tr>
+          <tr>
+            <td><code>compatibility_policy</code></td>
+            <td>Keeps old commands available while advising Hermes not to expose every route as a top-level menu command.</td>
+          </tr>
+          <tr>
+            <td><code>hierarchy</code></td>
+            <td><code>entrypoint -> workflow -> mode -> scope -> target -> action</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section callout">
+      <h2>Product Boundary</h2>
+      <p>Meetup remains non-canon working belief and intermediate orchestration. Scene remains the reliability layer for scene data logs, localized viewpoint scope, actor/session packets, and scene-prep decisions. Startup and Easystartup remain one entrypoint family.</p>
+    </section>
+
+    <section class="section">
+      <h2>Verification Checklist</h2>
+      <div class="badges">
+        <span class="badge green">106 tests OK</span>
+        <span class="badge green">registry JSON OK</span>
+        <span class="badge green">HTML parse OK</span>
+        <span class="badge green">version v0.2.3</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

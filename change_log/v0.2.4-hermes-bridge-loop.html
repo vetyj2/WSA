@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.4 Hermes Bridge Loop</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #657184;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --blue: #1d4ed8;
+      --violet: #7c3aed;
+      --amber: #b45309;
+      --green: #15803d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header { display: grid; gap: 12px; margin-bottom: 20px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 50px); letter-spacing: 0; }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 15px; }
+    p { margin: 0; color: var(--muted); }
+    code {
+      background: #eef1f5;
+      border-radius: 5px;
+      padding: 2px 5px;
+      color: #253041;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .badge.green { color: var(--green); border-color: #a8d9b7; background: #effaf2; }
+    .badge.blue { color: var(--blue); border-color: #b9cdf8; background: #f1f6ff; }
+    .badge.violet { color: var(--violet); border-color: #d3c0fb; background: #f8f4ff; }
+    .badge.amber { color: var(--amber); border-color: #f1c27d; background: #fff8ed; }
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 16px 0;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(90px, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 12px;
+      min-height: 96px;
+    }
+    .node.wsa { border-color: #99d6cf; background: #eefaf8; }
+    .node.hermes { border-color: #b9cdf8; background: #f1f6ff; }
+    .node.guard { border-color: #f1c27d; background: #fff8ed; }
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 14px;
+      min-height: 116px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f0f3f7; color: #344054; }
+    tr:last-child td { border-bottom: 0; }
+    .callout {
+      border-left: 4px solid var(--amber);
+      padding-left: 14px;
+    }
+    @media (max-width: 900px) {
+      .flow { grid-template-columns: 1fr; }
+      .arrow { justify-content: flex-start; min-height: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="badges">
+        <span class="badge green">version v0.2.4</span>
+        <span class="badge blue">prepared 2026-06-02</span>
+        <span class="badge violet">Hermes bridge MVP</span>
+        <span class="badge amber">no direct Hermes execution</span>
+      </div>
+      <h1>Hermes Bridge Loop</h1>
+      <p>This patch lets WSA run a minimal live loop: WSA returns the next hook, Hermes executes the actor/subagent call, Hermes writes a callback, and WSA ingests it to update floor state.</p>
+    </header>
+
+    <section class="section">
+      <h2>Live Loop</h2>
+      <div class="flow">
+        <div class="node wsa">
+          <h3>Run</h3>
+          <p><code>--mode hermes-bridge</code> creates pending hook state.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node wsa">
+          <h3>Next</h3>
+          <p>WSA returns one hook packet with prompt and terminal command shape.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node hermes">
+          <h3>Hermes</h3>
+          <p>Hermes owns real actor/subagent execution.</p>
+        </div>
+        <div class="arrow">to</div>
+        <div class="node wsa">
+          <h3>Submit</h3>
+          <p>WSA ingests callback JSON from <code>hermes/callbacks</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>What Changed</h2>
+      <div class="grid">
+        <article class="card">
+          <h3><code>orchestrator_bridge.py</code></h3>
+          <p>New minimal bridge engine for <code>next</code>, <code>submit</code>, callback validation, quality gates, floor-state advance, and final review package creation.</p>
+        </article>
+        <article class="card">
+          <h3><code>orchestrator run</code></h3>
+          <p><code>--mode hermes-bridge</code> now creates <code>pending_hooks</code> instead of deterministic local simulated outputs.</p>
+        </article>
+        <article class="card">
+          <h3><code>orchestrator next</code></h3>
+          <p>Returns the next Hermes-owned prompt/terminal hook packet as JSON.</p>
+        </article>
+        <article class="card">
+          <h3><code>orchestrator submit</code></h3>
+          <p>Accepts completed callback JSON files from the workspace callback directory only, then validates world, session, role, size, uniqueness, and bounded output fields.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Status Model</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>waiting_for_hermes</code></td>
+            <td>WSA has prepared a hook and is waiting for Hermes-owned execution.</td>
+          </tr>
+          <tr>
+            <td><code>running_in_hermes</code></td>
+            <td>At least one callback has been accepted and more hooks remain.</td>
+          </tr>
+          <tr>
+            <td><code>completed_by_hermes</code></td>
+            <td>All planned bridge callbacks were ingested and WSA created a review package.</td>
+          </tr>
+          <tr>
+            <td><code>awaiting_author_review</code></td>
+            <td>No canon mutation happened; the author must approve, hold, or retry.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section callout">
+      <h2>Boundary</h2>
+      <p>WSA still does not start Docker, Telegram, sockets, provider APIs, or subagents. The bridge loop only makes Hermes execution auditable and resumable through local task/callback files.</p>
+    </section>
+
+    <section class="section">
+      <h2>Verification Checklist</h2>
+      <div class="badges">
+        <span class="badge green">bridge tests added</span>
+        <span class="badge green">CLI next/submit tested</span>
+        <span class="badge green">callback path guard</span>
+        <span class="badge green">callback world route guard</span>
+        <span class="badge green">callback session route guard</span>
+        <span class="badge green">rejected callbacks keep hook pending</span>
+        <span class="badge green">ephemeral sessions close on completion</span>
+        <span class="badge green">proposal-only boundary</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

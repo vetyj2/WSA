@@ -49,6 +49,7 @@ def build_round_prompt_packet(
         "run_id": context_packet["run_id"],
         "participant_id": participant_id,
         "represents": context_packet["represents"],
+        "session_id": context_packet.get("session_id"),
         "round": round_index,
         "turn_type": "actor_turn",
         "workflow": workflow_profile.get("workflow", context_packet["workflow"]),
@@ -91,6 +92,11 @@ def build_round_prompt_packet(
         ),
         "expected_response_shape": DEFAULT_UTTERANCE_TARGET,
         "expected_fields": context_packet.get("expected_output", []),
+        "expected_callback_route": {
+            "world_id": world_id,
+            "session_id": context_packet.get("session_id"),
+            "role": "orchestrator_subsession",
+        },
         "quality_gate": {
             "accepted_only_if_complete": True,
             "missing_or_unbounded_output_requires_retry": True,

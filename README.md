@@ -159,6 +159,21 @@ PYTHONPATH=src python3 -m wsa hermes commands --format json
 PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes commands --write-example
 ```
 
+The user-facing command surface should stay compact even as WSA gains more workflows. Hermes adapters should expose a small menu of entrypoints, then route internally by workflow, mode, scope, target, and action.
+
+Recommended visible entrypoints:
+
+```text
+Startup   Initial world setup. Easystartup is Startup with easy-pick mode.
+Meetup    Non-canon working meetings, worldbuilding candidates, fill work, and re-meetups.
+Scene     Scene prep, scene data logs, actor packets, viewpoint filtering, and localized scene scope.
+Patrol    Periodic or reactive world hygiene checks, stale work review, and gap scanning.
+Doctor    Installation, update, runtime contract, template, and adapter diagnostics.
+Database  World data inspection, reports, tickets, facts, export, import, and migration.
+```
+
+Compatibility commands such as `/wsa_easystartup`, `/wsa_scene_start`, `/fill_the_rest`, `/wsa_reports`, and `/wsa_update` remain available as parser routes or aliases. They should not all be exposed as top-level menu items unless a specific Hermes runtime wants an expert-mode menu. The registry publishes this as `canonical_menu_surface`.
+
 The canonical command names use underscores, which are safer for bot command menus. Hyphenated forms such as `/wsa-easystartup` and `/wsa-easystart` are included as aliases for Hermes runtimes that parse free-form chat text.
 
 Hermes command adapters should treat the registry as an argv/template contract, not as shell text. This keeps Docker, VPS services, and local shells aligned:
@@ -170,32 +185,7 @@ Hermes command adapters should treat the registry as an argv/template contract, 
 - Set the working directory to the workspace root or set `WSA_WORKSPACE`; task packet paths are relative to the workspace root.
 - Prefer JSON outputs for startup/easystartup command handling, then summarize them for chat.
 
-Recommended first shortcuts:
-
-```text
-/wsa_help              Show the WSA shortcut menu.
-/wsa_doctor            Run WSA and Hermes readiness diagnostics.
-/wsa_worlds            List worlds.
-/wsa_create_world      Create a new isolated world after confirmation.
-/wsa_startup           Start or continue the open-ended startup interview.
-/wsa_easystartup       Start or continue the easy-pick startup interview.
-/wsa_answer            Record an author-approved startup answer.
-/wsa_pick              Record parallel choices like 0001a 0002b plus notes.
-/wsa_autogen           Generate candidates until a natural-language checkpoint.
-/wsa_update            Run update preflight before a Hermes-owned WSA source upgrade.
-/wsa_update_backup     Create an approved workspace backup before source upgrade.
-/wsa_orchestrator      Run a manual-trigger autonomous orchestrator workflow.
-/wsa_orchestrator_decide Approve, retry, or hold an orchestrator package.
-/fill_the_rest         Prepare lower-layer fill work until a destination checkpoint.
-/filltherest_plan      Plan lower-layer fill work without starting cron automation.
-/filltherest_start     Start an approved cron-capable fill pass.
-/wsa_meeting           Run a non-mutating representative meeting.
-/wsa_meeting_decide    Approve, retry, or hold a meeting report.
-/wsa_reports           List reports for review.
-/wsa_tickets           List tickets for review.
-/wsa_approve_ticket    Apply a ticket after explicit confirmation.
-/wsa_snapshot          Request a version-control snapshot through Hermes policy.
-```
+Existing slash commands in the registry are compatibility and implementation routes for those entrypoints. New features should first attach to an existing entrypoint with a workflow or mode before adding another user-visible command.
 
 `/wsa_startup` and `/wsa_easystartup` are not pure read-only commands. They may create or update the active interview profile so progress can resume later; Hermes should not run them while `hermes/maintenance/update.lock` exists.
 
@@ -313,6 +303,16 @@ wsa orchestrator decide <run_id> --decision approve --option option-a
 wsa orchestrator decide <run_id> --decision retry
 wsa orchestrator close <run_id> --reason "superseded"
 ```
+
+For a Hermes-owned live loop, start the run with bridge mode. WSA still does not execute Hermes; it returns the next hook packet, waits for a callback file under `hermes/callbacks`, quality-gates that callback, updates `floor_state`, and then exposes the next hook.
+
+```bash
+wsa orchestrator run <world_id> --workflow meetup --topic "..." --mode hermes-bridge
+wsa orchestrator next <run_id> --format json
+wsa orchestrator submit <run_id> --callback hermes/callbacks/<callback>.json --format json
+```
+
+The bridge loop uses the same compact command surface. Hermes does not need a new user-visible slash command for `next` or `submit`; those are internal CLI routes for the active Meetup or Scene session. Callback files must stay under `hermes/callbacks`, match the pending hook route, and pass the bounded output quality gate before the run advances.
 
 Approval creates an `orchestrator_candidate` ticket only. Converting accepted options into facts, scenes, actor selections, or canonical world changes remains a later explicit ticket/apply step.
 

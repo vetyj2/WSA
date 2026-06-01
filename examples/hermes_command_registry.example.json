@@ -1,4 +1,140 @@
 {
+  "canonical_menu_surface": {
+    "compatibility_policy": {
+      "do_not_expand_visible_menu_for_every_new_feature": true,
+      "free_form_alias_policy": "hyphenated_and_legacy_aliases_may_remain_for_parsing",
+      "keep_existing_commands_available": true,
+      "new_capability_rule": "First attach new behavior to an existing entrypoint with workflow, mode, scope, target, or action before creating a new user-visible command.",
+      "telegram_menu_policy": "show_entrypoints_or_primary_commands_only"
+    },
+    "entries": [
+      {
+        "current_routes": [
+          "/wsa_startup",
+          "/wsa_easystartup",
+          "/wsa_answer",
+          "/wsa_pick"
+        ],
+        "intent": "initial_world_setup_and_interview_progress",
+        "label": "Startup",
+        "modes": [
+          "open",
+          "easy"
+        ],
+        "notes": [
+          "Easystartup is Startup with easy-pick mode, not a separate top-level product surface."
+        ],
+        "primary_command": "/wsa_startup"
+      },
+      {
+        "current_routes": [
+          "/wsa_orchestrator",
+          "/wsa_meeting",
+          "/fill_the_rest",
+          "/filltherest_plan",
+          "/filltherest_start"
+        ],
+        "intent": "non_canon_worldbuilding_discussion_and_candidate_generation",
+        "label": "Meetup",
+        "modes": [
+          "meetup",
+          "retry",
+          "fill_the_rest",
+          "decision_meeting"
+        ],
+        "notes": [
+          "Meetup is a working belief or intermediate orchestration surface; it does not directly commit canon."
+        ],
+        "primary_command": "/wsa_orchestrator"
+      },
+      {
+        "current_routes": [
+          "/wsa_scene_start"
+        ],
+        "intent": "scene_prep_scene_data_logs_actor_context_and_localized_viewpoint_work",
+        "label": "Scene",
+        "modes": [
+          "prep",
+          "actor_assignment",
+          "viewpoint_filter",
+          "draft_boundary"
+        ],
+        "notes": [
+          "Scene is the reliability layer for localized scene data, actor packets, viewpoints, and script-prep scope."
+        ],
+        "primary_command": "/wsa_scene_start"
+      },
+      {
+        "current_routes": [
+          "/wsa_autogen",
+          "/filltherest_plan"
+        ],
+        "intent": "reactive_and_periodic_world_hygiene_patrol",
+        "label": "Patrol",
+        "modes": [
+          "scheduled",
+          "world_health",
+          "gap_scan",
+          "stale_work_review"
+        ],
+        "notes": [
+          "Patrol should become a visible entrypoint before adding more narrow patrol-style slash commands."
+        ],
+        "primary_command": null,
+        "status": "route_group_no_single_command_yet"
+      },
+      {
+        "current_routes": [
+          "/wsa_doctor",
+          "/wsa_update",
+          "/wsa_update_backup"
+        ],
+        "intent": "installation_runtime_update_and_contract_diagnostics",
+        "label": "Doctor",
+        "modes": [
+          "readiness",
+          "update_preflight",
+          "runtime_contract",
+          "template_check"
+        ],
+        "primary_command": "/wsa_doctor"
+      },
+      {
+        "current_routes": [
+          "/wsa_worlds",
+          "/wsa_reports",
+          "/wsa_tickets",
+          "/wsa_approve_ticket"
+        ],
+        "intent": "world_data_inspection_review_and_structural_management",
+        "label": "Database",
+        "modes": [
+          "query",
+          "reports",
+          "tickets",
+          "facts",
+          "export",
+          "migration"
+        ],
+        "notes": [
+          "Database is separate from Doctor: Doctor diagnoses health; Database inspects and manages world data."
+        ],
+        "primary_command": null,
+        "status": "route_group_no_single_command_yet"
+      }
+    ],
+    "hierarchy": [
+      "entrypoint",
+      "workflow",
+      "mode",
+      "scope",
+      "target",
+      "action"
+    ],
+    "max_visible_entrypoints": 6,
+    "purpose": "Keep the user-facing Hermes command surface small while allowing internal workflow, mode, scope, and action routing to grow.",
+    "schema": "wsa.hermes.canonical_menu_surface.v1"
+  },
   "cli_template_policy": {
     "argv_array_required": true,
     "input_json_template": "json_serialize_after_placeholder_resolution",
@@ -792,6 +928,43 @@
         "Generated material stays proposal-only until explicit author approval."
       ],
       "runtime_contract": {
+        "bridge_loop": {
+          "callback_path_policy": "workspace/hermes/callbacks_only",
+          "mode": "hermes-bridge",
+          "next_template": [
+            "wsa",
+            "orchestrator",
+            "next",
+            "{run_id}",
+            "--format",
+            "json"
+          ],
+          "no_new_user_visible_command_required": true,
+          "purpose": "Let Hermes execute real subagent or actor calls while WSA owns run state, quality gates, callback ingestion, and approval boundaries.",
+          "schema": "wsa.hermes.orchestrator_bridge_loop.v1",
+          "start_template": [
+            "wsa",
+            "orchestrator",
+            "run",
+            "{world_id}",
+            "--workflow",
+            "{workflow}",
+            "--topic",
+            "{topic}",
+            "--mode",
+            "hermes-bridge"
+          ],
+          "submit_template": [
+            "wsa",
+            "orchestrator",
+            "submit",
+            "{run_id}",
+            "--callback",
+            "{callback_path}",
+            "--format",
+            "json"
+          ]
+        },
         "context_continuity": {
           "compression": "rolling_summary_plus_recent_outputs",
           "default_policy": "compressed-continuity",
@@ -1021,6 +1194,43 @@
         "Hermes owns actual actor/subagent calls. WSA records prompt packets, floor state, turn records, quality gates, and approval package."
       ],
       "runtime_contract": {
+        "bridge_loop": {
+          "callback_path_policy": "workspace/hermes/callbacks_only",
+          "mode": "hermes-bridge",
+          "next_template": [
+            "wsa",
+            "orchestrator",
+            "next",
+            "{run_id}",
+            "--format",
+            "json"
+          ],
+          "no_new_user_visible_command_required": true,
+          "purpose": "Let Hermes execute real subagent or actor calls while WSA owns run state, quality gates, callback ingestion, and approval boundaries.",
+          "schema": "wsa.hermes.orchestrator_bridge_loop.v1",
+          "start_template": [
+            "wsa",
+            "orchestrator",
+            "run",
+            "{world_id}",
+            "--workflow",
+            "{workflow}",
+            "--topic",
+            "{topic}",
+            "--mode",
+            "hermes-bridge"
+          ],
+          "submit_template": [
+            "wsa",
+            "orchestrator",
+            "submit",
+            "{run_id}",
+            "--callback",
+            "{callback_path}",
+            "--format",
+            "json"
+          ]
+        },
         "context_continuity": {
           "compression": "rolling_summary_plus_recent_outputs",
           "default_policy": "compressed-continuity",
@@ -1963,7 +2173,7 @@
     "aliases_may_include_hyphen": true,
     "canonical_style": "telegram_safe_underscore",
     "execution_owner": "user_hermes_runtime",
-    "telegram_menu_policy": "register_canonical_underscore_commands_only",
+    "telegram_menu_policy": "prefer_canonical_menu_surface; keep compatibility commands available for free-form parsing",
     "unknown_command_policy": "show_help_without_execution",
     "wsa_role": "declare_intents_and_cli_templates_only"
   },

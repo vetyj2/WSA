@@ -8,6 +8,7 @@ from typing import Sequence
 
 from . import __version__
 from .autonomous_orchestrator import AutonomousOrchestrator
+from .orchestrator_bridge import OrchestratorBridge
 from .orchestrator_contract import (
     DEFAULT_CONTEXT_POLICY,
     DEFAULT_MAX_CONCURRENT_SUBSESSIONS,
@@ -396,6 +397,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     orchestrator_hooks.add_argument("run_id", help="Orchestrator run ID.")
     orchestrator_hooks.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    orchestrator_next = orchestrator_subparsers.add_parser(
+        "next",
+        help="Return the next Hermes bridge hook packet for a run.",
+    )
+    orchestrator_next.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_next.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    orchestrator_submit = orchestrator_subparsers.add_parser(
+        "submit",
+        help="Submit a Hermes callback JSON file for a bridge run.",
+    )
+    orchestrator_submit.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_submit.add_argument("--callback", required=True, help="Callback JSON path.")
+    orchestrator_submit.add_argument(
         "--format",
         choices=("text", "json"),
         default="text",
@@ -991,7 +1015,7 @@ def run_orchestrator(
     print(f"orchestrator_status: {result.status}")
     print(f"run_dir: {result.run_dir}")
     print(f"run_path: {result.run_path}")
-    print(f"report_id: {result.report_id}")
+    print(f"report_id: {result.report_id or 'pending_hermes_completion'}")
     print(f"manager_session_id: {result.manager_session_id}")
     for session_id in result.subsession_session_ids:
         print(f"subsession_session_id: {session_id}")
@@ -1072,6 +1096,51 @@ def run_orchestrator_hooks(workspace: Path, run_id: str, output_format: str) -> 
         print(f"turn_type: {hook.get('turn_type')}")
         if command:
             print(f"terminal_command: {' '.join(str(item) for item in command[:8])} ...")
+    return 0
+
+
+def run_orchestrator_next(workspace: Path, run_id: str, output_format: str) -> int:
+    payload = OrchestratorBridge(workspace).next(run_id)
+    if output_format == "json":
+        print_json(payload)
+        return 0
+    print(f"orchestrator_run_id: {payload['run_id']}")
+    print(f"status: {payload['status']}")
+    print(f"execution_status: {payload['execution_status']}")
+    print(f"next_action: {payload['next_action']}")
+    hook = payload.get("hook")
+    if hook:
+        print(f"turn_id: {hook['turn_id']}")
+        print(f"turn_type: {hook['turn_type']}")
+        print(f"represents: {hook['represents']}")
+    return 0
+
+
+def run_orchestrator_submit(
+    workspace: Path,
+    run_id: str,
+    callback_path: str,
+    output_format: str,
+) -> int:
+    if not guard_update_unlocked(workspace, "orchestrator.submit"):
+        return 1
+    try:
+        payload = OrchestratorBridge(workspace).submit(run_id, Path(callback_path))
+    except (ValueError, FileNotFoundError, KeyError) as exc:
+        print("orchestrator_submit: blocked")
+        print(f"detail: {exc}")
+        return 1
+    if output_format == "json":
+        print_json(payload)
+        return 0
+    print(f"orchestrator_run_id: {payload['run_id']}")
+    print(f"turn_id: {payload['turn_id']}")
+    print(f"accepted: {str(payload['accepted']).lower()}")
+    print(f"status: {payload['status']}")
+    print(f"execution_status: {payload['execution_status']}")
+    print(f"next_action: {payload['next_action']}")
+    if payload.get("report_id"):
+        print(f"report_id: {payload['report_id']}")
     return 0
 
 
@@ -1547,6 +1616,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_orchestrator_report(config.workspace, args.run_id, args.format)
         if args.orchestrator_command == "hooks":
             return run_orchestrator_hooks(config.workspace, args.run_id, args.format)
+        if args.orchestrator_command == "next":
+            return run_orchestrator_next(config.workspace, args.run_id, args.format)
+        if args.orchestrator_command == "submit":
+            return run_orchestrator_submit(
+                config.workspace,
+                args.run_id,
+                args.callback,
+                args.format,
+            )
         if args.orchestrator_command == "decide":
             return run_orchestrator_decide(
                 config.workspace,

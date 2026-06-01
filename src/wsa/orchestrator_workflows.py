@@ -110,7 +110,7 @@ def _base_profile(
             ),
             "future_resume_shape": [
                 "wsa orchestrator next RUN_ID",
-                "wsa orchestrator submit RUN_ID --turn-id TURN_ID --callback CALLBACK_JSON",
+                "wsa orchestrator submit RUN_ID --callback hermes/callbacks/CALLBACK_JSON",
             ],
         },
     }

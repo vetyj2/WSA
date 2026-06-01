@@ -9,12 +9,14 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from wsa.cli import main
+from wsa.hermes_adapter import HERMES_CALLBACK_SCHEMA
 from wsa.startup import StartupProfileManager
 from wsa.workspace import (
     SCHEMA_VERSION,
     control_db_path,
     create_world,
     sqlite_connection,
+    utc_now,
     world_db_path,
 )
 
@@ -562,6 +564,82 @@ class CliTests(TestCase):
             self.assertIn("draft_option: option-a", report_stdout.getvalue())
             self.assertIn("ticket_type: orchestrator_candidate", decide_stdout.getvalue())
 
+    def test_orchestrator_bridge_cli_next_and_submit(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Bridge World")
+            run_stdout = StringIO()
+            with patch("sys.stdout", run_stdout):
+                run_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "run",
+                        world.world_id,
+                        "--workflow",
+                        "meetup",
+                        "--topic",
+                        "bridge cli",
+                        "--participant",
+                        "Council",
+                        "--rounds",
+                        "1",
+                        "--mode",
+                        "hermes-bridge",
+                    ]
+                )
+            run_id = ""
+            for line in run_stdout.getvalue().splitlines():
+                if line.startswith("orchestrator_run_id: "):
+                    run_id = line.split(": ", 1)[1]
+
+            next_stdout = StringIO()
+            with patch("sys.stdout", next_stdout):
+                next_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "next",
+                        run_id,
+                        "--format",
+                        "json",
+                    ]
+                )
+            next_payload = json.loads(next_stdout.getvalue())
+            callback_path = _write_cli_bridge_callback(
+                workspace,
+                world.world_id,
+                next_payload["hook"],
+            )
+
+            submit_stdout = StringIO()
+            with patch("sys.stdout", submit_stdout):
+                submit_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "submit",
+                        run_id,
+                        "--callback",
+                        str(callback_path.relative_to(workspace)),
+                        "--format",
+                        "json",
+                    ]
+                )
+            submit_payload = json.loads(submit_stdout.getvalue())
+
+            self.assertEqual(run_code, 0)
+            self.assertEqual(next_code, 0)
+            self.assertEqual(submit_code, 0)
+            self.assertEqual(next_payload["next_action"], "run_hermes_hook")
+            self.assertTrue(submit_payload["accepted"])
+            self.assertEqual(submit_payload["status"], "awaiting_author_review")
+            self.assertEqual(submit_payload["execution_status"], "completed_by_hermes")
+            self.assertTrue(submit_payload["report_id"])
+
     def test_report_and_ticket_list_cli_after_mock_scene(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -713,10 +791,32 @@ class CliTests(TestCase):
 
             payload = json.loads(json_stdout.getvalue())
             commands = {item["command"]: item for item in payload["commands"]}
+            menu = payload["canonical_menu_surface"]
+            menu_entries = {item["label"]: item for item in menu["entries"]}
 
             self.assertEqual(text_code, 0)
             self.assertEqual(json_code, 0)
             self.assertEqual(write_code, 0)
+            self.assertEqual(menu["max_visible_entrypoints"], 6)
+            self.assertEqual(
+                set(menu_entries),
+                {"Startup", "Meetup", "Scene", "Patrol", "Doctor", "Database"},
+            )
+            self.assertIn("easy", menu_entries["Startup"]["modes"])
+            self.assertIn("/wsa_easystartup", menu_entries["Startup"]["current_routes"])
+            self.assertEqual(
+                menu_entries["Meetup"]["intent"],
+                "non_canon_worldbuilding_discussion_and_candidate_generation",
+            )
+            self.assertEqual(
+                menu_entries["Scene"]["intent"],
+                "scene_prep_scene_data_logs_actor_context_and_localized_viewpoint_work",
+            )
+            self.assertEqual(menu_entries["Patrol"]["status"], "route_group_no_single_command_yet")
+            self.assertEqual(menu_entries["Database"]["status"], "route_group_no_single_command_yet")
+            self.assertTrue(
+                menu["compatibility_policy"]["do_not_expand_visible_menu_for_every_new_feature"]
+            )
             self.assertIn("/wsa_startup", text_stdout.getvalue())
             self.assertIn("/wsa_easystartup", text_stdout.getvalue())
             self.assertIn("/wsa-easystart", text_stdout.getvalue())
@@ -815,6 +915,15 @@ class CliTests(TestCase):
                 ],
                 12,
             )
+            self.assertEqual(
+                commands["/wsa_orchestrator"]["runtime_contract"]["bridge_loop"]["mode"],
+                "hermes-bridge",
+            )
+            self.assertTrue(
+                commands["/wsa_orchestrator"]["runtime_contract"]["bridge_loop"][
+                    "no_new_user_visible_command_required"
+                ]
+            )
             self.assertTrue(
                 commands["/wsa_orchestrator"]["runtime_contract"]["floor_continuity"][
                     "all_participants_receive_compressed_context_until_close"
@@ -907,3 +1016,45 @@ class CliTests(TestCase):
             self.assertEqual(code, 0)
             self.assertIn("template_ready: yes", stdout.getvalue())
             self.assertIn("ok\tworkspace_initialized", stdout.getvalue())
+
+
+def _write_cli_bridge_callback(workspace: Path, world_id: str, hook: dict) -> Path:
+    callbacks_dir = workspace / "hermes" / "callbacks"
+    callbacks_dir.mkdir(parents=True, exist_ok=True)
+    turn_id = hook["turn_id"]
+    path = callbacks_dir / f"{turn_id.replace(':', '_')}.json"
+    payload = {
+        "schema": HERMES_CALLBACK_SCHEMA,
+        "callback_id": f"callback_{turn_id.replace(':', '_')}",
+        "task_id": f"task_{turn_id.replace(':', '_')}",
+        "workspace_id": "local",
+        "created_at": utc_now(),
+        "status": "completed",
+        "route": {
+            "world_id": world_id,
+            "scene_id": None,
+            "session_id": hook["session_id"],
+            "role": "orchestrator_subsession",
+        },
+        "payload": {
+            "turn_id": turn_id,
+            "output": {
+                "position": "CLI bridge callback position.",
+                "stance": "provisional",
+                "answer": "CLI bridge callback answer.",
+                "new_claims": [],
+                "objections": ["Keep proposal-only."],
+                "dependencies": ["Author approval."],
+                "conflicts": [],
+                "worldbuilding_use": "candidate material",
+                "confidence": "medium",
+                "next_actor_suggestion": "none",
+                "proposals": ["Review this candidate."],
+                "gaps": ["Needs review."],
+                "uncertainty": "medium",
+            },
+        },
+        "artifact_refs": [],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path

@@ -347,5 +347,45 @@ def build_hermes_orchestrator_runtime_contract() -> Dict[str, Any]:
             "no_abandoned_open_subsessions": True,
         },
         "side_effect_policy": "proposal_only_until_author_approval",
+        "bridge_loop": {
+            "schema": "wsa.hermes.orchestrator_bridge_loop.v1",
+            "mode": "hermes-bridge",
+            "purpose": (
+                "Let Hermes execute real subagent or actor calls while WSA owns run state, "
+                "quality gates, callback ingestion, and approval boundaries."
+            ),
+            "start_template": [
+                "wsa",
+                "orchestrator",
+                "run",
+                "{world_id}",
+                "--workflow",
+                "{workflow}",
+                "--topic",
+                "{topic}",
+                "--mode",
+                "hermes-bridge",
+            ],
+            "next_template": [
+                "wsa",
+                "orchestrator",
+                "next",
+                "{run_id}",
+                "--format",
+                "json",
+            ],
+            "submit_template": [
+                "wsa",
+                "orchestrator",
+                "submit",
+                "{run_id}",
+                "--callback",
+                "{callback_path}",
+                "--format",
+                "json",
+            ],
+            "callback_path_policy": "workspace/hermes/callbacks_only",
+            "no_new_user_visible_command_required": True,
+        },
         "workflow_entrypoints": build_workflow_entrypoint_contracts(),
     }
