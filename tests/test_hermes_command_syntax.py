@@ -143,7 +143,7 @@ class HermesCommandSyntaxTests(TestCase):
             '/filltherest-start world_id=wld_demo destination="until 3 regions exist" cron_schedule="daily"': "/filltherest_start",
             '/filltherest-plan world_id=wld_demo destination="until 3 regions exist"': "/filltherest_plan",
             '/wsa-meeting world_id=wld_demo topic="Succession gap" participant="Council" participant="Guild"': "/wsa_meeting",
-            '/wsa-meetup world_id=wld_demo topic="seven universities" participant="North" participant="South"': "/wsa_orchestrator",
+            '/wsa-meetup world_id=wld_demo topic="rival institutions" participant="North" participant="South"': "/wsa_orchestrator",
             '/wsa-scene-start world_id=wld_demo topic="station opening" participant="Narrator"': "/wsa_scene_start",
         }
 
@@ -174,8 +174,8 @@ class HermesCommandSyntaxTests(TestCase):
 
             start_args = {
                 "world_id": world.world_id,
-                "destination": "until the harbor has guilds, conflicts,\nand scene hooks",
-                "scope": "harbor district",
+                "destination": "until the trade district has factions, conflicts,\nand scene hooks",
+                "scope": "trade district",
                 "discretion_level": 5,
                 "cron_schedule": "daily",
                 "quality_bar": "no duplicate filler",

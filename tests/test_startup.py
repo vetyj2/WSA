@@ -69,7 +69,7 @@ class StartupTests(TestCase):
 
             round_ = manager.interview(budget=2, mode="easystartup")
             lines = format_startup_interview(round_)
-            status = manager.answer_batch("0001a 0002b 그리고 학교물은 조금 어둡게")
+            status = manager.answer_batch("0001a 0002b 그리고 기관물은 조금 어둡게")
             profile = json.loads(manager.profile_path.read_text(encoding="utf-8"))
 
             self.assertEqual(round_.mode, "easystartup")
@@ -77,7 +77,7 @@ class StartupTests(TestCase):
             self.assertEqual(status.startup_ambiguity_percent, 80)
             self.assertEqual(profile["dimensions"][0]["selected_choice"], "a")
             self.assertEqual(profile["dimensions"][1]["selected_choice"], "b")
-            self.assertEqual(profile["freeform_notes"][0]["text"], "그리고 학교물은 조금 어둡게")
+            self.assertEqual(profile["freeform_notes"][0]["text"], "그리고 기관물은 조금 어둡게")
 
     def test_easystartup_batch_can_start_without_prior_interview(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -127,7 +127,7 @@ class StartupTests(TestCase):
             world = create_world(Path(tmp) / "workspace", "Answer World")
             manager = StartupProfileManager(world)
 
-            status = manager.answer("Q001", "A school mystery fantasy with a bitter tone.")
+            status = manager.answer("Q001", "An institutional mystery fantasy with a bitter tone.")
             lines = format_startup_status(status)
 
             self.assertEqual(status.startup_ambiguity_percent, 90)

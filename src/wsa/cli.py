@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
-from .autonomous_orchestrator import AutonomousOrchestrator
+from .autonomous_orchestrator import AutonomousOrchestrator, resolve_scene_filter_contract
 from .orchestrator_bridge import OrchestratorBridge
 from .orchestrator_contract import (
     DEFAULT_CONTEXT_POLICY,
@@ -369,6 +369,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="complete",
         help="When temporary subsessions should close. Default: complete.",
     )
+    orchestrator_run.add_argument(
+        "--no-prep-review",
+        action="store_true",
+        help="Opt out of the default prep review hook before first Hermes actor call.",
+    )
     orchestrator_status = orchestrator_subparsers.add_parser(
         "status",
         help="Show orchestrator run status.",
@@ -408,6 +413,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     orchestrator_next.add_argument("run_id", help="Orchestrator run ID.")
     orchestrator_next.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    orchestrator_prep_approve = orchestrator_subparsers.add_parser(
+        "prep-approve",
+        help="Approve a bridge prep report and open the first Hermes actor hook.",
+    )
+    orchestrator_prep_approve.add_argument("run_id", help="Orchestrator run ID.")
+    orchestrator_prep_approve.add_argument(
         "--format",
         choices=("text", "json"),
         default="text",
@@ -462,6 +478,86 @@ def build_parser() -> argparse.ArgumentParser:
 
     scene_parser = subparsers.add_parser("scene", help="Run scene orchestration utilities.")
     scene_subparsers = scene_parser.add_subparsers(dest="scene_command")
+    scene_start = scene_subparsers.add_parser(
+        "start",
+        aliases=["prep"],
+        help="Start a bounded Hermes-bridge scene prep run.",
+    )
+    scene_start.add_argument("world_id", help="World ID.")
+    scene_start.add_argument("--topic", required=True, help="Scene or scene-prep topic.")
+    scene_start.add_argument(
+        "--question",
+        default=(
+            "Prepare scene facts, actor assignments, role isolation, "
+            "model/thinking guidance, and approval choices."
+        ),
+        help="Scene-prep question to resolve before drafting.",
+    )
+    scene_start.add_argument("--rounds", type=int, default=3, help="Internal round budget.")
+    scene_start.add_argument(
+        "--max-queue-turns",
+        type=int,
+        default=DEFAULT_MAX_QUEUE_TURNS,
+        help=f"Maximum autonomous queue turns before stopping. Default: {DEFAULT_MAX_QUEUE_TURNS}.",
+    )
+    scene_start.add_argument(
+        "--max-concurrent-subsessions",
+        type=int,
+        default=DEFAULT_MAX_CONCURRENT_SUBSESSIONS,
+        help=(
+            "Maximum subsessions Hermes should run at the same time. "
+            f"Default: {DEFAULT_MAX_CONCURRENT_SUBSESSIONS}."
+        ),
+    )
+    scene_start.add_argument(
+        "--max-subsession-calls",
+        type=int,
+        default=DEFAULT_MAX_SUBSESSION_CALLS,
+        help=(
+            "Maximum total subsession calls before returning a partial package. "
+            f"Default: {DEFAULT_MAX_SUBSESSION_CALLS}."
+        ),
+    )
+    scene_start.add_argument(
+        "--context-policy",
+        default=DEFAULT_CONTEXT_POLICY,
+        help=f"Context carry-forward policy. Default: {DEFAULT_CONTEXT_POLICY}.",
+    )
+    scene_start.add_argument(
+        "--frame-plan",
+        help="Optional scene frame, viewpoint, location, timeframe, or guardrail.",
+    )
+    scene_start.add_argument(
+        "--termination-policy",
+        default=DEFAULT_TERMINATION_POLICY,
+        help=f"Termination policy label. Default: {DEFAULT_TERMINATION_POLICY}.",
+    )
+    scene_start.add_argument("--time-scope", help="Optional scene time scope.")
+    scene_start.add_argument("--location-scope", help="Optional scene location scope.")
+    scene_start.add_argument("--viewpoint", help="Optional viewpoint or POV scope.")
+    scene_start.add_argument(
+        "--condition",
+        action="append",
+        default=[],
+        help="Optional scene selection condition. Can be repeated.",
+    )
+    scene_start.add_argument(
+        "--participant",
+        action="append",
+        default=[],
+        help="Actor, narrator, crowd, continuity role, or scene-prep viewpoint. Can be repeated.",
+    )
+    scene_start.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    scene_start.add_argument(
+        "--no-prep-review",
+        action="store_true",
+        help="Opt out of the default prep review hook before first Hermes actor call.",
+    )
     scene_mock = scene_subparsers.add_parser("mock", help="Run a mock scene vertical slice.")
     scene_mock.add_argument("world_id", help="World ID.")
     scene_mock.add_argument("name", help="Scene name.")
@@ -914,6 +1010,92 @@ def run_scene_mock(workspace: Path, world_id: str, name: str, goal: str, actors:
     return 0
 
 
+def run_scene_start(
+    workspace: Path,
+    world_id: str,
+    topic: str,
+    question: str,
+    rounds: int,
+    max_queue_turns: int,
+    max_concurrent_subsessions: int,
+    max_subsession_calls: int,
+    context_policy: str,
+    frame_plan: str | None,
+    termination_policy: str,
+    time_scope: str | None,
+    location_scope: str | None,
+    viewpoint: str | None,
+    conditions: list[str],
+    participants: list[str],
+    output_format: str,
+    prep_review: bool,
+) -> int:
+    if not guard_update_unlocked(workspace, "scene.start"):
+        return 1
+    world = get_world(workspace, world_id)
+    repo = WorldRepository(world.world_id, world.path)
+    scene_filter_contract = resolve_scene_filter_contract(
+        repo,
+        time_scope=time_scope,
+        location_scope=location_scope,
+        viewpoint=viewpoint,
+        conditions=conditions,
+    )
+    try:
+        result = AutonomousOrchestrator(workspace, world).run(
+            workflow="scene_generation",
+            topic=topic,
+            question=question,
+            participants=participants,
+            rounds=rounds,
+            skill="scene_start",
+            mode="hermes-bridge",
+            max_queue_turns=max_queue_turns,
+            max_concurrent_subsessions=max_concurrent_subsessions,
+            max_subsession_calls=max_subsession_calls,
+            context_policy=context_policy,
+            frame_plan=frame_plan,
+            termination_policy=termination_policy,
+            subsession_policy="ephemeral",
+            canon_policy="proposal-only",
+            approval="required",
+            close_on="complete",
+            scene_filter_contract=scene_filter_contract,
+            prep_review=prep_review,
+        )
+    except ValueError as exc:
+        print("scene_start: blocked")
+        print(f"detail: {exc}")
+        return 1
+    next_payload = OrchestratorBridge(workspace).next(result.run_id)
+    if output_format == "json":
+        print_json(
+            {
+                "scene_start_run_id": result.run_id,
+                "orchestrator_status": result.status,
+                "run_path": str(result.run_path),
+                "report_id": result.report_id or None,
+                "scene_filter_contract": scene_filter_contract,
+                "next": next_payload,
+            }
+        )
+        return 0
+    print(f"scene_start_run_id: {result.run_id}")
+    print(f"orchestrator_status: {result.status}")
+    print("workflow: scene_generation")
+    print("skill: scene_start")
+    print("mode: hermes-bridge")
+    print(f"run_path: {result.run_path}")
+    print(f"report_id: {result.report_id or 'pending_hermes_completion'}")
+    print(f"next_action: {next_payload.get('next_action')}")
+    hook = next_payload.get("hook")
+    if hook:
+        print(f"next_turn_id: {hook['turn_id']}")
+        print(f"next_represents: {hook['represents']}")
+    print("side_effect_status: proposal_only_no_scene_draft_no_canon_mutation")
+    return 0
+
+
 def run_meeting(
     workspace: Path,
     world_id: str,
@@ -983,6 +1165,7 @@ def run_orchestrator(
     canon_policy: str,
     approval: str,
     close_on: str,
+    prep_review: bool,
 ) -> int:
     if not guard_update_unlocked(workspace, "orchestrator.run"):
         return 1
@@ -1006,6 +1189,7 @@ def run_orchestrator(
             canon_policy=canon_policy,
             approval=approval,
             close_on=close_on,
+            prep_review=prep_review,
         )
     except ValueError as exc:
         print("orchestrator_run: blocked")
@@ -1112,6 +1296,34 @@ def run_orchestrator_next(workspace: Path, run_id: str, output_format: str) -> i
     if hook:
         print(f"turn_id: {hook['turn_id']}")
         print(f"turn_type: {hook['turn_type']}")
+        print(f"represents: {hook['represents']}")
+    prep_report = payload.get("prep_report")
+    if prep_report:
+        print(f"prep_report_status: {prep_report.get('status')}")
+        print(f"prep_review_options: {', '.join(prep_report.get('review_options', []))}")
+    return 0
+
+
+def run_orchestrator_prep_approve(workspace: Path, run_id: str, output_format: str) -> int:
+    if not guard_update_unlocked(workspace, "orchestrator.prep-approve"):
+        return 1
+    try:
+        payload = OrchestratorBridge(workspace).approve_prep(run_id)
+    except KeyError as exc:
+        print("orchestrator_prep_approve: blocked")
+        print(f"detail: {exc}")
+        return 1
+    if output_format == "json":
+        print_json(payload)
+        return 0
+    print(f"orchestrator_run_id: {payload['run_id']}")
+    print(f"prep_approved: {str(payload.get('prep_approved', False)).lower()}")
+    print(f"status: {payload['status']}")
+    print(f"execution_status: {payload['execution_status']}")
+    print(f"next_action: {payload['next_action']}")
+    hook = payload.get("hook")
+    if hook:
+        print(f"turn_id: {hook['turn_id']}")
         print(f"represents: {hook['represents']}")
     return 0
 
@@ -1609,6 +1821,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.canon_policy,
                 args.approval,
                 args.close_on,
+                not args.no_prep_review,
             )
         if args.orchestrator_command == "status":
             return run_orchestrator_status(config.workspace, args.run_id, args.format)
@@ -1618,6 +1831,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_orchestrator_hooks(config.workspace, args.run_id, args.format)
         if args.orchestrator_command == "next":
             return run_orchestrator_next(config.workspace, args.run_id, args.format)
+        if args.orchestrator_command == "prep-approve":
+            return run_orchestrator_prep_approve(config.workspace, args.run_id, args.format)
         if args.orchestrator_command == "submit":
             return run_orchestrator_submit(
                 config.workspace,
@@ -1637,6 +1852,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_orchestrator_close(config.workspace, args.run_id, args.reason)
         parser.parse_args(["orchestrator", "--help"])
     if args.command == "scene":
+        if args.scene_command in {"start", "prep"}:
+            return run_scene_start(
+                config.workspace,
+                args.world_id,
+                args.topic,
+                args.question,
+                args.rounds,
+                args.max_queue_turns,
+                args.max_concurrent_subsessions,
+                args.max_subsession_calls,
+                args.context_policy,
+                args.frame_plan,
+                args.termination_policy,
+                args.time_scope,
+                args.location_scope,
+                args.viewpoint,
+                args.condition,
+                args.participant,
+                args.format,
+                not args.no_prep_review,
+            )
         if args.scene_command == "mock":
             return run_scene_mock(
                 config.workspace,

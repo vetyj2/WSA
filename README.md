@@ -8,6 +8,8 @@ The project is designed as a template. It does not include live agent credential
 
 WSA aims to be a compact agent harness template, not a heavy runtime. The template should give Hermes enough structure to do high-quality work with minimal code and minimal operator friction: clear goals, bounded queues, small prompt packets, explicit review boundaries, durable audit artifacts, and no hidden canon mutation. Live agent execution, scheduling, delivery, credentials, and provider-specific optimization belong to the user's Hermes runtime.
 
+The public template should stay world-neutral. Author preferences, naming tastes, active world direction, and live Hermes customizations belong in user profile data, world databases, or local runtime overlays. WSA keeps reusable workflow contracts, safety rules, and example shapes in the repository.
+
 ## Current MVP
 
 - Workspace and per-world SQLite scaffolding
@@ -57,7 +59,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-105 tests OK
+119 tests OK
 ```
 
 ## Quick Smoke Run
@@ -77,6 +79,40 @@ PYTHONPATH=src python3 -m wsa scene mock <world_id> Opening \
   --actor Sol
 ```
 
+`scene mock` is a deterministic demo path. It is useful for checking the local vertical slice, but it is not a Hermes-backed scene prep run.
+
+For live Hermes-owned scene prep, use the bounded bridge path:
+
+```bash
+PYTHONPATH=src python3 -m wsa scene start <world_id> \
+  --topic "arrival at a contested transit hub" \
+  --time-scope "day 3" \
+  --location-scope "central station" \
+  --viewpoint "newcomer" \
+  --condition "combat_power >= 500" \
+  --participant "Narrator" \
+  --format json
+```
+
+This creates a `scene_generation` / `scene_start` orchestrator run in `hermes-bridge` mode and returns a prep review report by default. WSA does not call actors itself; Hermes reviews the prepared requirement parse, selected context bundles, selector result, gap diagnostics, participant plan, and queue limits. If the prep is acceptable, Hermes or the user advances with `wsa orchestrator prep-approve <run_id>`, receives the first actor hook, adapts that hook to its actor/subagent runtime, writes callback JSON under `hermes/callbacks`, then advances the run with `wsa orchestrator submit`.
+
+Pass `--no-prep-review` only when the user's Hermes runtime already performed equivalent prep approval and should open the first actor hook immediately.
+
+Scene start is proposal-only. It prepares actor packets, hidden/visible fact filters, role isolation notes, model/thinking recommendations, risk flags, and a `scene_prep_package`. It does not draft script prose, create canon facts, or mutate the world without later author approval.
+
+Scene filters are connected to a sparse temporal graph foundation. A world can define its own dynamic dimensions such as `combat_power`, `current_location`, `political_influence`, or any other label the author and Hermes agree to use. Existing entities are not required to have every dimension. Missing dimensions or missing values are reported as scene-prep gaps instead of crashing the run.
+
+The thin graph layer is additive and world-local:
+
+- `dimension_definitions` stores user/world-defined dimensions and their value policy.
+- `entity_attribute_spans` stores values that can change over time, such as location, status, capability, or affiliation.
+- `world_edges` stores flexible relationships between entities, facts, scenes, events, or other world objects.
+- `knowledge_attributions` stores who knows, believes, suspects, or misunderstands a target fact at a given time.
+
+This layer does not replace canon facts. It gives Doctor, Patrol, Meetup, and Scene a compact place to inspect sparse data, suggest gap-filling meetups, and prepare viewpoint-safe scene context.
+
+When a simple operator condition can be resolved locally, `scene start` also returns a bounded `selector_result`. For example, if `combat_power` and `current_location` spans exist, a request such as `--time-scope "day 3" --location-scope "central station" --condition "combat_power >= 500"` can return matching entity IDs and compact display names for Hermes to use as scene-prep candidates. Unsupported natural-language conditions and missing dimensions remain gap diagnostics for Doctor, Patrol, or Meetup instead of blocking the run.
+
 Inspect generated state:
 
 ```bash
@@ -91,7 +127,7 @@ Start a worldbuilding interview without exhausting the author. `startup` is the 
 PYTHONPATH=src python3 -m wsa world startup status <world_id>
 PYTHONPATH=src python3 -m wsa world startup status <world_id> --format json
 PYTHONPATH=src python3 -m wsa world startup interview <world_id> --budget 4
-PYTHONPATH=src python3 -m wsa world startup answer <world_id> 0001 --text "A scholarship mage enters the capital academy."
+PYTHONPATH=src python3 -m wsa world startup answer <world_id> 0001 --text "A newcomer enters a contested institution."
 ```
 
 `easystartup` is the easy-pick mode: it gives 5-8 tagged recommendations per item, keeps questions more closed, and lets Hermes fill details according to the selected discretion level.
@@ -126,18 +162,18 @@ Hermes runtimes can also expose `/fill-the-rest` or `/filltherest` for anytime l
 
 ```text
 /fill-the-rest world=<world_id> destination="until every region has factions and hooks" discretion_level=5
-/filltherest world=<world_id> destination="until the academy has teachers, clubs, rivals, and exams"
-/filltherest-plan world=<world_id> destination="until the harbor has guilds, conflicts, and scene hooks"
-/filltherest-start world=<world_id> destination="until the harbor has guilds, conflicts, and scene hooks" cron_schedule="daily"
+/filltherest world=<world_id> destination="until the central institution has mentors, rivals, rituals, and scene hooks"
+/filltherest-plan world=<world_id> destination="until the trade district has factions, conflicts, and scene hooks"
+/filltherest-start world=<world_id> destination="until the trade district has factions, conflicts, and scene hooks" cron_schedule="daily"
 ```
 
 Run a non-mutating meeting before committing world changes:
 
 ```bash
 PYTHONPATH=src python3 -m wsa meeting run <world_id> \
-  --topic "Harbor succession gap" \
+  --topic "Trade district succession gap" \
   --question "Which factions should be consulted before canon changes?" \
-  --participant "Harbor Guild" \
+  --participant "Local Guild" \
   --participant "Unregistered Council"
 ```
 
@@ -271,15 +307,15 @@ Example:
 wsa orchestrator run <world_id> \
   --workflow meetup \
   --skill meetup \
-  --topic "seven universities and the three major magic schools" \
-  --frame-plan "Compare universities against the three schools without canonizing new claims." \
+  --topic "rival institutions and their power traditions" \
+  --frame-plan "Compare institutional pressures without canonizing new claims." \
   --rounds 3 \
   --max-queue-turns 12 \
   --max-concurrent-subsessions 4 \
   --max-subsession-calls 48 \
   --context-policy compressed-continuity \
-  --participant "North University" \
-  --participant "South University"
+  --participant "Northern Institute" \
+  --participant "Southern Guild"
 ```
 
 The orchestrator creates a durable audit artifact under `worlds/<world_id>/orchestrator_runs/`, starts temporary runtime session records for participant viewpoints, gives each only the relevant context and prompt packet, runs up to the configured queue limit, carries a compressed meeting summary between turns, collects outputs, asks internal follow-up questions when uncertainty is high, diagnoses conflicts and gaps, closes temporary subsessions, and returns a synthesized report package. It does not canonize generated material.
@@ -308,11 +344,23 @@ For a Hermes-owned live loop, start the run with bridge mode. WSA still does not
 
 ```bash
 wsa orchestrator run <world_id> --workflow meetup --topic "..." --mode hermes-bridge
+wsa scene start <world_id> --topic "..." --format json
 wsa orchestrator next <run_id> --format json
+wsa orchestrator prep-approve <run_id> --format json
 wsa orchestrator submit <run_id> --callback hermes/callbacks/<callback>.json --format json
 ```
 
-The bridge loop uses the same compact command surface. Hermes does not need a new user-visible slash command for `next` or `submit`; those are internal CLI routes for the active Meetup or Scene session. Callback files must stay under `hermes/callbacks`, match the pending hook route, and pass the bounded output quality gate before the run advances.
+The bridge loop uses the same compact command surface. Hermes does not need a new user-visible slash command for `next`, `prep-approve`, or `submit`; those are internal CLI routes for the active Meetup or Scene session. Prep review is default-on so the user can approve or refine the selected context before actor calls spend tokens. Callback files must stay under `hermes/callbacks`, match the pending hook route, and pass the bounded output quality gate before the run advances.
+
+Before a live user resumes Hermes after a source update, run:
+
+```bash
+wsa update preflight --format json
+wsa doctor
+wsa manager diagnose
+```
+
+If preflight recommends or requires it, make a workspace backup before starting scene work. Scene start refuses to run while `hermes/maintenance/update.lock` exists.
 
 Long meetup or scene-prep runs also publish an optional `progress_report_policy`. It is disabled by default and is only a Hermes/user opt-in delivery contract. When enabled, Hermes should report interim status only at explicit round or checkpoint boundaries, include the current and maximum round such as `라운드 7/100 현황` or `Round 7/100 status`, and include stop reason plus side-effect status in the final report.
 

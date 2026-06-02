@@ -104,6 +104,45 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.7-temporal-graph-foundation.html">v0.2.7 Temporal Graph Foundation</a></h2>
+          <p>Adds additive dynamic dimensions, time-scoped entity attributes, flexible world edges, actor knowledge records, scene selector results, prep review hooks, and graph gap reporting.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">dynamic dimensions</span>
+          <span class="badge accent">attribute spans</span>
+          <span class="badge">world edges</span>
+          <span class="badge">knowledge</span>
+          <span class="badge warn">additive schema</span>
+        </div>
+        <ul>
+          <li>Worlds can add custom labels such as location, capability, rank, or knowledge without requiring every entity to have values.</li>
+          <li><code>wsa scene start</code> reports known/missing dimensions and matched entity candidates for resolvable filters.</li>
+          <li>Default-on prep review lets Hermes/user approve selected context bundles before actor calls.</li>
+          <li><code>wsa manager diagnose</code> flags sparse dynamic-dimension coverage gaps without inventing values.</li>
+          <li>Old world databases are supplemented lazily when the new repository API is used.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.6-scene-bridge-prep.html">v0.2.6 Scene Bridge Prep</a></h2>
+          <p>Adds the compact <code>wsa scene start</code> bridge route, scene filter contracts, prep packages, retry limits, and template-neutral example cleanup.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">scene start</span>
+          <span class="badge accent">prep package</span>
+          <span class="badge">filter contract</span>
+          <span class="badge warn">no DB migration</span>
+        </div>
+        <ul>
+          <li>Hermes can start scene prep with one short command and receive the first hook packet.</li>
+          <li>Callback outputs preserve scene fields such as actor assignment, role isolation, and hidden/visible facts.</li>
+          <li>Retry limits stop malformed callback loops and return a partial review package.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.5-round-boundary-progress-policy.html">v0.2.5 Round Boundary Progress Policy</a></h2>
           <p>Adds an optional progress-reporting contract for long meetup and scene-prep runs without making WSA deliver user messages directly.</p>
         </div>

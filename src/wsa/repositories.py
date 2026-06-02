@@ -7,7 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ContextManager, Dict, List, Optional
 
-from .workspace import SCHEMA_VERSION, control_db_path, sqlite_connection, utc_now, world_db_path
+from .workspace import (
+    SCHEMA_VERSION,
+    control_db_path,
+    init_world_schema,
+    sqlite_connection,
+    utc_now,
+    world_db_path,
+)
 
 
 Payload = Dict[str, Any]
@@ -26,6 +33,43 @@ def decode_payload(value: str) -> Payload:
     if isinstance(decoded, dict):
         return decoded
     return {"value": decoded}
+
+
+def encode_json_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def decode_json_value(value: str | None) -> Any:
+    if value is None:
+        return None
+    return json.loads(value)
+
+
+def bounded_level(value: int | None, default: int = 1) -> int:
+    try:
+        candidate = int(value if value is not None else default)
+    except (TypeError, ValueError):
+        candidate = default
+    return max(1, min(5, candidate))
+
+
+def infer_attribute_value_type(
+    value_number: float | None,
+    value_text: str | None,
+    value_ref_id: str | None,
+    value_json: Any,
+) -> str:
+    if value_number is not None:
+        return "number"
+    if value_ref_id is not None:
+        return "ref"
+    if value_json is not None:
+        return "json"
+    if value_text in {"true", "false"}:
+        return "boolean"
+    return "text"
 
 
 @dataclass(frozen=True)
@@ -245,6 +289,74 @@ class FactRecord:
 
 
 @dataclass(frozen=True)
+class DimensionDefinitionRecord:
+    dimension_id: str
+    dimension_key: str
+    display_name: str
+    dimension_type: str
+    value_type: str
+    applies_to: str
+    temporal: bool
+    missing_policy: str
+    authority: str
+    status: str
+    payload: Payload
+
+
+@dataclass(frozen=True)
+class EntityAttributeSpanRecord:
+    attribute_span_id: str
+    entity_id: str
+    dimension_key: str
+    value_number: Optional[float]
+    value_text: Optional[str]
+    value_ref_id: Optional[str]
+    value_json: Any
+    valid_from: Optional[str]
+    valid_until: Optional[str]
+    authority: str
+    status: str
+    confidence: float
+    stability_level: int
+    revision_cost_level: int
+    payload: Payload
+
+
+@dataclass(frozen=True)
+class WorldEdgeRecord:
+    edge_id: str
+    subject_type: str
+    subject_id: str
+    edge_type: str
+    object_type: str
+    object_id: Optional[str]
+    object_value: Optional[str]
+    valid_from: Optional[str]
+    valid_until: Optional[str]
+    authority: str
+    status: str
+    confidence: float
+    stability_level: int
+    revision_cost_level: int
+    payload: Payload
+
+
+@dataclass(frozen=True)
+class KnowledgeAttributionRecord:
+    knowledge_id: str
+    actor_entity_id: str
+    target_type: str
+    target_id: str
+    knowledge_state: str
+    acquired_at: Optional[str]
+    valid_until: Optional[str]
+    authority: str
+    status: str
+    confidence: float
+    payload: Payload
+
+
+@dataclass(frozen=True)
 class SceneRecord:
     scene_id: str
     name: str
@@ -306,6 +418,41 @@ class WorldRepository:
 
     def _connect(self) -> ContextManager[sqlite3.Connection]:
         return sqlite_connection(world_db_path(self.world_path), schema_name="world")
+
+    def _ensure_additive_world_schema(self) -> None:
+        """Create additive tables for older v1 world databases without rewriting data."""
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type = 'table'
+                  AND name IN (
+                    'dimension_definitions',
+                    'entity_attribute_spans',
+                    'world_edges',
+                    'knowledge_attributions'
+                  )
+                """
+            ).fetchall()
+            existing = {row["name"] for row in rows}
+            required = {
+                "dimension_definitions",
+                "entity_attribute_spans",
+                "world_edges",
+                "knowledge_attributions",
+            }
+            if required.issubset(existing):
+                return
+            row = conn.execute(
+                "SELECT display_name FROM world_metadata WHERE world_id = ?",
+                (self.world_id,),
+            ).fetchone()
+            init_world_schema(
+                conn,
+                self.world_id,
+                row["display_name"] if row is not None else self.world_id,
+            )
 
     def create_entity(
         self,
@@ -453,6 +600,549 @@ class WorldRepository:
                 subject_id=row["subject_id"],
                 predicate=row["predicate"],
                 object_value=row["object_value"],
+                authority=row["authority"],
+                status=row["status"],
+                confidence=row["confidence"],
+                payload=decode_payload(row["payload"]),
+            )
+            for row in rows
+        ]
+
+    def define_dimension(
+        self,
+        dimension_key: str,
+        display_name: str | None = None,
+        dimension_type: str = "attribute",
+        value_type: str = "text",
+        applies_to: str = "entity",
+        temporal: bool = True,
+        missing_policy: str = "gap_report",
+        authority: str = "generated",
+        status: str = "proposed",
+        payload: Optional[Payload] = None,
+    ) -> DimensionDefinitionRecord:
+        self._ensure_additive_world_schema()
+        key = dimension_key.strip()
+        if not key:
+            raise ValueError("dimension_key is required")
+        existing = self.get_dimension_definition(key)
+        if existing is not None:
+            return existing
+        dimension_id = new_id("dimension")
+        now = utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO dimension_definitions (
+                    dimension_id, world_id, dimension_key, display_name,
+                    dimension_type, value_type, applies_to, temporal,
+                    missing_policy, authority, status, payload,
+                    schema_version, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    dimension_id,
+                    self.world_id,
+                    key,
+                    display_name or key.replace("_", " "),
+                    dimension_type,
+                    value_type,
+                    applies_to,
+                    1 if temporal else 0,
+                    missing_policy,
+                    authority,
+                    status,
+                    encode_payload(payload),
+                    SCHEMA_VERSION,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        return DimensionDefinitionRecord(
+            dimension_id=dimension_id,
+            dimension_key=key,
+            display_name=display_name or key.replace("_", " "),
+            dimension_type=dimension_type,
+            value_type=value_type,
+            applies_to=applies_to,
+            temporal=temporal,
+            missing_policy=missing_policy,
+            authority=authority,
+            status=status,
+            payload=payload or {},
+        )
+
+    def get_dimension_definition(
+        self,
+        dimension_key: str,
+    ) -> DimensionDefinitionRecord | None:
+        key = dimension_key.strip()
+        if not key:
+            return None
+        self._ensure_additive_world_schema()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT dimension_id, dimension_key, display_name, dimension_type,
+                       value_type, applies_to, temporal, missing_policy,
+                       authority, status, payload
+                FROM dimension_definitions
+                WHERE world_id = ? AND dimension_key = ?
+                """,
+                (self.world_id, key),
+            ).fetchone()
+        if row is None:
+            return None
+        return DimensionDefinitionRecord(
+            dimension_id=row["dimension_id"],
+            dimension_key=row["dimension_key"],
+            display_name=row["display_name"],
+            dimension_type=row["dimension_type"],
+            value_type=row["value_type"],
+            applies_to=row["applies_to"],
+            temporal=bool(row["temporal"]),
+            missing_policy=row["missing_policy"],
+            authority=row["authority"],
+            status=row["status"],
+            payload=decode_payload(row["payload"]),
+        )
+
+    def list_dimension_definitions(self, status: str | None = None) -> List[DimensionDefinitionRecord]:
+        self._ensure_additive_world_schema()
+        sql = """
+            SELECT dimension_id, dimension_key, display_name, dimension_type,
+                   value_type, applies_to, temporal, missing_policy,
+                   authority, status, payload
+            FROM dimension_definitions
+            WHERE world_id = ?
+        """
+        params: list[Any] = [self.world_id]
+        if status is not None:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY created_at ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [
+            DimensionDefinitionRecord(
+                dimension_id=row["dimension_id"],
+                dimension_key=row["dimension_key"],
+                display_name=row["display_name"],
+                dimension_type=row["dimension_type"],
+                value_type=row["value_type"],
+                applies_to=row["applies_to"],
+                temporal=bool(row["temporal"]),
+                missing_policy=row["missing_policy"],
+                authority=row["authority"],
+                status=row["status"],
+                payload=decode_payload(row["payload"]),
+            )
+            for row in rows
+        ]
+
+    def set_entity_attribute_span(
+        self,
+        entity_id: str,
+        dimension_key: str,
+        value_number: float | None = None,
+        value_text: str | None = None,
+        value_ref_id: str | None = None,
+        value_json: Any = None,
+        valid_from: str | None = None,
+        valid_until: str | None = None,
+        source_event_id: str | None = None,
+        authority: str = "generated",
+        status: str = "proposed",
+        confidence: float = 1.0,
+        stability_level: int | None = None,
+        revision_cost_level: int | None = None,
+        payload: Optional[Payload] = None,
+    ) -> EntityAttributeSpanRecord:
+        key = dimension_key.strip()
+        if not key:
+            raise ValueError("dimension_key is required")
+        self.define_dimension(
+            key,
+            value_type=infer_attribute_value_type(
+                value_number,
+                value_text,
+                value_ref_id,
+                value_json,
+            ),
+        )
+        span_id = new_id("attrspan")
+        now = utc_now()
+        stability = bounded_level(stability_level, default=2 if status == "proposed" else 4)
+        revision_cost = bounded_level(revision_cost_level, default=stability)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO entity_attribute_spans (
+                    attribute_span_id, world_id, entity_id, dimension_key,
+                    value_number, value_text, value_ref_id, value_json,
+                    valid_from, valid_until, source_event_id, authority, status,
+                    confidence, stability_level, revision_cost_level, payload,
+                    schema_version, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    span_id,
+                    self.world_id,
+                    entity_id,
+                    key,
+                    value_number,
+                    value_text,
+                    value_ref_id,
+                    encode_json_value(value_json),
+                    valid_from,
+                    valid_until,
+                    source_event_id,
+                    authority,
+                    status,
+                    confidence,
+                    stability,
+                    revision_cost,
+                    encode_payload(payload),
+                    SCHEMA_VERSION,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        return EntityAttributeSpanRecord(
+            attribute_span_id=span_id,
+            entity_id=entity_id,
+            dimension_key=key,
+            value_number=value_number,
+            value_text=value_text,
+            value_ref_id=value_ref_id,
+            value_json=value_json,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            authority=authority,
+            status=status,
+            confidence=confidence,
+            stability_level=stability,
+            revision_cost_level=revision_cost,
+            payload=payload or {},
+        )
+
+    def query_entity_attribute_spans(
+        self,
+        entity_id: str | None = None,
+        dimension_key: str | None = None,
+        as_of: str | None = None,
+        status: str | None = None,
+        value_text: str | None = None,
+        value_ref_id: str | None = None,
+        min_value_number: float | None = None,
+        max_value_number: float | None = None,
+    ) -> List[EntityAttributeSpanRecord]:
+        self._ensure_additive_world_schema()
+        sql = """
+            SELECT attribute_span_id, entity_id, dimension_key, value_number,
+                   value_text, value_ref_id, value_json, valid_from, valid_until,
+                   authority, status, confidence, stability_level,
+                   revision_cost_level, payload
+            FROM entity_attribute_spans
+            WHERE world_id = ?
+        """
+        params: list[Any] = [self.world_id]
+        if entity_id is not None:
+            sql += " AND entity_id = ?"
+            params.append(entity_id)
+        if dimension_key is not None:
+            sql += " AND dimension_key = ?"
+            params.append(dimension_key.strip())
+        if as_of is not None:
+            sql += " AND (valid_from IS NULL OR valid_from <= ?)"
+            sql += " AND (valid_until IS NULL OR valid_until > ?)"
+            params.extend([as_of, as_of])
+        if status is not None:
+            sql += " AND status = ?"
+            params.append(status)
+        if value_text is not None:
+            sql += " AND value_text = ?"
+            params.append(value_text)
+        if value_ref_id is not None:
+            sql += " AND value_ref_id = ?"
+            params.append(value_ref_id)
+        if min_value_number is not None:
+            sql += " AND value_number >= ?"
+            params.append(min_value_number)
+        if max_value_number is not None:
+            sql += " AND value_number <= ?"
+            params.append(max_value_number)
+        sql += " ORDER BY created_at ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [
+            EntityAttributeSpanRecord(
+                attribute_span_id=row["attribute_span_id"],
+                entity_id=row["entity_id"],
+                dimension_key=row["dimension_key"],
+                value_number=row["value_number"],
+                value_text=row["value_text"],
+                value_ref_id=row["value_ref_id"],
+                value_json=decode_json_value(row["value_json"]),
+                valid_from=row["valid_from"],
+                valid_until=row["valid_until"],
+                authority=row["authority"],
+                status=row["status"],
+                confidence=row["confidence"],
+                stability_level=row["stability_level"],
+                revision_cost_level=row["revision_cost_level"],
+                payload=decode_payload(row["payload"]),
+            )
+            for row in rows
+        ]
+
+    def add_world_edge(
+        self,
+        subject_type: str,
+        subject_id: str,
+        edge_type: str,
+        object_type: str,
+        object_id: str | None = None,
+        object_value: str | None = None,
+        valid_from: str | None = None,
+        valid_until: str | None = None,
+        source_event_id: str | None = None,
+        authority: str = "generated",
+        status: str = "proposed",
+        confidence: float = 1.0,
+        stability_level: int | None = None,
+        revision_cost_level: int | None = None,
+        payload: Optional[Payload] = None,
+    ) -> WorldEdgeRecord:
+        self._ensure_additive_world_schema()
+        edge_id = new_id("edge")
+        now = utc_now()
+        stability = bounded_level(stability_level, default=2 if status == "proposed" else 4)
+        revision_cost = bounded_level(revision_cost_level, default=stability)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO world_edges (
+                    edge_id, world_id, subject_type, subject_id, edge_type,
+                    object_type, object_id, object_value, valid_from, valid_until,
+                    source_event_id, authority, status, confidence,
+                    stability_level, revision_cost_level, payload,
+                    schema_version, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    edge_id,
+                    self.world_id,
+                    subject_type,
+                    subject_id,
+                    edge_type,
+                    object_type,
+                    object_id,
+                    object_value,
+                    valid_from,
+                    valid_until,
+                    source_event_id,
+                    authority,
+                    status,
+                    confidence,
+                    stability,
+                    revision_cost,
+                    encode_payload(payload),
+                    SCHEMA_VERSION,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        return WorldEdgeRecord(
+            edge_id=edge_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            edge_type=edge_type,
+            object_type=object_type,
+            object_id=object_id,
+            object_value=object_value,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            authority=authority,
+            status=status,
+            confidence=confidence,
+            stability_level=stability,
+            revision_cost_level=revision_cost,
+            payload=payload or {},
+        )
+
+    def query_world_edges(
+        self,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        edge_type: str | None = None,
+        object_type: str | None = None,
+        object_id: str | None = None,
+        as_of: str | None = None,
+        status: str | None = None,
+    ) -> List[WorldEdgeRecord]:
+        self._ensure_additive_world_schema()
+        sql = """
+            SELECT edge_id, subject_type, subject_id, edge_type, object_type,
+                   object_id, object_value, valid_from, valid_until, authority,
+                   status, confidence, stability_level, revision_cost_level, payload
+            FROM world_edges
+            WHERE world_id = ?
+        """
+        params: list[Any] = [self.world_id]
+        for column, value in (
+            ("subject_type", subject_type),
+            ("subject_id", subject_id),
+            ("edge_type", edge_type),
+            ("object_type", object_type),
+            ("object_id", object_id),
+            ("status", status),
+        ):
+            if value is not None:
+                sql += f" AND {column} = ?"
+                params.append(value)
+        if as_of is not None:
+            sql += " AND (valid_from IS NULL OR valid_from <= ?)"
+            sql += " AND (valid_until IS NULL OR valid_until > ?)"
+            params.extend([as_of, as_of])
+        sql += " ORDER BY created_at ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [
+            WorldEdgeRecord(
+                edge_id=row["edge_id"],
+                subject_type=row["subject_type"],
+                subject_id=row["subject_id"],
+                edge_type=row["edge_type"],
+                object_type=row["object_type"],
+                object_id=row["object_id"],
+                object_value=row["object_value"],
+                valid_from=row["valid_from"],
+                valid_until=row["valid_until"],
+                authority=row["authority"],
+                status=row["status"],
+                confidence=row["confidence"],
+                stability_level=row["stability_level"],
+                revision_cost_level=row["revision_cost_level"],
+                payload=decode_payload(row["payload"]),
+            )
+            for row in rows
+        ]
+
+    def add_knowledge_attribution(
+        self,
+        actor_entity_id: str,
+        target_type: str,
+        target_id: str,
+        knowledge_state: str,
+        acquired_at: str | None = None,
+        acquired_event_id: str | None = None,
+        source_entity_id: str | None = None,
+        valid_until: str | None = None,
+        authority: str = "generated",
+        status: str = "proposed",
+        confidence: float = 1.0,
+        payload: Optional[Payload] = None,
+    ) -> KnowledgeAttributionRecord:
+        self._ensure_additive_world_schema()
+        knowledge_id = new_id("knowledge")
+        now = utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO knowledge_attributions (
+                    knowledge_id, world_id, actor_entity_id, target_type,
+                    target_id, knowledge_state, acquired_at, acquired_event_id,
+                    source_entity_id, valid_until, authority, status,
+                    confidence, payload, schema_version, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    knowledge_id,
+                    self.world_id,
+                    actor_entity_id,
+                    target_type,
+                    target_id,
+                    knowledge_state,
+                    acquired_at,
+                    acquired_event_id,
+                    source_entity_id,
+                    valid_until,
+                    authority,
+                    status,
+                    confidence,
+                    encode_payload(payload),
+                    SCHEMA_VERSION,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        return KnowledgeAttributionRecord(
+            knowledge_id=knowledge_id,
+            actor_entity_id=actor_entity_id,
+            target_type=target_type,
+            target_id=target_id,
+            knowledge_state=knowledge_state,
+            acquired_at=acquired_at,
+            valid_until=valid_until,
+            authority=authority,
+            status=status,
+            confidence=confidence,
+            payload=payload or {},
+        )
+
+    def query_knowledge_attributions(
+        self,
+        actor_entity_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        knowledge_state: str | None = None,
+        as_of: str | None = None,
+        status: str | None = None,
+    ) -> List[KnowledgeAttributionRecord]:
+        self._ensure_additive_world_schema()
+        sql = """
+            SELECT knowledge_id, actor_entity_id, target_type, target_id,
+                   knowledge_state, acquired_at, valid_until, authority,
+                   status, confidence, payload
+            FROM knowledge_attributions
+            WHERE world_id = ?
+        """
+        params: list[Any] = [self.world_id]
+        for column, value in (
+            ("actor_entity_id", actor_entity_id),
+            ("target_type", target_type),
+            ("target_id", target_id),
+            ("knowledge_state", knowledge_state),
+            ("status", status),
+        ):
+            if value is not None:
+                sql += f" AND {column} = ?"
+                params.append(value)
+        if as_of is not None:
+            sql += " AND (acquired_at IS NULL OR acquired_at <= ?)"
+            sql += " AND (valid_until IS NULL OR valid_until > ?)"
+            params.extend([as_of, as_of])
+        sql += " ORDER BY created_at ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [
+            KnowledgeAttributionRecord(
+                knowledge_id=row["knowledge_id"],
+                actor_entity_id=row["actor_entity_id"],
+                target_type=row["target_type"],
+                target_id=row["target_id"],
+                knowledge_state=row["knowledge_state"],
+                acquired_at=row["acquired_at"],
+                valid_until=row["valid_until"],
                 authority=row["authority"],
                 status=row["status"],
                 confidence=row["confidence"],

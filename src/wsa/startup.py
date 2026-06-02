@@ -40,11 +40,11 @@ DEFAULT_STARTUP_DIMENSIONS = [
         ],
         "easystartup_prompt": "Pick the nearest world premise and tone.",
         "easypicks": [
-            "academy mystery fantasy",
+            "institutional mystery drama",
             "frontier political noir",
             "post-collapse recovery drama",
             "mythic expedition adventure",
-            "slice-of-life magical city",
+            "slice-of-life hidden-system city",
             "court intrigue with hidden power systems",
         ],
         "weight": 10,
@@ -63,7 +63,7 @@ DEFAULT_STARTUP_DIMENSIONS = [
         "easypicks": [
             "late medieval trade towns",
             "early industrial capital",
-            "modern city with hidden magic",
+            "modern city with hidden speculative systems",
             "far-future orbital habitats",
             "rural frontier settlements",
             "collapsed empire remnant states",
@@ -73,7 +73,7 @@ DEFAULT_STARTUP_DIMENSIONS = [
     {
         "question_id": "0003",
         "legacy_question_id": "Q003",
-        "dimension": "magic_access_limits",
+        "dimension": "power_access_limits",
         "startup_prompt": "Who can use power, what does it cost, and what should it not solve?",
         "startup_choices": [
             "Rare specialists use power under strict costs.",
@@ -82,10 +82,10 @@ DEFAULT_STARTUP_DIMENSIONS = [
         ],
         "easystartup_prompt": "Pick the closest power access model.",
         "easypicks": [
-            "rare mage licenses",
-            "school-trained elemental craft",
+            "rare licensed specialists",
+            "formal training and licensed craft",
             "bloodline contracts",
-            "tool-based public utility magic",
+            "tool-based public utility power",
             "dangerous relic power",
             "faith or oath-based miracles",
         ],
@@ -103,12 +103,12 @@ DEFAULT_STARTUP_DIMENSIONS = [
         ],
         "easystartup_prompt": "Pick the first institution cluster Hermes should flesh out.",
         "easypicks": [
-            "academy and scholarship board",
+            "training institute and scholarship board",
             "merchant guild and port authority",
             "temple court and oath registry",
-            "royal bureau and secret police",
+            "central bureau and intelligence office",
             "frontier council and militia",
-            "university, lab, and private sponsors",
+            "research institute and private sponsors",
         ],
         "weight": 10,
     },
@@ -145,7 +145,7 @@ DEFAULT_STARTUP_DIMENSIONS = [
         ],
         "easystartup_prompt": "Pick the first POV anchor type.",
         "easypicks": [
-            "scholarship student",
+            "newly admitted student",
             "junior investigator",
             "fallen noble heir",
             "guild apprentice",
@@ -166,7 +166,7 @@ DEFAULT_STARTUP_DIMENSIONS = [
         ],
         "easystartup_prompt": "Pick the opening geography package.",
         "easypicks": [
-            "capital academy district",
+            "capital training district",
             "harbor city and outer islands",
             "frontier pass and border fort",
             "river market towns",
@@ -189,7 +189,7 @@ DEFAULT_STARTUP_DIMENSIONS = [
         "easypicks": [
             "coin, letters, horse roads",
             "guild scrip, couriers, riverboats",
-            "public transit, phones, hidden magical services",
+            "public transit, phones, hidden specialist services",
             "ration cards, salvage markets, radio relays",
             "contract marks, oath records, caravan routes",
             "energy credits, drones, station networks",
@@ -245,7 +245,7 @@ DEFAULT_MEETING_BUCKETS = [
     {
         "bucket_id": "M001",
         "topic": "institution_set",
-        "prompt": "Draft major universities, guilds, or institutions consistent with current answers.",
+        "prompt": "Draft major institutions, guilds, research bodies, or local powers consistent with current answers.",
     },
     {
         "bucket_id": "M002",
@@ -346,7 +346,7 @@ class StartupProfileManager:
                 "checkpoint_examples": [
                     "until 100 characters exist",
                     "until three regions have factions, conflicts, and opening hooks",
-                    "until the first academy year has enough institutions for scene play",
+                    "until the opening arc has enough institutions for scene play",
                 ],
                 "canon_policy": (
                     "Agent-generated startup material is a candidate until author-approved "

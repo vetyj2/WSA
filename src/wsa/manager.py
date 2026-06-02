@@ -51,6 +51,7 @@ class WorldManager:
 
         for world in self.worlds():
             repo = WorldRepository(world.world_id, world.path)
+            findings.extend(self._temporal_graph_findings(world, repo, fix))
             pending = repo.list_tickets(status="proposed")
             if pending:
                 finding = DiagnosticFinding(
@@ -89,4 +90,57 @@ class WorldManager:
                             "open",
                             payload={"path": str(tmp_dir)},
                         )
+        return findings
+
+    def _temporal_graph_findings(
+        self,
+        world: WorldRecord,
+        repo: WorldRepository,
+        fix: bool,
+    ) -> List[DiagnosticFinding]:
+        findings: List[DiagnosticFinding] = []
+        active_entities = repo.list_entities(status="active")
+        if not active_entities:
+            return findings
+        active_entity_ids = {entity.entity_id for entity in active_entities}
+        for dimension in repo.list_dimension_definitions():
+            if dimension.status in {"rejected", "deprecated"}:
+                continue
+            if dimension.applies_to not in {"entity", "any", "*"}:
+                continue
+            spans = repo.query_entity_attribute_spans(dimension_key=dimension.dimension_key)
+            covered = {
+                span.entity_id
+                for span in spans
+                if span.status not in {"rejected", "deprecated"}
+            }
+            missing = sorted(active_entity_ids - covered)
+            if not missing:
+                continue
+            detail = (
+                f"{len(missing)} active entities lack dynamic dimension "
+                f"{dimension.dimension_key}; scene filters may return gaps"
+            )
+            findings.append(
+                DiagnosticFinding(
+                    world_id=world.world_id,
+                    finding_type="dynamic_dimension_missing_values",
+                    path=str(world.path / "diagnostics"),
+                    detail=detail,
+                )
+            )
+            if fix:
+                repo.create_diagnostic_log(
+                    "dynamic_dimension_missing_values",
+                    "open",
+                    payload={
+                        "dimension_key": dimension.dimension_key,
+                        "missing_entity_ids": missing[:32],
+                        "missing_count": len(missing),
+                        "recommended_action": (
+                            "run Meetup or Patrol to propose sparse values before "
+                            "Scene relies on this dimension"
+                        ),
+                    },
+                )
         return findings

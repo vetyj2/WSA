@@ -15,19 +15,19 @@ class MeetingTests(TestCase):
             workspace = Path(tmp) / "workspace"
             world = create_world(workspace, "Meeting World")
             repo = WorldRepository(world.world_id, world.path)
-            faction = repo.create_entity("faction", "Harbor Guild")
+            faction = repo.create_entity("faction", "Local Guild")
             repo.create_fact(
                 faction.entity_id,
                 "controls",
-                "old harbor",
+                "old trade district",
                 authority="user_explicit",
                 status="canon",
             )
 
             result = MeetingOrchestrator(workspace, world).run_meeting(
-                topic="Harbor succession",
+                topic="District succession",
                 question="Who should diagnose the power gap?",
-                participants=["Harbor Guild", "Unregistered Council"],
+                participants=["Local Guild", "Unregistered Council"],
             )
 
             transcript = json.loads(result.transcript_path.read_text(encoding="utf-8"))

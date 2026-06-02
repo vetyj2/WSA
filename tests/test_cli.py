@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from wsa.cli import main
 from wsa.hermes_adapter import HERMES_CALLBACK_SCHEMA
+from wsa.repositories import WorldRepository
 from wsa.startup import StartupProfileManager
 from wsa.workspace import (
     SCHEMA_VERSION,
@@ -131,6 +132,117 @@ class CliTests(TestCase):
             self.assertIn("ticket_id:", output)
             self.assertIn("report_id:", output)
 
+    def test_scene_start_cli_creates_hermes_bridge_prep_run(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Scene Start World")
+            repo = WorldRepository(world.world_id, world.path)
+            actor = repo.create_entity("character", "Scene Candidate")
+            repo.define_dimension("combat_power", value_type="number", status="canon")
+            repo.set_entity_attribute_span(
+                actor.entity_id,
+                "combat_power",
+                value_number=640,
+                valid_from="day 1",
+                status="canon",
+            )
+            repo.set_entity_attribute_span(
+                actor.entity_id,
+                "current_location",
+                value_text="central station",
+                valid_from="day 1",
+                status="canon",
+            )
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "scene",
+                        "start",
+                        world.world_id,
+                        "--topic",
+                        "arrival at a contested transit hub",
+                        "--time-scope",
+                        "day 3",
+                        "--location-scope",
+                        "central station",
+                        "--viewpoint",
+                        "newcomer",
+                        "--condition",
+                        "combat_power >= 500",
+                        "--condition",
+                        "unknown_trait = rare",
+                        "--participant",
+                        "Narrator",
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["orchestrator_status"], "awaiting_prep_review")
+            self.assertEqual(payload["scene_filter_contract"]["status"], "declared")
+            self.assertEqual(payload["scene_filter_contract"]["time_scope"], "day 3")
+            self.assertEqual(
+                payload["scene_filter_contract"]["parsed_dimension_keys"],
+                ["combat_power", "unknown_trait"],
+            )
+            self.assertEqual(
+                payload["scene_filter_contract"]["dynamic_graph_contract"][
+                    "missing_dimension_keys"
+                ],
+                ["unknown_trait"],
+            )
+            self.assertEqual(
+                payload["scene_filter_contract"]["selector_result"]["matched_entity_ids"],
+                [actor.entity_id],
+            )
+            self.assertEqual(
+                payload["scene_filter_contract"]["selector_result"]["applied_conditions"][0][
+                    "dimension_key"
+                ],
+                "combat_power",
+            )
+            self.assertEqual(payload["next"]["workflow"], "scene_generation")
+            self.assertEqual(payload["next"]["skill"], "scene_start")
+            self.assertEqual(payload["next"]["next_action"], "review_prep_report")
+            self.assertIsNone(payload["next"]["hook"])
+            self.assertEqual(
+                payload["next"]["prep_report"]["selected_context_bundles"]["scene_selector"][
+                    "matched_entity_ids"
+                ],
+                [actor.entity_id],
+            )
+            self.assertEqual(
+                payload["next"]["hermes_bridge"]["retry_policy"][
+                    "max_rejections_per_turn"
+                ],
+                3,
+            )
+
+            approve_stdout = StringIO()
+            with patch("sys.stdout", approve_stdout):
+                approve_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "orchestrator",
+                        "prep-approve",
+                        payload["scene_start_run_id"],
+                        "--format",
+                        "json",
+                    ]
+                )
+            approved = json.loads(approve_stdout.getvalue())
+
+            self.assertEqual(approve_code, 0)
+            self.assertTrue(approved["prep_approved"])
+            self.assertEqual(approved["hook"]["turn_type"], "actor_turn")
+            self.assertEqual(approved["hook"]["represents"], "Narrator")
+
     def test_manager_diagnose_cli_runs(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -178,7 +290,7 @@ class CliTests(TestCase):
                         world.world_id,
                         "Q001",
                         "--text",
-                        "A magic academy mystery.",
+                        "An institutional mystery with speculative rules.",
                     ]
                 )
 
@@ -464,7 +576,7 @@ class CliTests(TestCase):
                         "--skill",
                         "meetup",
                         "--topic",
-                        "seven universities",
+                        "rival institutions",
                         "--rounds",
                         "2",
                         "--max-queue-turns",
@@ -476,11 +588,11 @@ class CliTests(TestCase):
                         "--context-policy",
                         "compressed-continuity",
                         "--frame-plan",
-                        "Run a bounded university comparison.",
+                        "Run a bounded institutional comparison.",
                         "--participant",
-                        "North University",
+                        "Northern Institute",
                         "--participant",
-                        "South University",
+                        "Southern Guild",
                     ]
                 )
             run_id = ""
@@ -587,6 +699,7 @@ class CliTests(TestCase):
                         "1",
                         "--mode",
                         "hermes-bridge",
+                        "--no-prep-review",
                     ]
                 )
             run_id = ""
@@ -891,7 +1004,7 @@ class CliTests(TestCase):
             self.assertEqual(commands["/wsa_scene_start"]["safety"], "proposal_only")
             self.assertEqual(
                 commands["/wsa_scene_start"]["cli_template_policy"]["execution"],
-                "run_start_then_fetch_hooks_after_run_id",
+                "run_scene_start_then_review_prep_then_fetch_next_hook_by_run_id",
             )
             self.assertEqual(
                 commands["/wsa_orchestrator"]["runtime_contract"]["execution_owner"],

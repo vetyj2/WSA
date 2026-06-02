@@ -396,6 +396,151 @@ def init_world_schema(conn: sqlite3.Connection, world_id: str, display_name: str
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS dimension_definitions (
+            dimension_id TEXT PRIMARY KEY,
+            world_id TEXT NOT NULL,
+            dimension_key TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            dimension_type TEXT NOT NULL,
+            value_type TEXT NOT NULL,
+            applies_to TEXT NOT NULL,
+            temporal INTEGER NOT NULL,
+            missing_policy TEXT NOT NULL,
+            authority TEXT NOT NULL,
+            status TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(world_id, dimension_key)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entity_attribute_spans (
+            attribute_span_id TEXT PRIMARY KEY,
+            world_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            dimension_key TEXT NOT NULL,
+            value_number REAL,
+            value_text TEXT,
+            value_ref_id TEXT,
+            value_json TEXT,
+            valid_from TEXT,
+            valid_until TEXT,
+            source_event_id TEXT,
+            authority TEXT NOT NULL,
+            status TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            stability_level INTEGER NOT NULL,
+            revision_cost_level INTEGER NOT NULL,
+            payload TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_entity_attribute_spans_entity_dimension
+        ON entity_attribute_spans(world_id, entity_id, dimension_key)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_entity_attribute_spans_dimension_time
+        ON entity_attribute_spans(world_id, dimension_key, valid_from, valid_until)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_entity_attribute_spans_number
+        ON entity_attribute_spans(world_id, dimension_key, value_number)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS world_edges (
+            edge_id TEXT PRIMARY KEY,
+            world_id TEXT NOT NULL,
+            subject_type TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            edge_type TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            object_id TEXT,
+            object_value TEXT,
+            valid_from TEXT,
+            valid_until TEXT,
+            source_event_id TEXT,
+            authority TEXT NOT NULL,
+            status TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            stability_level INTEGER NOT NULL,
+            revision_cost_level INTEGER NOT NULL,
+            payload TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_world_edges_subject
+        ON world_edges(world_id, subject_type, subject_id)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_world_edges_object
+        ON world_edges(world_id, object_type, object_id)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_world_edges_type
+        ON world_edges(world_id, edge_type)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_attributions (
+            knowledge_id TEXT PRIMARY KEY,
+            world_id TEXT NOT NULL,
+            actor_entity_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            knowledge_state TEXT NOT NULL,
+            acquired_at TEXT,
+            acquired_event_id TEXT,
+            source_entity_id TEXT,
+            valid_until TEXT,
+            authority TEXT NOT NULL,
+            status TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            payload TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_knowledge_attributions_actor
+        ON knowledge_attributions(world_id, actor_entity_id)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_knowledge_attributions_target
+        ON knowledge_attributions(world_id, target_type, target_id)
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS timeline_points (
             timeline_point_id TEXT PRIMARY KEY,
             world_id TEXT NOT NULL,

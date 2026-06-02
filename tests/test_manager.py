@@ -80,3 +80,37 @@ class WorldManagerTests(TestCase):
                 [item.finding_type for item in fixed_findings],
                 ["empty_report_cleanup"],
             )
+
+    def test_diagnostics_find_dynamic_dimension_missing_values(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Dynamic Diagnostic World")
+            repo = WorldRepository(world.world_id, world.path)
+            first = repo.create_entity("character", "First")
+            repo.create_entity("character", "Second")
+            repo.define_dimension("combat_power", value_type="number", status="canon")
+            repo.set_entity_attribute_span(
+                first.entity_id,
+                "combat_power",
+                value_number=500,
+                status="canon",
+            )
+
+            findings = WorldManager(workspace).run_diagnostics()
+            finding_types = {item.finding_type for item in findings}
+            fixed_findings = WorldManager(workspace).run_diagnostics(fix=True)
+            with sqlite_connection(world_db_path(world.path)) as conn:
+                diagnostic_count = conn.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM diagnostic_logs
+                    WHERE diagnostic_type = 'dynamic_dimension_missing_values'
+                    """
+                ).fetchone()["count"]
+
+            self.assertIn("dynamic_dimension_missing_values", finding_types)
+            self.assertIn(
+                "dynamic_dimension_missing_values",
+                {item.finding_type for item in fixed_findings},
+            )
+            self.assertEqual(diagnostic_count, 1)

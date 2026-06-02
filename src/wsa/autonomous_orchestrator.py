@@ -44,6 +44,9 @@ from .transport import RuntimeTransport
 from .workspace import WorldRecord, list_worlds, utc_now
 
 
+SCENE_FILTER_CONTRACT_SCHEMA = "wsa.scene.filter_contract.v1"
+
+
 @dataclass(frozen=True)
 class OrchestratorRunResult:
     run_id: str
@@ -62,6 +65,312 @@ class OrchestratorDecisionResult:
     report_id: str
     report_status: str
     ticket: TicketRecord | None = None
+
+
+def build_scene_filter_contract(
+    time_scope: str | None = None,
+    location_scope: str | None = None,
+    viewpoint: str | None = None,
+    conditions: Iterable[str] | None = None,
+    known_dimension_keys: Iterable[str] | None = None,
+    selector_result: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Build a scene filter contract without requiring every dimension to exist."""
+
+    condition_list = [
+        item.strip()
+        for item in (conditions or [])
+        if isinstance(item, str) and item.strip()
+    ]
+    known_dimensions = {
+        item.strip()
+        for item in (known_dimension_keys or [])
+        if isinstance(item, str) and item.strip()
+    }
+    parsed_dimensions = [
+        item for item in (_condition_dimension_key(condition) for condition in condition_list) if item
+    ]
+    missing_dimensions = sorted(
+        {dimension for dimension in parsed_dimensions if dimension not in known_dimensions}
+    )
+    requested = bool(time_scope or location_scope or viewpoint or condition_list)
+    gap_diagnostics = []
+    if condition_list and not known_dimensions:
+        gap_diagnostics.append(
+            {
+                "gap_type": "dynamic_dimension_registry_empty_or_unavailable",
+                "detail": (
+                    "Scene conditions were recorded, but no registered dynamic "
+                    "dimensions are available yet."
+                ),
+                "conditions": condition_list,
+            }
+        )
+    if missing_dimensions:
+        gap_diagnostics.append(
+            {
+                "gap_type": "missing_dynamic_dimensions",
+                "detail": "Scene conditions reference dimensions that are not defined yet.",
+                "dimension_keys": missing_dimensions,
+            }
+        )
+    return {
+        "schema": SCENE_FILTER_CONTRACT_SCHEMA,
+        "status": "declared" if requested else "not_requested",
+        "time_scope": time_scope.strip() if isinstance(time_scope, str) and time_scope.strip() else None,
+        "location_scope": (
+            location_scope.strip()
+            if isinstance(location_scope, str) and location_scope.strip()
+            else None
+        ),
+        "viewpoint": viewpoint.strip() if isinstance(viewpoint, str) and viewpoint.strip() else None,
+        "conditions": condition_list,
+        "parsed_dimension_keys": parsed_dimensions,
+        "dynamic_dimension_policy": {
+            "unknown_dimension_behavior": "report_gap_not_error",
+            "missing_attribute_behavior": "return_scene_prep_gap",
+            "canon_mutation": "not_allowed_by_filter_contract",
+        },
+        "dynamic_graph_contract": {
+            "dimension_registry": "dimension_definitions",
+            "attribute_source": "entity_attribute_spans",
+            "relationship_source": "world_edges",
+            "knowledge_source": "knowledge_attributions",
+            "known_dimension_keys": sorted(known_dimensions),
+            "missing_dimension_keys": missing_dimensions,
+        },
+        "resolution_policy": (
+            "record_filter_intent_now; query temporal graph data when dimensions and spans exist"
+        ),
+        "selector_result": selector_result or {
+            "status": "not_run",
+            "matched_entity_ids": [],
+            "matched_entities": [],
+            "applied_conditions": [],
+            "gap_diagnostics": [],
+        },
+        "gap_diagnostics": gap_diagnostics,
+    }
+
+
+def resolve_scene_filter_contract(
+    repo: WorldRepository,
+    time_scope: str | None = None,
+    location_scope: str | None = None,
+    viewpoint: str | None = None,
+    conditions: Iterable[str] | None = None,
+) -> Dict[str, Any]:
+    known_dimensions = [item.dimension_key for item in repo.list_dimension_definitions()]
+    selector_result = select_scene_entities(
+        repo,
+        time_scope=time_scope,
+        location_scope=location_scope,
+        conditions=conditions,
+        known_dimension_keys=known_dimensions,
+    )
+    return build_scene_filter_contract(
+        time_scope=time_scope,
+        location_scope=location_scope,
+        viewpoint=viewpoint,
+        conditions=conditions,
+        known_dimension_keys=known_dimensions,
+        selector_result=selector_result,
+    )
+
+
+def select_scene_entities(
+    repo: WorldRepository,
+    time_scope: str | None = None,
+    location_scope: str | None = None,
+    conditions: Iterable[str] | None = None,
+    known_dimension_keys: Iterable[str] | None = None,
+    limit: int = 12,
+) -> Dict[str, Any]:
+    """Resolve simple scene filters against sparse temporal graph data."""
+
+    known = set(known_dimension_keys or [])
+    parsed = [_parse_scene_condition(item) for item in (conditions or [])]
+    parsed = [item for item in parsed if item is not None]
+    gap_diagnostics: List[Dict[str, Any]] = []
+    applied_conditions: List[Dict[str, Any]] = []
+    candidate_ids: set[str] | None = None
+
+    for condition in parsed:
+        key = condition["dimension_key"]
+        if key not in known:
+            continue
+        spans = repo.query_entity_attribute_spans(
+            dimension_key=key,
+            as_of=time_scope,
+        )
+        matched_ids = {
+            span.entity_id
+            for span in spans
+            if span.status not in {"rejected", "deprecated"}
+            and _span_matches_condition(span, condition)
+        }
+        applied_conditions.append(
+            {
+                "condition": condition["raw"],
+                "dimension_key": key,
+                "operator": condition["operator"],
+                "matched_count": len(matched_ids),
+            }
+        )
+        candidate_ids = matched_ids if candidate_ids is None else candidate_ids & matched_ids
+
+    if location_scope:
+        location_ids = _location_candidate_ids(repo, location_scope, time_scope)
+        if location_ids:
+            applied_conditions.append(
+                {
+                    "condition": f"location_scope = {location_scope}",
+                    "dimension_key": "current_location",
+                    "operator": "=",
+                    "matched_count": len(location_ids),
+                }
+            )
+            candidate_ids = location_ids if candidate_ids is None else candidate_ids & location_ids
+        else:
+            gap_diagnostics.append(
+                {
+                    "gap_type": "location_scope_not_resolved",
+                    "detail": "No current_location attribute matched the requested location scope.",
+                    "location_scope": location_scope,
+                }
+            )
+
+    unsupported = [
+        item.strip()
+        for item in (conditions or [])
+        if isinstance(item, str) and item.strip() and _parse_scene_condition(item) is None
+    ]
+    if unsupported:
+        gap_diagnostics.append(
+            {
+                "gap_type": "unsupported_scene_condition_syntax",
+                "detail": "Only simple operator conditions are resolved locally.",
+                "conditions": unsupported,
+            }
+        )
+
+    if candidate_ids is None:
+        candidate_ids = set()
+    entities = [
+        entity
+        for entity in repo.list_entities(status="active")
+        if entity.entity_id in candidate_ids
+    ][:limit]
+    return {
+        "status": "resolved" if applied_conditions else "no_resolvable_conditions",
+        "time_scope": time_scope,
+        "location_scope": location_scope,
+        "matched_entity_ids": [entity.entity_id for entity in entities],
+        "matched_entities": [
+            {
+                "entity_id": entity.entity_id,
+                "display_name": entity.display_name,
+                "entity_type": entity.entity_type,
+            }
+            for entity in entities
+        ],
+        "candidate_count": len(candidate_ids),
+        "result_limit": limit,
+        "applied_conditions": applied_conditions,
+        "gap_diagnostics": gap_diagnostics,
+    }
+
+
+def _condition_dimension_key(condition: str) -> str | None:
+    operators = (">=", "<=", "==", "!=", ">", "<", "=")
+    for operator in operators:
+        if operator in condition:
+            key = condition.split(operator, 1)[0].strip()
+            return key.replace(" ", "_") if key else None
+    return None
+
+
+def _parse_scene_condition(condition: str) -> Dict[str, Any] | None:
+    if not isinstance(condition, str):
+        return None
+    for operator in (">=", "<=", "==", "!=", ">", "<", "="):
+        if operator in condition:
+            key, raw_value = condition.split(operator, 1)
+            key = key.strip().replace(" ", "_")
+            raw_value = raw_value.strip()
+            if not key or not raw_value:
+                return None
+            value_number = _as_number(raw_value)
+            return {
+                "raw": condition.strip(),
+                "dimension_key": key,
+                "operator": operator,
+                "value_text": raw_value,
+                "value_number": value_number,
+            }
+    return None
+
+
+def _as_number(value: str) -> float | None:
+    try:
+        return float(value.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _span_matches_condition(span: Any, condition: Dict[str, Any]) -> bool:
+    operator = condition["operator"]
+    if condition.get("value_number") is not None and span.value_number is not None:
+        return _compare_numbers(span.value_number, condition["value_number"], operator)
+    actual = span.value_text or span.value_ref_id
+    expected = condition["value_text"]
+    if actual is None:
+        return False
+    if operator in {"=", "=="}:
+        return str(actual).casefold() == expected.casefold()
+    if operator == "!=":
+        return str(actual).casefold() != expected.casefold()
+    return False
+
+
+def _compare_numbers(actual: float, expected: float, operator: str) -> bool:
+    if operator == ">=":
+        return actual >= expected
+    if operator == "<=":
+        return actual <= expected
+    if operator == ">":
+        return actual > expected
+    if operator == "<":
+        return actual < expected
+    if operator in {"=", "=="}:
+        return actual == expected
+    if operator == "!=":
+        return actual != expected
+    return False
+
+
+def _location_candidate_ids(
+    repo: WorldRepository,
+    location_scope: str,
+    time_scope: str | None,
+) -> set[str]:
+    location_entities = {
+        entity.entity_id
+        for entity in repo.list_entities(status="active")
+        if entity.display_name.casefold() == location_scope.casefold()
+    }
+    matches = set()
+    for span in repo.query_entity_attribute_spans(
+        dimension_key="current_location",
+        as_of=time_scope,
+    ):
+        if span.status in {"rejected", "deprecated"}:
+            continue
+        if span.value_text and span.value_text.casefold() == location_scope.casefold():
+            matches.add(span.entity_id)
+        if span.value_ref_id and span.value_ref_id in location_entities:
+            matches.add(span.entity_id)
+    return matches
 
 
 class AutonomousOrchestrator:
@@ -93,6 +402,8 @@ class AutonomousOrchestrator:
         canon_policy: str = "proposal-only",
         approval: str = "required",
         close_on: str = "complete",
+        scene_filter_contract: Dict[str, Any] | None = None,
+        prep_review: bool = True,
     ) -> OrchestratorRunResult:
         if rounds <= 0:
             raise ValueError("rounds must be positive")
@@ -114,6 +425,8 @@ class AutonomousOrchestrator:
         workflow = normalize_workflow(workflow)
         skill_name = skill or workflow
         workflow_profile = build_workflow_profile(workflow_requested, skill_name)
+        if workflow == "scene_generation" and scene_filter_contract is None:
+            scene_filter_contract = build_scene_filter_contract()
         participant_plan = self._plan_participants(
             participants,
             topic,
@@ -256,6 +569,20 @@ class AutonomousOrchestrator:
                 "failure",
             ],
         }
+        if scene_filter_contract is not None:
+            plan["scene_filter_contract"] = scene_filter_contract
+        prep_review_policy = {
+            "schema": "wsa.orchestrator.prep_review_policy.v1",
+            "required": bool(prep_review),
+            "default": "required",
+            "opt_out": "--no-prep-review",
+            "scope": "hermes_bridge_before_first_actor_turn",
+            "purpose": (
+                "Let Hermes/user inspect requirement parsing, selected context bundles, "
+                "gaps, participants, and queue limits before spending actor/subagent calls."
+            ),
+        }
+        plan["prep_review_policy"] = prep_review_policy
         plan_path = safe_child_path(run_dir, "plan.json")
         plan_path.write_text(
             json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -305,6 +632,7 @@ class AutonomousOrchestrator:
                 queue_turns,
                 context_policy,
                 workflow_profile,
+                scene_filter_contract,
             )
             context_packets.append({**context_packet, "session_id": session_id})
             self.transport.send(
@@ -315,8 +643,21 @@ class AutonomousOrchestrator:
                 world_id=self.world.world_id,
                 payload=context_packet,
                 parent_message_id=plan_envelope.message_id,
-        )
+            )
 
+        prep_report = self._prep_report(
+            run_id,
+            workflow,
+            skill_name,
+            topic,
+            question,
+            frame_plan,
+            participant_plan,
+            context_packets,
+            scene_filter_contract,
+            plan,
+            prep_review_policy,
+        )
         lifecycle.append({"state": "subsessions_running", "at": utc_now()})
         if is_hermes_bridge_mode(mode):
             floor_state = build_initial_floor_state(
@@ -325,7 +666,16 @@ class AutonomousOrchestrator:
                 question,
                 participant_plan,
             )
-            lifecycle.append({"state": "awaiting_hermes_callback", "at": utc_now()})
+            lifecycle.append(
+                {
+                    "state": (
+                        "awaiting_prep_review"
+                        if prep_review_policy.get("required")
+                        else "awaiting_hermes_callback"
+                    ),
+                    "at": utc_now(),
+                }
+            )
             run_payload = {
                 "schema": ORCHESTRATOR_RUN_SCHEMA,
                 "run_id": run_id,
@@ -358,6 +708,9 @@ class AutonomousOrchestrator:
                 "session_cleanup": session_cleanup,
                 "concurrency_policy": concurrency_policy,
                 "queue_limits": plan["queue_limits"],
+                "scene_filter_contract": scene_filter_contract,
+                "prep_review_policy": prep_review_policy,
+                "prep_report": prep_report,
                 "lifecycle": lifecycle,
                 "plan": plan,
                 "context_packets": context_packets,
@@ -386,15 +739,18 @@ class AutonomousOrchestrator:
                 world_id=self.world.world_id,
                 payload={
                     "run_id": run_id,
-                    "status": "awaiting_callback",
-                    "execution_status": "waiting_for_hermes",
+                    "status": run_payload["status"],
+                    "execution_status": run_payload["execution_status"],
                 },
                 artifact_refs=[str(run_path)],
             )
-            safe_child_path(run_dir, ".wsa_bridge").write_text("waiting_for_hermes\n", encoding="utf-8")
+            safe_child_path(run_dir, ".wsa_bridge").write_text(
+                f"{run_payload['execution_status']}\n",
+                encoding="utf-8",
+            )
             return OrchestratorRunResult(
                 run_id=run_id,
-                status="awaiting_callback",
+                status=run_payload["status"],
                 run_dir=run_dir,
                 run_path=run_path,
                 report_id="",
@@ -476,6 +832,7 @@ class AutonomousOrchestrator:
             participant_plan,
             subsession_outputs,
             workflow_profile,
+            scene_filter_contract,
         )
         lifecycle.append({"state": "diagnosing_conflicts", "at": utc_now()})
         diagnosis = self._diagnose_conflicts(
@@ -519,6 +876,9 @@ class AutonomousOrchestrator:
             "session_cleanup": session_cleanup,
             "concurrency_policy": concurrency_policy,
             "queue_limits": plan["queue_limits"],
+            "scene_filter_contract": scene_filter_contract,
+            "prep_review_policy": prep_review_policy,
+            "prep_report": prep_report,
             "lifecycle": lifecycle,
             "plan": plan,
             "context_packets": context_packets,
@@ -704,6 +1064,104 @@ class AutonomousOrchestrator:
             for index, label in enumerate(labels, start=1)
         ]
 
+    def _prep_report(
+        self,
+        run_id: str,
+        workflow: str,
+        skill_name: str,
+        topic: str,
+        question: str,
+        frame_plan: str | None,
+        participant_plan: List[Dict[str, Any]],
+        context_packets: List[Dict[str, Any]],
+        scene_filter_contract: Dict[str, Any] | None,
+        plan: Dict[str, Any],
+        prep_review_policy: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        selector = (
+            scene_filter_contract.get("selector_result", {})
+            if isinstance(scene_filter_contract, dict)
+            else {}
+        )
+        graph_contract = (
+            scene_filter_contract.get("dynamic_graph_contract", {})
+            if isinstance(scene_filter_contract, dict)
+            else {}
+        )
+        scene_gaps = (
+            scene_filter_contract.get("gap_diagnostics", [])
+            if isinstance(scene_filter_contract, dict)
+            else []
+        )
+        selector_gaps = selector.get("gap_diagnostics", []) if isinstance(selector, dict) else []
+        participant_bundles = [
+            {
+                "participant_id": packet["participant_id"],
+                "represents": packet["represents"],
+                "entity_id": packet.get("entity_id"),
+                "canon_anchor_count": len(packet.get("canon_anchors", [])),
+                "expected_output": packet.get("expected_output", []),
+            }
+            for packet in context_packets
+        ]
+        status = "ready"
+        if scene_gaps or selector_gaps:
+            status = "ready_with_gaps"
+        if prep_review_policy.get("required"):
+            status = f"{status}_pending_review"
+        return {
+            "schema": "wsa.orchestrator.prep_report.v1",
+            "run_id": run_id,
+            "status": status,
+            "workflow": workflow,
+            "skill": skill_name,
+            "generated_at": utc_now(),
+            "requirement_parse": {
+                "topic": topic,
+                "question": question,
+                "frame_plan": frame_plan,
+                "scene_time_scope": (
+                    scene_filter_contract.get("time_scope")
+                    if isinstance(scene_filter_contract, dict)
+                    else None
+                ),
+                "scene_location_scope": (
+                    scene_filter_contract.get("location_scope")
+                    if isinstance(scene_filter_contract, dict)
+                    else None
+                ),
+                "scene_viewpoint": (
+                    scene_filter_contract.get("viewpoint")
+                    if isinstance(scene_filter_contract, dict)
+                    else None
+                ),
+                "conditions": (
+                    scene_filter_contract.get("conditions", [])
+                    if isinstance(scene_filter_contract, dict)
+                    else []
+                ),
+                "parsed_dimension_keys": (
+                    scene_filter_contract.get("parsed_dimension_keys", [])
+                    if isinstance(scene_filter_contract, dict)
+                    else []
+                ),
+            },
+            "selected_context_bundles": {
+                "participant_context": participant_bundles,
+                "scene_selector": selector,
+                "dynamic_graph_contract": graph_contract,
+                "queue_limits": plan.get("queue_limits", {}),
+            },
+            "gap_diagnostics": scene_gaps + selector_gaps,
+            "review_options": [
+                "approve_prep_and_run",
+                "hold_and_refine_request",
+                "restart_with_more_participants_or_conditions",
+                "opt_out_with_no_prep_review",
+            ],
+            "side_effect_status": "no_actor_calls_before_prep_approval_when_required",
+        }
+
     def _context_packet(
         self,
         run_id: str,
@@ -716,6 +1174,7 @@ class AutonomousOrchestrator:
         rounds: int,
         context_policy: str,
         workflow_profile: Dict[str, Any],
+        scene_filter_contract: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         anchors = []
         if entity is not None:
@@ -728,6 +1187,13 @@ class AutonomousOrchestrator:
                 for fact in self.repo.list_facts(entity.entity_id)[:8]
             ]
         expected_fields = profile_expected_output_fields(workflow_profile)
+        relevant_context = {
+            "topic": topic,
+            "question": question,
+            "canon_anchors": anchors,
+        }
+        if scene_filter_contract is not None:
+            relevant_context["scene_filter_contract"] = scene_filter_contract
         prompt_packet = {
             "schema": "wsa.orchestrator.subagent_prompt_packet.v1",
             "run_id": run_id,
@@ -742,11 +1208,7 @@ class AutonomousOrchestrator:
                 "Stay within the relevant context, mark uncertain claims as provisional, "
                 "and answer only the bounded fields requested by the orchestrator."
             ),
-            "relevant_context": {
-                "topic": topic,
-                "question": question,
-                "canon_anchors": anchors,
-            },
+            "relevant_context": relevant_context,
             "floor_continuity": {
                 "meeting_floor": "same_live_floor_until_chair_close_or_hard_limit",
                 "context_mode": "compressed_floor_summary_plus_relevant_recent_outputs",
@@ -790,6 +1252,7 @@ class AutonomousOrchestrator:
                 "share_policy": "participant_relevant_context_only",
             },
             "canon_anchors": anchors,
+            "scene_filter_contract": scene_filter_contract,
             "prompt_packet": prompt_packet,
             "proposal_policy": "do_not_mutate_canon",
         }
@@ -939,6 +1402,7 @@ class AutonomousOrchestrator:
         participants: List[Dict[str, Any]],
         outputs: List[Dict[str, Any]],
         workflow_profile: Dict[str, Any],
+        scene_filter_contract: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         participant_labels = [item["label"] for item in participants]
         if workflow_profile.get("workflow") == "scene_generation":
@@ -977,7 +1441,7 @@ class AutonomousOrchestrator:
                     "description": "Run another pass focused on the highest-uncertainty voices.",
                 },
             ]
-        return {
+        synthesis = {
             "summary": (
                 f"Autonomous orchestrator ran {len(outputs)} subsession outputs "
                 f"for {len(participants)} participants in {workflow_profile.get('workflow')} mode."
@@ -998,6 +1462,46 @@ class AutonomousOrchestrator:
                     if isinstance(item, dict)
                 ],
             },
+        }
+        if workflow_profile.get("workflow") == "scene_generation":
+            synthesis["scene_prep_package"] = self._scene_prep_package(
+                outputs,
+                scene_filter_contract,
+            )
+        return synthesis
+
+    def _scene_prep_package(
+        self,
+        outputs: List[Dict[str, Any]],
+        scene_filter_contract: Dict[str, Any] | None,
+    ) -> Dict[str, Any]:
+        return {
+            "schema": "wsa.scene.prep_package.v1",
+            "status": "awaiting_author_review",
+            "side_effect_status": "proposal_only_no_scene_draft_no_canon_mutation",
+            "scene_filter_contract": scene_filter_contract,
+            "facts_to_include": _collect_output_values(outputs, "facts_to_include"),
+            "facts_to_hide": _collect_output_values(outputs, "facts_to_hide"),
+            "actor_assignments": _collect_output_values(outputs, "actor_assignment"),
+            "role_isolation": _collect_output_values(outputs, "role_isolation"),
+            "viewpoint_constraints": _collect_output_values(outputs, "viewpoint_constraints"),
+            "scene_beats": _collect_output_values(outputs, "scene_beat"),
+            "model_thinking_recommendations": _collect_output_values(
+                outputs,
+                "model_thinking_recommendation",
+            ),
+            "risk_flags": _collect_output_values(outputs, "risk_flags"),
+            "prep_completion_check": {
+                "status": "requires_author_or_hermes_review",
+                "required_before_draft": [
+                    "scene goal is explicit",
+                    "actor packets are scoped",
+                    "hidden facts are separated from viewpoint-visible facts",
+                    "role isolation is defined for multi-role sessions",
+                    "risk flags are reviewed",
+                ],
+            },
+            "draft_boundary": "author_approval_required_before_script_draft_or_canon_mutation",
         }
 
     def _diagnose_conflicts(
@@ -1073,3 +1577,22 @@ def _report_id_for_run(repo: WorldRepository, run_id: str) -> str:
         if report.purpose == "orchestrator_run" and report.payload.get("run_id") == run_id:
             return report.report_id
     raise KeyError(f"orchestrator report not found for run: {run_id}")
+
+
+def _collect_output_values(
+    outputs: List[Dict[str, Any]],
+    field: str,
+    limit: int = 12,
+) -> List[Any]:
+    values: List[Any] = []
+    for output in outputs:
+        value = output.get(field)
+        if value in (None, "", []):
+            continue
+        if isinstance(value, list):
+            values.extend(item for item in value if item not in (None, "", []))
+        else:
+            values.append(value)
+        if len(values) >= limit:
+            return values[:limit]
+    return values

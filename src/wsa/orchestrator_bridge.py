@@ -25,22 +25,38 @@ MAX_CALLBACK_BYTES = 256 * 1024
 MAX_TEXT_CHARS = 4000
 MAX_LIST_ITEMS = 16
 MAX_DICT_ITEMS = 24
+MAX_CALLBACK_REJECTIONS_PER_TURN = 3
 ALLOWED_OUTPUT_FIELDS = {
+    "actor_assignment",
     "answer",
     "canon_mutation",
     "confidence",
     "conflicts",
     "dependencies",
+    "draft_boundary",
+    "facts_to_hide",
+    "facts_to_include",
     "gaps",
+    "location_scope",
+    "memory_filter",
+    "model_thinking_recommendation",
     "new_claims",
     "next_actor_suggestion",
     "objections",
     "position",
+    "prep_completion_check",
     "proposals",
     "risk_flags",
+    "role_isolation",
+    "scene_beat",
+    "scene_frame",
+    "scene_relevance",
     "source_refs",
     "stance",
+    "time_scope",
     "uncertainty",
+    "viewpoint_constraints",
+    "viewpoint_scope",
     "worldbuilding_use",
 }
 
@@ -53,8 +69,9 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
     participant_count = len(payload.get("context_packets", []))
     max_rounds = int(payload.get("queue_limits", {}).get("queue_turns_used") or 0)
     max_calls = int(payload.get("queue_limits", {}).get("planned_subsession_calls") or 0)
-    payload["status"] = "awaiting_callback"
-    payload["execution_status"] = "waiting_for_hermes"
+    prep_required = bool(payload.get("prep_review_policy", {}).get("required", True))
+    payload["status"] = "awaiting_prep_review" if prep_required else "awaiting_callback"
+    payload["execution_status"] = "prep_review_required" if prep_required else "waiting_for_hermes"
     payload["subsession_execution_mode"] = "hermes_bridge_pending_callbacks"
     payload["real_subagent_execution"] = "pending_user_hermes_runtime_callbacks"
     payload["runtime_hook_packets"] = []
@@ -75,7 +92,7 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
     payload["compressed_context_snapshots"] = []
     payload["hermes_bridge"] = {
         "schema": "wsa.orchestrator.hermes_bridge.v1",
-        "status": "waiting_for_hermes",
+        "status": "prep_review_required" if prep_required else "waiting_for_hermes",
         "next_round": 1,
         "next_participant_index": 0,
         "participant_count": participant_count,
@@ -83,14 +100,23 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
         "max_actor_calls": max_calls,
         "completed_actor_calls": 0,
         "pending_turn_ids": [],
+        "retry_policy": {
+            "max_rejections_per_turn": MAX_CALLBACK_REJECTIONS_PER_TURN,
+            "on_retry_limit": "stop_and_return_partial_review_package",
+        },
+        "turn_retry_counts": {},
         "callback_policy": {
             "callback_dir": "hermes/callbacks",
             "external_callback_paths": False,
             "execution_owner": "user_hermes_runtime",
         },
     }
-    payload["next_action"] = "run_next_hermes_hook"
-    _append_next_hook(payload, world_id)
+    if prep_required:
+        payload["next_action"] = "review_prep_report"
+        payload.setdefault("prep_report", {})["status"] = "ready_pending_review"
+    else:
+        payload["next_action"] = "run_next_hermes_hook"
+        _append_next_hook(payload, world_id)
 
 
 class OrchestratorBridge:
@@ -104,6 +130,16 @@ class OrchestratorBridge:
         pending = payload.get("pending_hooks", [])
         hook = pending[0] if pending else None
         next_action = "run_hermes_hook" if hook else payload.get("next_action", "author_review")
+        prep_report = payload.get("prep_report") if next_action == "review_prep_report" else None
+        prep_command = (
+            {
+                "argv": ["wsa", "orchestrator", "prep-approve", run_id, "--format", "json"],
+                "purpose": "Approve prepared context bundles before first Hermes actor call.",
+                "execution_owner": "user_hermes_runtime",
+            }
+            if prep_report
+            else None
+        )
         return {
             "schema": ORCHESTRATOR_NEXT_SCHEMA,
             "run_id": run_id,
@@ -113,15 +149,39 @@ class OrchestratorBridge:
             "skill": payload.get("skill"),
             "next_action": next_action,
             "hook": hook,
-            "terminal_command": hook.get("terminal_command") if hook else None,
+            "terminal_command": hook.get("terminal_command") if hook else prep_command,
+            "prep_report": prep_report,
+            "prep_review_policy": payload.get("prep_review_policy", {}),
             "floor_state": payload.get("floor_state", {}),
             "progress_report_policy": payload.get("progress_report_policy", {}),
             "queue_limits": payload.get("queue_limits", {}),
             "hermes_bridge": payload.get("hermes_bridge", {}),
         }
 
+    def approve_prep(self, run_id: str) -> Dict[str, Any]:
+        world, path, payload = find_bridge_run(self.workspace, run_id)
+        if payload.get("next_action") != "review_prep_report":
+            return self.next(run_id)
+        payload["status"] = "awaiting_callback"
+        payload["execution_status"] = "waiting_for_hermes"
+        payload["next_action"] = "run_next_hermes_hook"
+        payload.setdefault("lifecycle", []).append(
+            {"state": "prep_review_approved", "at": utc_now()}
+        )
+        prep_report = payload.setdefault("prep_report", {})
+        prep_report["status"] = "approved_for_actor_calls"
+        prep_report["reviewed_at"] = utc_now()
+        payload.setdefault("hermes_bridge", {})["status"] = "waiting_for_hermes"
+        _append_next_hook(payload, world.world_id)
+        self._write_run_payload(path, payload)
+        next_payload = self.next(run_id)
+        next_payload["prep_approved"] = True
+        return next_payload
+
     def submit(self, run_id: str, callback_path: Path) -> Dict[str, Any]:
         world, path, payload = find_bridge_run(self.workspace, run_id)
+        if payload.get("next_action") == "review_prep_report":
+            raise ValueError("prep review must be approved before submitting actor callbacks")
         callback_path = self._resolve_callback_path(callback_path)
         self._validate_callback_path_unique(callback_path, payload)
         callback = json.loads(callback_path.read_text(encoding="utf-8"))
@@ -145,7 +205,14 @@ class OrchestratorBridge:
             self._callback_record(callback, callback_path, turn_id, output["quality_gate"])
         )
         if not output["quality_gate"]["accepted"]:
-            return self._reject_callback(path, payload, callback_path, turn_id, output["quality_gate"])
+            return self._reject_callback(
+                world,
+                path,
+                payload,
+                callback_path,
+                turn_id,
+                output["quality_gate"],
+            )
 
         payload["pending_hooks"] = [
             item for item in pending_hooks if item.get("turn_id") != turn_id
@@ -213,6 +280,7 @@ class OrchestratorBridge:
 
     def _reject_callback(
         self,
+        world: WorldRecord,
         run_path: Path,
         payload: Dict[str, Any],
         callback_path: Path,
@@ -225,6 +293,8 @@ class OrchestratorBridge:
         bridge["pending_turn_ids"] = [
             item.get("turn_id") for item in payload.get("pending_hooks", [])
         ]
+        retry_counts = bridge.setdefault("turn_retry_counts", {})
+        retry_counts[turn_id] = int(retry_counts.get(turn_id) or 0) + 1
         payload["status"] = "awaiting_callback"
         payload["execution_status"] = "callback_retry_required"
         payload["next_action"] = "retry_current_hermes_hook"
@@ -236,6 +306,23 @@ class OrchestratorBridge:
                 "quality_gate": gate,
             }
         )
+        retry_limit = int(
+            bridge.get("retry_policy", {}).get(
+                "max_rejections_per_turn",
+                MAX_CALLBACK_REJECTIONS_PER_TURN,
+            )
+            or MAX_CALLBACK_REJECTIONS_PER_TURN
+        )
+        retry_limit_reached = retry_counts[turn_id] >= retry_limit
+        if retry_limit_reached:
+            _finalize_bridge_retry_limit(
+                self.workspace,
+                world,
+                run_path.parent,
+                payload,
+                turn_id,
+                gate,
+            )
         self._write_run_payload(run_path, payload)
         return {
             "schema": ORCHESTRATOR_SUBMIT_SCHEMA,
@@ -248,6 +335,7 @@ class OrchestratorBridge:
             "next_action": payload.get("next_action"),
             "pending_hook_count": len(payload.get("pending_hooks", [])),
             "report_id": payload.get("report_id"),
+            "retry_limit_reached": retry_limit_reached,
         }
 
     def _write_run_payload(self, path: Path, payload: Dict[str, Any]) -> None:
@@ -386,14 +474,18 @@ def quality_gate(output: Dict[str, Any], expected_fields: List[str]) -> Dict[str
     required = ["position", "objections", "proposals", "gaps", "uncertainty"]
     missing = [field for field in required if output.get(field) in (None, "", [])]
     expected_missing = [
-        field for field in expected_fields if output.get(field) in (None, "", [])
+        field
+        for field in expected_fields
+        if field not in output or output.get(field) in (None, "")
     ]
     uncertainty_ok = output.get("uncertainty") in {"low", "medium", "high"}
     canon_attempt = bool(output.get("canon_mutation"))
-    accepted = not missing and uncertainty_ok and not canon_attempt
+    accepted = not missing and not expected_missing and uncertainty_ok and not canon_attempt
     rejection_reasons = []
     if missing:
         rejection_reasons.append("missing_required_fields")
+    if expected_missing:
+        rejection_reasons.append("missing_workflow_expected_fields")
     if not uncertainty_ok:
         rejection_reasons.append("unlabeled_uncertainty")
     if canon_attempt:
@@ -553,6 +645,11 @@ def _finalize_bridge_payload(
             },
         ],
     }
+    if payload.get("workflow") == "scene_generation":
+        payload["synthesis"]["scene_prep_package"] = _scene_bridge_prep_package(
+            payload,
+            outputs,
+        )
     high_uncertainty = [
         output for output in outputs if output.get("uncertainty") == "high"
     ]
@@ -599,6 +696,90 @@ def _finalize_bridge_payload(
     safe_child_path(run_dir, ".wsa_completed").write_text("completed\n", encoding="utf-8")
 
 
+def _finalize_bridge_retry_limit(
+    workspace: Path,
+    world: WorldRecord,
+    run_dir: Path,
+    payload: Dict[str, Any],
+    turn_id: str,
+    gate: Dict[str, Any],
+) -> None:
+    payload["status"] = "awaiting_author_review"
+    payload["execution_status"] = "callback_retry_limit_reached"
+    payload["next_action"] = "author_review"
+    bridge = payload.setdefault("hermes_bridge", {})
+    bridge["status"] = "callback_retry_limit_reached"
+    bridge["retry_limit_turn_id"] = turn_id
+    control = ControlRepository(workspace)
+    closed_subsessions = []
+    for session_id in payload.get("subsession_session_ids", []):
+        control.update_runtime_session_status(session_id, "closed")
+        closed_subsessions.append(session_id)
+    manager_session_id = payload.get("manager_session_id")
+    if manager_session_id:
+        control.update_runtime_session_status(manager_session_id, "awaiting_author_review")
+    payload["closed_subsessions"] = closed_subsessions
+    payload["close_reason"] = "callback_retry_limit_reached_partial_review"
+    payload["synthesis"] = {
+        "summary": (
+            "Hermes bridge stopped before completion because a callback turn failed "
+            "the WSA quality gate too many times."
+        ),
+        "workflow": payload.get("workflow"),
+        "topic": payload.get("topic"),
+        "question": payload.get("question"),
+        "draft_options": [
+            {
+                "option_id": "option-a",
+                "title": "Retry current Hermes turn with corrected output schema",
+                "description": "Keep the same run context and resubmit a bounded callback.",
+            },
+            {
+                "option_id": "option-b",
+                "title": "Hold run for author or operator inspection",
+                "description": "Pause before spending more actor/subagent calls.",
+            },
+        ],
+    }
+    if payload.get("workflow") == "scene_generation":
+        payload["synthesis"]["scene_prep_package"] = _scene_bridge_prep_package(
+            payload,
+            payload.get("subsession_outputs", []),
+        )
+    payload["conflict_gap_diagnosis"] = {
+        "conflicts": [],
+        "gaps": [
+            {
+                "turn_id": turn_id,
+                "detail": "callback output did not satisfy the required WSA quality gate",
+                "quality_gate": gate,
+            }
+        ],
+        "weak_proposals": [],
+        "budget_exhausted": True,
+        "requires_author_boundary": True,
+        "author_boundary_reasons": ["callback_retry_limit_reached"],
+    }
+    payload["draft_options"] = payload["synthesis"]["draft_options"]
+    payload["approval_options"] = [
+        "retry current Hermes turn",
+        "hold for later",
+    ]
+    payload["proposed_tickets"] = []
+    if not payload.get("report_id"):
+        repo = WorldRepository(world.world_id, world.path)
+        report = ReportMailbox(workspace).create_world_report(
+            repo,
+            title=f"Orchestrator bridge retry-limit report: {payload.get('topic', payload['run_id'])}",
+            purpose="orchestrator_run",
+            risk="medium",
+            status="inbox",
+            payload=payload,
+        )
+        payload["report_id"] = report.report_id
+    safe_child_path(run_dir, ".wsa_completed").write_text("retry_limit\n", encoding="utf-8")
+
+
 def _compressed_bridge_snapshot(
     payload: Dict[str, Any],
     round_index: int,
@@ -624,3 +805,56 @@ def _compressed_bridge_snapshot(
             for output in round_outputs[-8:]
         ],
     }
+
+
+def _scene_bridge_prep_package(
+    payload: Dict[str, Any],
+    outputs: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "schema": "wsa.scene.prep_package.v1",
+        "status": "awaiting_author_review",
+        "side_effect_status": "proposal_only_no_scene_draft_no_canon_mutation",
+        "scene_filter_contract": payload.get("scene_filter_contract"),
+        "facts_to_include": _collect_output_values(outputs, "facts_to_include"),
+        "facts_to_hide": _collect_output_values(outputs, "facts_to_hide"),
+        "actor_assignments": _collect_output_values(outputs, "actor_assignment"),
+        "role_isolation": _collect_output_values(outputs, "role_isolation"),
+        "viewpoint_constraints": _collect_output_values(outputs, "viewpoint_constraints"),
+        "scene_beats": _collect_output_values(outputs, "scene_beat"),
+        "model_thinking_recommendations": _collect_output_values(
+            outputs,
+            "model_thinking_recommendation",
+        ),
+        "risk_flags": _collect_output_values(outputs, "risk_flags"),
+        "prep_completion_check": {
+            "status": "requires_author_or_hermes_review",
+            "required_before_draft": [
+                "scene goal is explicit",
+                "actor packets are scoped",
+                "hidden facts are separated from viewpoint-visible facts",
+                "role isolation is defined for multi-role sessions",
+                "risk flags are reviewed",
+            ],
+        },
+        "draft_boundary": "author_approval_required_before_script_draft_or_canon_mutation",
+    }
+
+
+def _collect_output_values(
+    outputs: List[Dict[str, Any]],
+    field: str,
+    limit: int = 12,
+) -> List[Any]:
+    values: List[Any] = []
+    for output in outputs:
+        value = output.get(field)
+        if value in (None, "", []):
+            continue
+        if isinstance(value, list):
+            values.extend(item for item in value if item not in (None, "", []))
+        else:
+            values.append(value)
+        if len(values) >= limit:
+            return values[:limit]
+    return values

@@ -751,7 +751,7 @@ def build_agent_harness_contract() -> Dict[str, Any]:
                 "examples": [
                     "until 100 characters exist",
                     "until three regions have factions, conflicts, and opening hooks",
-                    "until the first academy year has enough institutions for scene play",
+                    "until the opening arc has enough institutions for scene play",
                 ],
                 "on_checkpoint": "summarize candidates and request user decision",
             },

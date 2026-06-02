@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from wsa.autonomous_orchestrator import AutonomousOrchestrator
+from wsa.autonomous_orchestrator import AutonomousOrchestrator, build_scene_filter_contract
 from wsa.hermes_adapter import HERMES_CALLBACK_SCHEMA
 from wsa.orchestrator_bridge import OrchestratorBridge
 from wsa.repositories import ControlRepository, WorldRepository
@@ -16,20 +16,20 @@ class AutonomousOrchestratorTests(TestCase):
             workspace = Path(tmp) / "workspace"
             world = create_world(workspace, "Orchestrator World")
             repo = WorldRepository(world.world_id, world.path)
-            university = repo.create_entity("institution", "North University")
+            institution = repo.create_entity("institution", "Northern Institute")
             repo.create_fact(
-                university.entity_id,
+                institution.entity_id,
                 "teaches",
-                "contract magic",
+                "contract craft",
                 authority="user_explicit",
                 status="canon",
             )
 
             result = AutonomousOrchestrator(workspace, world).run(
                 workflow="meetup",
-                topic="seven universities and the three major magic schools",
+                topic="rival institutions and their power traditions",
                 question="Map tensions and candidate structures.",
-                participants=["North University", "Unregistered School"],
+                participants=["Northern Institute", "Unregistered Circle"],
                 rounds=3,
             )
             payload = json.loads(result.run_path.read_text(encoding="utf-8"))
@@ -131,6 +131,7 @@ class AutonomousOrchestratorTests(TestCase):
                 participants=["Council"],
                 rounds=2,
                 mode="hermes-bridge",
+                prep_review=False,
             )
             bridge = OrchestratorBridge(workspace)
             first_next = bridge.next(result.run_id)
@@ -189,6 +190,40 @@ class AutonomousOrchestratorTests(TestCase):
                 "awaiting_author_review",
             )
 
+    def test_hermes_bridge_defaults_to_prep_review_before_actor_hook(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Bridge Prep Review World")
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="meetup",
+                topic="council prep review",
+                question="Check selected prep before actor calls.",
+                participants=["Council"],
+                rounds=1,
+                mode="hermes-bridge",
+            )
+            bridge = OrchestratorBridge(workspace)
+            first_next = bridge.next(result.run_id)
+
+            self.assertEqual(result.status, "awaiting_prep_review")
+            self.assertEqual(first_next["status"], "awaiting_prep_review")
+            self.assertEqual(first_next["execution_status"], "prep_review_required")
+            self.assertEqual(first_next["next_action"], "review_prep_report")
+            self.assertIsNone(first_next["hook"])
+            self.assertEqual(first_next["prep_report"]["schema"], "wsa.orchestrator.prep_report.v1")
+            self.assertEqual(
+                first_next["terminal_command"]["argv"][:3],
+                ["wsa", "orchestrator", "prep-approve"],
+            )
+
+            approved = bridge.approve_prep(result.run_id)
+            run_payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
+
+            self.assertTrue(approved["prep_approved"])
+            self.assertEqual(approved["next_action"], "run_hermes_hook")
+            self.assertEqual(approved["hook"]["round"], 1)
+            self.assertEqual(run_payload["prep_report"]["status"], "approved_for_actor_calls")
+
     def test_hermes_bridge_rejects_external_callback_path(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -200,6 +235,7 @@ class AutonomousOrchestratorTests(TestCase):
                 participants=["Council"],
                 rounds=1,
                 mode="hermes-bridge",
+                prep_review=False,
             )
             outside = Path(tmp) / "outside.json"
             outside.write_text("{}", encoding="utf-8")
@@ -218,6 +254,7 @@ class AutonomousOrchestratorTests(TestCase):
                 participants=["Council"],
                 rounds=1,
                 mode="hermes-bridge",
+                prep_review=False,
             )
             bridge = OrchestratorBridge(workspace)
             next_payload = bridge.next(result.run_id)
@@ -248,6 +285,7 @@ class AutonomousOrchestratorTests(TestCase):
                 participants=["Council"],
                 rounds=1,
                 mode="hermes-bridge",
+                prep_review=False,
             )
             bridge = OrchestratorBridge(workspace)
             next_payload = bridge.next(result.run_id)
@@ -270,6 +308,135 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(run_payload["rejected_callbacks"][0]["turn_id"], next_payload["hook"]["turn_id"])
             self.assertIsNone(run_payload["report_id"])
 
+    def test_hermes_bridge_retry_limit_returns_author_boundary(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Bridge Retry Limit World")
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="meetup",
+                topic="quality retry limit",
+                question="Check retry limit.",
+                participants=["Council"],
+                rounds=1,
+                mode="hermes-bridge",
+                prep_review=False,
+            )
+            bridge = OrchestratorBridge(workspace)
+            next_payload = bridge.next(result.run_id)
+
+            submitted = None
+            for index in range(1, 4):
+                callback = _write_bridge_callback(
+                    workspace,
+                    world.world_id,
+                    next_payload["hook"],
+                    f"Rejected output {index}.",
+                    uncertainty="unlabeled",
+                    suffix=f"retry-{index}",
+                )
+                submitted = bridge.submit(result.run_id, callback)
+
+            self.assertIsNotNone(submitted)
+            self.assertFalse(submitted["accepted"])
+            self.assertTrue(submitted["retry_limit_reached"])
+            self.assertEqual(submitted["execution_status"], "callback_retry_limit_reached")
+            run_payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
+            self.assertEqual(run_payload["status"], "awaiting_author_review")
+            self.assertEqual(run_payload["close_reason"], "callback_retry_limit_reached_partial_review")
+            self.assertTrue(run_payload["report_id"])
+
+    def test_scene_bridge_callback_preserves_scene_prep_package(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Scene Bridge Package World")
+            scene_filter = build_scene_filter_contract(
+                time_scope="day 3",
+                location_scope="central station",
+                viewpoint="newcomer",
+                conditions=["local authority present"],
+            )
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="scene_generation",
+                topic="arrival at a contested transit hub",
+                question="Prepare scene packets.",
+                participants=["Narrator"],
+                rounds=1,
+                mode="hermes-bridge",
+                skill="scene_start",
+                scene_filter_contract=scene_filter,
+                prep_review=False,
+            )
+            bridge = OrchestratorBridge(workspace)
+            next_payload = bridge.next(result.run_id)
+            callback = _write_bridge_callback(
+                workspace,
+                world.world_id,
+                next_payload["hook"],
+                "Narrator frames the scene prep.",
+                extra_output={
+                    "scene_relevance": "The hub constrains movement and first impressions.",
+                    "facts_to_include": ["arrival pressure", "public authority nearby"],
+                    "facts_to_hide": ["private author-only twist"],
+                    "memory_filter": "Give the newcomer only public facts.",
+                    "actor_assignment": "Narrator handles crowd texture.",
+                    "role_isolation": "Do not mix narrator knowledge into newcomer memory.",
+                    "viewpoint_constraints": "Newcomer does not know private authority motives.",
+                    "scene_beat": "A delayed gate forces the newcomer to ask for help.",
+                    "model_thinking_recommendation": "Use higher thinking for hidden knowledge checks.",
+                    "risk_flags": ["verify visible knowledge before drafting"],
+                },
+            )
+            submitted = bridge.submit(result.run_id, callback)
+            run_payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
+            package = run_payload["synthesis"]["scene_prep_package"]
+
+            self.assertTrue(submitted["accepted"])
+            self.assertEqual(submitted["execution_status"], "completed_by_hermes")
+            self.assertEqual(package["scene_filter_contract"]["time_scope"], "day 3")
+            self.assertIn("arrival pressure", package["facts_to_include"])
+            self.assertIn("Narrator handles crowd texture.", package["actor_assignments"])
+            self.assertEqual(
+                package["side_effect_status"],
+                "proposal_only_no_scene_draft_no_canon_mutation",
+            )
+
+    def test_scene_bridge_rejects_missing_scene_expected_fields(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Scene Bridge Gate World")
+            result = AutonomousOrchestrator(workspace, world).run(
+                workflow="scene_generation",
+                topic="arrival at a contested transit hub",
+                question="Prepare scene packets.",
+                participants=["Narrator"],
+                rounds=1,
+                mode="hermes-bridge",
+                skill="scene_start",
+                prep_review=False,
+            )
+            bridge = OrchestratorBridge(workspace)
+            next_payload = bridge.next(result.run_id)
+            callback = _write_bridge_callback(
+                workspace,
+                world.world_id,
+                next_payload["hook"],
+                "This has generic meeting fields but no scene prep fields.",
+                suffix="missing-scene-fields",
+            )
+
+            submitted = bridge.submit(result.run_id, callback)
+
+            self.assertFalse(submitted["accepted"])
+            self.assertEqual(submitted["execution_status"], "callback_retry_required")
+            self.assertIn(
+                "missing_workflow_expected_fields",
+                submitted["quality_gate"]["rejection_reasons"],
+            )
+            self.assertIn(
+                "scene_relevance",
+                submitted["quality_gate"]["missing_expected_fields"],
+            )
+
     def test_scene_generation_workflow_records_scene_prep_lifecycle(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -277,7 +444,7 @@ class AutonomousOrchestratorTests(TestCase):
 
             result = AutonomousOrchestrator(workspace, world).run(
                 workflow="scene_start",
-                topic="opening scene at the flooded station",
+                topic="opening scene at the contested transit hub",
                 question="Prepare actor packets and scene-prep decisions.",
                 participants=["Narrator", "Crowd extras"],
                 rounds=2,
@@ -378,7 +545,7 @@ class AutonomousOrchestratorTests(TestCase):
             repo = WorldRepository(world.world_id, world.path)
             result = AutonomousOrchestrator(workspace, world).run(
                 workflow="meetup",
-                topic="academy factions",
+                topic="institution factions",
                 question="Draft options.",
                 participants=["Council"],
                 rounds=1,
@@ -406,7 +573,7 @@ class AutonomousOrchestratorTests(TestCase):
             with self.assertRaises(ValueError):
                 AutonomousOrchestrator(workspace, world).run(
                     workflow="meetup",
-                    topic="academy factions",
+                    topic="institution factions",
                     question="Draft options.",
                     participants=["Council"],
                     canon_policy="approval-to-canon",
@@ -433,7 +600,7 @@ class AutonomousOrchestratorTests(TestCase):
             world = create_world(workspace, "Orchestrator Option World")
             result = AutonomousOrchestrator(workspace, world).run(
                 workflow="meetup",
-                topic="academy factions",
+                topic="institution factions",
                 question="Draft options.",
                 participants=["Council"],
                 rounds=1,
@@ -461,7 +628,7 @@ class AutonomousOrchestratorTests(TestCase):
             repo = WorldRepository(world.world_id, world.path)
             result = AutonomousOrchestrator(workspace, world).run(
                 workflow="subsession",
-                topic="magic tool economy",
+                topic="specialist tool economy",
                 question="Find gaps.",
                 participants=[],
                 rounds=1,
@@ -480,14 +647,35 @@ def _write_bridge_callback(
     hook: dict,
     position: str,
     uncertainty: str = "medium",
+    suffix: str = "",
+    extra_output=None,
 ) -> Path:
     callbacks_dir = workspace / "hermes" / "callbacks"
     callbacks_dir.mkdir(parents=True, exist_ok=True)
-    path = callbacks_dir / f"{hook['turn_id'].replace(':', '_')}.json"
+    path_suffix = f"_{suffix}" if suffix else ""
+    callback_stem = f"{hook['turn_id'].replace(':', '_')}{path_suffix}"
+    path = callbacks_dir / f"{callback_stem}.json"
+    output = {
+        "position": position,
+        "stance": "support_with_conditions",
+        "answer": position,
+        "new_claims": [],
+        "objections": ["Keep this proposal-only."],
+        "dependencies": ["Author approval."],
+        "conflicts": [],
+        "worldbuilding_use": "candidate material",
+        "confidence": "medium",
+        "next_actor_suggestion": "none",
+        "proposals": ["Carry this into the review package."],
+        "gaps": ["Needs author review."],
+        "uncertainty": uncertainty,
+    }
+    if extra_output:
+        output.update(extra_output)
     payload = {
         "schema": HERMES_CALLBACK_SCHEMA,
-        "callback_id": f"callback_{hook['turn_id'].replace(':', '_')}",
-        "task_id": f"task_{hook['turn_id'].replace(':', '_')}",
+        "callback_id": f"callback_{callback_stem}",
+        "task_id": f"task_{callback_stem}",
         "workspace_id": "local",
         "created_at": utc_now(),
         "status": "completed",
@@ -496,24 +684,10 @@ def _write_bridge_callback(
                 "scene_id": None,
                 "session_id": hook["session_id"],
                 "role": "orchestrator_subsession",
-            },
+        },
         "payload": {
             "turn_id": hook["turn_id"],
-            "output": {
-                "position": position,
-                "stance": "support_with_conditions",
-                "answer": position,
-                "new_claims": [],
-                "objections": ["Keep this proposal-only."],
-                "dependencies": ["Author approval."],
-                "conflicts": [],
-                "worldbuilding_use": "candidate material",
-                "confidence": "medium",
-                "next_actor_suggestion": "none",
-                "proposals": ["Carry this into the review package."],
-                "gaps": ["Needs author review."],
-                "uncertainty": uncertainty,
-            },
+            "output": output,
         },
         "artifact_refs": [],
     }

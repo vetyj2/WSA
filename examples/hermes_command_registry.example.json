@@ -922,6 +922,7 @@
         "The template CLI produces local simulated subsession outputs unless a Hermes runtime uses the prompt packets to run real subagents.",
         "Hermes should preserve a compressed meeting context inside this run and adapt prompt packets to its subagent syntax.",
         "Hermes should not start without a plan/frame and hard limits; WSA supplies conservative defaults when the user has not customized them.",
+        "Prep review is default-on in bridge mode; inspect prep_report and run wsa orchestrator prep-approve before actor/subagent calls unless the user opted out.",
         "Treat the run as a live meeting floor: participants receive compressed continuity until the chair closes it or a hard limit stops it.",
         "Subsession prompts should be short and precise; accumulate only outputs that pass the quality gate.",
         "Temporary subsessions are closed after the report package is created.",
@@ -1137,20 +1138,41 @@
           "required": false
         },
         {
+          "description": "Optional scene time scope.",
+          "name": "time_scope",
+          "required": false
+        },
+        {
+          "description": "Optional scene location scope.",
+          "name": "location_scope",
+          "required": false
+        },
+        {
+          "description": "Optional viewpoint or POV scope.",
+          "name": "viewpoint",
+          "required": false
+        },
+        {
+          "description": "Optional scene selection condition. May be repeated.",
+          "name": "condition",
+          "repeatable": true,
+          "required": false
+        },
+        {
           "description": "Actor, narrator, crowd, continuity role, or scene-prep viewpoint. May be repeated.",
           "name": "participant",
           "repeatable": true,
           "required": false
         },
         {
-          "description": "Run ID returned by the start command; used when fetching hook packets.",
+          "description": "Run ID returned by the start command; used when approving prep or fetching hook packets.",
           "name": "run_id",
           "required": false
         }
       ],
       "category": "orchestrator",
       "cli_template_policy": {
-        "execution": "run_start_then_fetch_hooks_after_run_id",
+        "execution": "run_scene_start_then_review_prep_then_fetch_next_hook_by_run_id",
         "optional_arguments": [
           "question",
           "rounds",
@@ -1158,11 +1180,16 @@
           "max_concurrent_subsessions",
           "max_subsession_calls",
           "frame_plan",
+          "time_scope",
+          "location_scope",
+          "viewpoint",
+          "condition",
           "participant",
           "run_id"
         ],
         "optional_placeholder_rule": "If an optional placeholder is unresolved or empty, omit that argv token; if the previous argv token is the option flag for that placeholder, omit the flag too.",
         "repeatable_arguments": [
+          "condition",
           "participant"
         ],
         "repeatable_placeholder_rule": "For repeatable placeholders, emit one flag/value pair per value rather than joining."
@@ -1170,13 +1197,9 @@
       "cli_templates": [
         [
           "wsa",
-          "orchestrator",
-          "run",
+          "scene",
+          "start",
           "{world_id}",
-          "--workflow",
-          "scene_generation",
-          "--skill",
-          "scene_start",
           "--topic",
           "{topic}",
           "--question",
@@ -1191,21 +1214,31 @@
           "{max_subsession_calls:48}",
           "--frame-plan",
           "{frame_plan}",
+          "--time-scope",
+          "{time_scope}",
+          "--location-scope",
+          "{location_scope}",
+          "--viewpoint",
+          "{viewpoint}",
+          "--condition",
+          "{condition}",
           "--participant",
           "{participant}",
-          "--subsession-policy",
-          "ephemeral",
-          "--canon-policy",
-          "proposal-only",
-          "--approval",
-          "required",
-          "--close-on",
-          "complete"
+          "--format",
+          "json"
         ],
         [
           "wsa",
           "orchestrator",
-          "hooks",
+          "prep-approve",
+          "{run_id}",
+          "--format",
+          "json"
+        ],
+        [
+          "wsa",
+          "orchestrator",
+          "next",
           "{run_id}",
           "--format",
           "json"
@@ -1227,17 +1260,23 @@
       },
       "input_json_template": {
         "boundary": "prep_package_before_scene_draft_or_canon_mutation",
+        "condition": "{condition}",
         "frame_plan": "{frame_plan}",
+        "location_scope": "{location_scope}",
         "participant": "{participant}",
         "question": "{question:Prepare scene facts, actor assignments, role isolation, model/thinking guidance, and approval choices.}",
         "skill": "scene_start",
+        "time_scope": "{time_scope}",
         "topic": "{topic}",
+        "viewpoint": "{viewpoint}",
         "workflow": "scene_generation"
       },
       "intent": "run_scene_generation_orchestrator",
       "notes": [
         "Manual trigger for scene-prep, not direct script canonization.",
-        "The first template starts the run; after Hermes has the returned run_id, the second template can fetch terminal/prompt hook packets.",
+        "The first template starts the run and returns a prep review report by default.",
+        "The second template approves the prep report and opens the first Hermes actor hook for a returned run_id.",
+        "The third template remains available when Hermes needs to fetch the next hook for a returned run_id.",
         "Scene prep should filter facts/history/memory by viewpoint, cross-check contradictions, assign actors, isolate multi-role sessions, recommend model/thinking levels, and stop at approval boundary.",
         "Hermes owns actual actor/subagent calls. WSA records prompt packets, floor state, turn records, quality gates, and approval package."
       ],

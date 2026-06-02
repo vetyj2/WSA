@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.7 Temporal Graph Foundation</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #697386;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --blue: #2563eb;
+      --warn: #b45309;
+      --ok: #15803d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    a { color: var(--accent); font-weight: 700; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    code {
+      background: #eef1f5;
+      border-radius: 5px;
+      color: #253041;
+      padding: 2px 5px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .stack { display: grid; gap: 14px; }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.ok { color: var(--ok); border-color: #9bd4aa; background: #f0fbf3; }
+    .badge.blue { color: var(--blue); border-color: #a8c6ff; background: #f1f6ff; }
+    .badge.warn { color: var(--warn); border-color: #f1c27d; background: #fff8ed; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 10px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong {
+      display: block;
+      color: var(--ink);
+      margin-bottom: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #eef1f5; color: #253041; }
+    tr:last-child td { border-bottom: 0; }
+    ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+    @media (max-width: 760px) {
+      .flow { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stack">
+    <header>
+      <a href="index.html">Back to dashboards</a>
+      <h1>Temporal Graph Foundation</h1>
+      <p>v0.2.7 adds a sparse, additive data layer for dynamic dimensions, time-scoped attributes, flexible relationships, and actor knowledge without replacing existing facts.</p>
+      <div class="badge-row">
+        <span class="badge ok">version v0.2.7</span>
+        <span class="badge ok">additive schema</span>
+        <span class="badge blue">scene filters</span>
+        <span class="badge blue">dynamic dimensions</span>
+        <span class="badge warn">no canon mutation</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>Why This Patch Exists</h2>
+      <div class="flow">
+        <div class="step">
+          <strong>Author Adds Label</strong>
+          <p>A world can introduce dimensions such as capability, location, rank, knowledge, or custom values.</p>
+        </div>
+        <div class="step">
+          <strong>WSA Stores Sparse Data</strong>
+          <p>Only known values are stored. Missing values are gaps, not runtime errors.</p>
+        </div>
+        <div class="step">
+          <strong>Scene Asks Conditions</strong>
+          <p>Scene prep can record and resolve simple time, place, viewpoint, and attribute conditions.</p>
+        </div>
+        <div class="step">
+          <strong>Hermes Gets Gaps</strong>
+          <p>Unknown dimensions or missing values become Doctor, Patrol, or Meetup follow-up targets.</p>
+        </div>
+        <div class="step">
+          <strong>Approval Boundary Holds</strong>
+          <p>No fact, scene draft, or canon mutation is committed without author approval.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel stack">
+        <h2>New Tables</h2>
+        <table>
+          <thead>
+            <tr><th>Table</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>dimension_definitions</code></td>
+              <td>World-local dynamic labels and value policy.</td>
+            </tr>
+            <tr>
+              <td><code>entity_attribute_spans</code></td>
+              <td>Time-scoped entity values such as location, status, or numeric traits.</td>
+            </tr>
+            <tr>
+              <td><code>world_edges</code></td>
+              <td>Flexible relationships across entities, facts, events, scenes, and other world objects.</td>
+            </tr>
+            <tr>
+              <td><code>knowledge_attributions</code></td>
+              <td>What an actor knows, suspects, believes, or misunderstands at a given time.</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="panel stack">
+        <h2>Repository API</h2>
+        <p>The new API keeps SQL centralized in <code>WorldRepository</code> and avoids hard enum traps.</p>
+        <ul>
+          <li><code>define_dimension()</code></li>
+          <li><code>set_entity_attribute_span()</code></li>
+          <li><code>query_entity_attribute_spans()</code></li>
+          <li><code>add_world_edge()</code> and <code>query_world_edges()</code></li>
+          <li><code>add_knowledge_attribution()</code> and <code>query_knowledge_attributions()</code></li>
+        </ul>
+      </article>
+
+      <article class="panel stack">
+        <h2>Scene Contract Change</h2>
+        <p><code>wsa scene start</code> now includes a dynamic graph contract in <code>scene_filter_contract</code>.</p>
+        <ul>
+          <li>Known dimensions are listed for Hermes.</li>
+          <li>Parsed condition keys are surfaced.</li>
+          <li>Unknown keys become <code>missing_dynamic_dimensions</code> gaps.</li>
+          <li>Resolvable operator filters return a bounded <code>selector_result</code> with matched entities.</li>
+          <li>Default-on prep review returns selected context bundles before the first actor hook.</li>
+          <li>Scene prep keeps filtering proposal-only.</li>
+        </ul>
+      </article>
+
+      <article class="panel stack">
+        <h2>Prep Review Hook</h2>
+        <p>Hermes bridge runs now pause at <code>review_prep_report</code> before spending actor/subagent calls unless the caller opts out.</p>
+        <ul>
+          <li>The report shows requirement parsing, participants, selector candidates, graph gaps, and queue limits.</li>
+          <li><code>wsa orchestrator prep-approve</code> opens the first actor hook.</li>
+          <li><code>--no-prep-review</code> is available for runtimes that already performed equivalent approval.</li>
+        </ul>
+      </article>
+
+      <article class="panel stack">
+        <h2>Doctor/Patrol Readiness</h2>
+        <p><code>wsa manager diagnose</code> can now report sparse dynamic-dimension coverage gaps.</p>
+        <ul>
+          <li>Defined dimensions with missing active-entity values are flagged.</li>
+          <li><code>--fix</code> records diagnostic logs only; it does not invent values.</li>
+          <li>Findings are intended to route into Patrol, Meetup, or fill planning.</li>
+        </ul>
+      </article>
+
+      <article class="panel stack">
+        <h2>Update Safety</h2>
+        <p>The patch is additive-first and does not rewrite existing world data.</p>
+        <ul>
+          <li>Tables are created with <code>CREATE TABLE IF NOT EXISTS</code>.</li>
+          <li>Indexes are created with <code>CREATE INDEX IF NOT EXISTS</code>.</li>
+          <li>Old world DBs are lazily supplemented when the new API is used.</li>
+          <li>Missing dimensions remain gaps instead of exceptions.</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
