@@ -314,6 +314,8 @@ wsa orchestrator submit <run_id> --callback hermes/callbacks/<callback>.json --f
 
 The bridge loop uses the same compact command surface. Hermes does not need a new user-visible slash command for `next` or `submit`; those are internal CLI routes for the active Meetup or Scene session. Callback files must stay under `hermes/callbacks`, match the pending hook route, and pass the bounded output quality gate before the run advances.
 
+Long meetup or scene-prep runs also publish an optional `progress_report_policy`. It is disabled by default and is only a Hermes/user opt-in delivery contract. When enabled, Hermes should report interim status only at explicit round or checkpoint boundaries, include the current and maximum round such as `라운드 7/100 현황` or `Round 7/100 status`, and include stop reason plus side-effect status in the final report.
+
 Approval creates an `orchestrator_candidate` ticket only. Converting accepted options into facts, scenes, actor selections, or canonical world changes remains a later explicit ticket/apply step.
 
 ## Template Readiness

@@ -8,6 +8,7 @@ from .orchestrator_workflows import build_workflow_entrypoint_contracts
 ORCHESTRATOR_RUN_SCHEMA = "wsa.orchestrator.run.v1"
 ORCHESTRATOR_SESSION_CONTRACT_SCHEMA = "wsa.orchestrator.session_contract.v1"
 HERMES_ORCHESTRATOR_RUNTIME_CONTRACT_SCHEMA = "wsa.hermes.orchestrator_runtime_contract.v1"
+ORCHESTRATOR_PROGRESS_REPORT_POLICY_SCHEMA = "wsa.orchestrator.progress_report_policy.v1"
 
 DEFAULT_CONTEXT_POLICY = "compressed-continuity"
 DEFAULT_MAX_QUEUE_TURNS = 12
@@ -122,6 +123,62 @@ def build_concurrency_policy(
     }
 
 
+def build_progress_report_policy(
+    max_rounds: int,
+    max_subsession_calls: int,
+) -> Dict[str, Any]:
+    return {
+        "schema": ORCHESTRATOR_PROGRESS_REPORT_POLICY_SCHEMA,
+        "availability": "optional_runtime_opt_in",
+        "enabled_by_default": False,
+        "delivery_owner": "user_hermes_runtime",
+        "wsa_role": "declare_policy_only_no_user_delivery",
+        "policy": "round_boundary_only",
+        "allow_mid_round_report": False,
+        "templates": {
+            "ko": "라운드 {round}/{max_rounds} 현황 — {summary}",
+            "en": "Round {round}/{max_rounds} status — {summary}",
+            "with_turn_ko": "라운드 {round}/{max_rounds}, 턴 {turn}/{max_turns} 현황 — {summary}",
+            "with_turn_en": "Round {round}/{max_rounds}, turn {turn}/{max_turns} status — {summary}",
+        },
+        "round_state": {
+            "max_rounds": max_rounds,
+            "max_turns": max_subsession_calls,
+            "if_rounds_unavailable": (
+                "compute_stable_checkpoint_or_state_no_round_state_exists"
+            ),
+        },
+        "interim_report_rules": [
+            "send_only_at_explicit_round_or_checkpoint_boundary",
+            "include_current_round_and_max_rounds_when_available",
+            "include_current_turn_and_max_turns_when_turns_are_reported",
+            "avoid_unlabelled_in_progress_messages",
+        ],
+        "allowed_mid_round_exceptions": [
+            "user_interrupt_or_stop_signal",
+            "runtime_error",
+            "approval_or_canon_boundary",
+            "background_process_completion",
+            "background_process_failure",
+        ],
+        "final_report_required_fields": [
+            "stop_reason",
+            "side_effect_status",
+        ],
+        "stop_reason_values": [
+            "conclusion_reached",
+            "author_boundary",
+            "max_round_or_turn_budget",
+            "error_or_interruption",
+        ],
+        "side_effect_status_values": [
+            "proposal_only_no_world_mutation",
+            "awaiting_author_approval",
+            "approved_ticket_created_only",
+        ],
+    }
+
+
 def build_start_preflight(
     plan_frame: Dict[str, Any],
     termination_contract: Dict[str, Any],
@@ -227,6 +284,10 @@ def build_orchestrator_session_contract(
             "continuity_payload": "compressed_floor_summary_plus_relevant_recent_outputs",
             "chair_role": "author_or_authorized_hermes_runtime",
         },
+        "progress_report_policy": build_progress_report_policy(
+            max_rounds=max_queue_turns,
+            max_subsession_calls=max_subsession_calls,
+        ),
         "prompt_coordination": {
             "owner": "orchestrator_manager",
             "hermes_executes_subagent_calls": True,
@@ -332,6 +393,10 @@ def build_hermes_orchestrator_runtime_contract() -> Dict[str, Any]:
             "all_participants_receive_compressed_context_until_close": True,
             "chair_closes_floor_or_hard_limit_stops": True,
         },
+        "progress_report_policy": build_progress_report_policy(
+            max_rounds=DEFAULT_MAX_QUEUE_TURNS,
+            max_subsession_calls=DEFAULT_MAX_SUBSESSION_CALLS,
+        ),
         "plan_frame_policy": {
             "required_before_start": True,
             "default_guardrail_allowed_when_user_frame_missing": True,

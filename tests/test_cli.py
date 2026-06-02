@@ -930,6 +930,17 @@ class CliTests(TestCase):
                 ]
             )
             self.assertEqual(
+                commands["/wsa_orchestrator"]["runtime_contract"][
+                    "progress_report_policy"
+                ]["policy"],
+                "round_boundary_only",
+            )
+            self.assertFalse(
+                commands["/wsa_orchestrator"]["runtime_contract"][
+                    "progress_report_policy"
+                ]["enabled_by_default"]
+            )
+            self.assertEqual(
                 commands["/wsa_orchestrator"]["runtime_contract"]["micro_turn_policy"][
                     "utterance_target"
                 ],

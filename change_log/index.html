@@ -104,6 +104,24 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.5-round-boundary-progress-policy.html">v0.2.5 Round Boundary Progress Policy</a></h2>
+          <p>Adds an optional progress-reporting contract for long meetup and scene-prep runs without making WSA deliver user messages directly.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">round boundary only</span>
+          <span class="badge accent">opt-in</span>
+          <span class="badge">stop reason</span>
+          <span class="badge warn">Hermes owns delivery</span>
+        </div>
+        <ul>
+          <li>Publishes <code>progress_report_policy</code> in orchestrator session and runtime contracts.</li>
+          <li>Hermes can report <code>Round 7/100 status</code> style updates only at stable boundaries.</li>
+          <li>Keeps delivery optional and runtime-owned instead of adding WSA-side user messaging.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.4-hermes-bridge-loop.html">v0.2.4 Hermes Bridge Loop</a></h2>
           <p>Adds the first real next/submit callback loop so Hermes can execute actor turns while WSA preserves state and review boundaries.</p>
         </div>

@@ -990,6 +990,54 @@
           "required_before_start": true,
           "start_without_frame_recommendation": "do_not_start"
         },
+        "progress_report_policy": {
+          "allow_mid_round_report": false,
+          "allowed_mid_round_exceptions": [
+            "user_interrupt_or_stop_signal",
+            "runtime_error",
+            "approval_or_canon_boundary",
+            "background_process_completion",
+            "background_process_failure"
+          ],
+          "availability": "optional_runtime_opt_in",
+          "delivery_owner": "user_hermes_runtime",
+          "enabled_by_default": false,
+          "final_report_required_fields": [
+            "stop_reason",
+            "side_effect_status"
+          ],
+          "interim_report_rules": [
+            "send_only_at_explicit_round_or_checkpoint_boundary",
+            "include_current_round_and_max_rounds_when_available",
+            "include_current_turn_and_max_turns_when_turns_are_reported",
+            "avoid_unlabelled_in_progress_messages"
+          ],
+          "policy": "round_boundary_only",
+          "round_state": {
+            "if_rounds_unavailable": "compute_stable_checkpoint_or_state_no_round_state_exists",
+            "max_rounds": 12,
+            "max_turns": 48
+          },
+          "schema": "wsa.orchestrator.progress_report_policy.v1",
+          "side_effect_status_values": [
+            "proposal_only_no_world_mutation",
+            "awaiting_author_approval",
+            "approved_ticket_created_only"
+          ],
+          "stop_reason_values": [
+            "conclusion_reached",
+            "author_boundary",
+            "max_round_or_turn_budget",
+            "error_or_interruption"
+          ],
+          "templates": {
+            "en": "Round {round}/{max_rounds} status — {summary}",
+            "ko": "라운드 {round}/{max_rounds} 현황 — {summary}",
+            "with_turn_en": "Round {round}/{max_rounds}, turn {turn}/{max_turns} status — {summary}",
+            "with_turn_ko": "라운드 {round}/{max_rounds}, 턴 {turn}/{max_turns} 현황 — {summary}"
+          },
+          "wsa_role": "declare_policy_only_no_user_delivery"
+        },
         "prompt_coordination": {
           "hermes_adapts_prompt_packets_to_subagent_syntax": true,
           "owner": "orchestrator_manager",
@@ -1255,6 +1303,54 @@
           "default_guardrail_allowed_when_user_frame_missing": true,
           "required_before_start": true,
           "start_without_frame_recommendation": "do_not_start"
+        },
+        "progress_report_policy": {
+          "allow_mid_round_report": false,
+          "allowed_mid_round_exceptions": [
+            "user_interrupt_or_stop_signal",
+            "runtime_error",
+            "approval_or_canon_boundary",
+            "background_process_completion",
+            "background_process_failure"
+          ],
+          "availability": "optional_runtime_opt_in",
+          "delivery_owner": "user_hermes_runtime",
+          "enabled_by_default": false,
+          "final_report_required_fields": [
+            "stop_reason",
+            "side_effect_status"
+          ],
+          "interim_report_rules": [
+            "send_only_at_explicit_round_or_checkpoint_boundary",
+            "include_current_round_and_max_rounds_when_available",
+            "include_current_turn_and_max_turns_when_turns_are_reported",
+            "avoid_unlabelled_in_progress_messages"
+          ],
+          "policy": "round_boundary_only",
+          "round_state": {
+            "if_rounds_unavailable": "compute_stable_checkpoint_or_state_no_round_state_exists",
+            "max_rounds": 12,
+            "max_turns": 48
+          },
+          "schema": "wsa.orchestrator.progress_report_policy.v1",
+          "side_effect_status_values": [
+            "proposal_only_no_world_mutation",
+            "awaiting_author_approval",
+            "approved_ticket_created_only"
+          ],
+          "stop_reason_values": [
+            "conclusion_reached",
+            "author_boundary",
+            "max_round_or_turn_budget",
+            "error_or_interruption"
+          ],
+          "templates": {
+            "en": "Round {round}/{max_rounds} status — {summary}",
+            "ko": "라운드 {round}/{max_rounds} 현황 — {summary}",
+            "with_turn_en": "Round {round}/{max_rounds}, turn {turn}/{max_turns} status — {summary}",
+            "with_turn_ko": "라운드 {round}/{max_rounds}, 턴 {turn}/{max_turns} 현황 — {summary}"
+          },
+          "wsa_role": "declare_policy_only_no_user_delivery"
         },
         "prompt_coordination": {
           "hermes_adapts_prompt_packets_to_subagent_syntax": true,

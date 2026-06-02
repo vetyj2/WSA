@@ -115,6 +115,7 @@ class OrchestratorBridge:
             "hook": hook,
             "terminal_command": hook.get("terminal_command") if hook else None,
             "floor_state": payload.get("floor_state", {}),
+            "progress_report_policy": payload.get("progress_report_policy", {}),
             "queue_limits": payload.get("queue_limits", {}),
             "hermes_bridge": payload.get("hermes_bridge", {}),
         }

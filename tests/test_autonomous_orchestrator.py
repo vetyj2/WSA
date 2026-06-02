@@ -79,6 +79,16 @@ class AutonomousOrchestratorTests(TestCase):
                 payload["floor_continuity"]["model"],
                 "live_meeting_floor",
             )
+            self.assertEqual(payload["progress_report_policy"]["policy"], "round_boundary_only")
+            self.assertFalse(payload["progress_report_policy"]["enabled_by_default"])
+            self.assertEqual(
+                payload["progress_report_policy"]["delivery_owner"],
+                "user_hermes_runtime",
+            )
+            self.assertEqual(
+                payload["session_contract"]["progress_report_policy"]["templates"]["ko"],
+                "라운드 {round}/{max_rounds} 현황 — {summary}",
+            )
             self.assertEqual(
                 payload["micro_turn_policy"]["utterance_target"],
                 "one_sentence_or_requested_fields",
@@ -130,6 +140,10 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(first_next["execution_status"], "waiting_for_hermes")
             self.assertEqual(first_next["hook"]["round"], 1)
             self.assertEqual(first_next["hook"]["participant_id"], "P001")
+            self.assertEqual(
+                first_next["progress_report_policy"]["availability"],
+                "optional_runtime_opt_in",
+            )
 
             first_callback = _write_bridge_callback(
                 workspace,
