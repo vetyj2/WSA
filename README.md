@@ -20,6 +20,7 @@ WSA는 공개 저장소로 공유할 수 있는 템플릿을 목표로 합니다
 - Startup / Easy Startup interview 계약
 - Static meeting mode와 autonomous orchestrator scaffold
 - Hermes task/callback 파일 계약
+- Runtime bridge hook, actor_state, floor_state continuity 계약
 - Hermes shortcut command registry 예시
 - Template readiness, doctor, update preflight
 
@@ -98,6 +99,8 @@ PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes commands
 ```
 
 Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받습니다. 이 검증은 구조/route 기반이며 cryptographic authentication이나 OAuth authorization이 아닙니다. 해당 디렉터리는 신뢰된 로컬 Hermes runtime 또는 operator automation만 쓸 수 있게 유지하세요.
+
+`orchestrator run --mode hermes-bridge`와 `scene start`는 실제 actor를 직접 호출하지 않습니다. 대신 WSA가 `actor_state`, `floor_state`, scheduler rationale, bounded prompt, expected callback route를 담은 hook packet을 만들고, Hermes 또는 다른 외부 agent runtime이 그 hook을 실행한 뒤 callback을 돌려줍니다. 이 bridge contract는 runner-agnostic하게 설계되어 있어 향후 Codex-style local CLI agent나 custom actor runtime도 같은 callback 규격을 사용할 수 있습니다.
 
 ## 공개 저장소 안전 원칙
 

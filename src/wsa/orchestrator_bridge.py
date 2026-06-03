@@ -7,9 +7,12 @@ from typing import Any, Dict, List
 from .hermes_adapter import HERMES_CALLBACK_SCHEMA
 from .orchestrator_turns import (
     build_actor_turn_record,
+    build_initial_actor_states,
     build_manager_check_turn_records,
     build_orchestrator_turn_record,
     build_round_prompt_packet,
+    build_scheduler_decision,
+    update_actor_states,
     update_floor_state,
 )
 from .paths import safe_child_path
@@ -81,6 +84,32 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
     payload["rejected_callbacks"] = []
     payload["subsession_outputs"] = []
     payload["accepted_outputs_only"] = True
+    payload["actor_states"] = payload.get("actor_states") or build_initial_actor_states(
+        [
+            {
+                "participant_id": item["participant_id"],
+                "label": item["represents"],
+                "role": "representative_voice",
+                "workflow_role": item.get("workflow", payload.get("workflow", "meetup")),
+            }
+            for item in payload.get("context_packets", [])
+        ],
+        payload.get("workflow_profile", {}),
+    )
+    payload["execution_provenance"] = {
+        "schema": "wsa.orchestrator.execution_provenance.v1",
+        "execution_mode": "runtime-bridge",
+        "artifact_type": "external_runtime_bridge_contract",
+        "wsa_direct_runtime_execution": False,
+        "external_runtime_owner": "user_runtime",
+        "real_actor_sessions_executed": "pending_external_runtime_callback",
+        "callback_execution_reported": False,
+        "canon_write_performed": False,
+        "startup_profile_write_performed": False,
+        "world_mutation_performed": False,
+        "requires_author_decision": True,
+    }
+    payload["runtime_bridge_contract"] = _runtime_bridge_contract(payload)
     payload["turn_records"] = [
         build_orchestrator_turn_record(
             payload["run_id"],
@@ -108,7 +137,14 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
         "callback_policy": {
             "callback_dir": "hermes/callbacks",
             "external_callback_paths": False,
-            "execution_owner": "user_hermes_runtime",
+            "execution_owner": "external_agent_runtime",
+        },
+        "runtime_capability_manifest": _default_runtime_capability_manifest(),
+        "scheduler_policy": {
+            "turn_based": True,
+            "round_is_reporting_unit_only": True,
+            "equal_airtime_not_required": True,
+            "actor_selection_reasons_required": True,
         },
     }
     if prep_required:
@@ -153,6 +189,10 @@ class OrchestratorBridge:
             "prep_report": prep_report,
             "prep_review_policy": payload.get("prep_review_policy", {}),
             "floor_state": payload.get("floor_state", {}),
+            "active_actor_state": hook.get("actor_state") if hook else None,
+            "actor_states": payload.get("actor_states", {}),
+            "execution_provenance": payload.get("execution_provenance", {}),
+            "runtime_bridge_contract": payload.get("runtime_bridge_contract", {}),
             "progress_report_policy": payload.get("progress_report_policy", {}),
             "queue_limits": payload.get("queue_limits", {}),
             "hermes_bridge": payload.get("hermes_bridge", {}),
@@ -200,7 +240,13 @@ class OrchestratorBridge:
                 "prompt_packet_id": hook["prompt_packet_id"],
             }
         )
-        output["quality_gate"] = quality_gate(output, hook.get("expected_fields", []))
+        actor_states = payload.setdefault("actor_states", {})
+        actor_state = actor_states.get(hook["participant_id"], hook.get("actor_state", {}))
+        output["quality_gate"] = quality_gate(
+            output,
+            hook.get("expected_fields", []),
+            actor_state=actor_state,
+        )
         payload.setdefault("submitted_callbacks", []).append(
             self._callback_record(callback, callback_path, turn_id, output["quality_gate"])
         )
@@ -219,6 +265,7 @@ class OrchestratorBridge:
         ]
         payload.setdefault("turn_records", []).append(build_actor_turn_record(hook, output))
         payload.setdefault("subsession_outputs", []).append(output)
+        payload["actor_states"] = update_actor_states(actor_states, hook, output)
         payload.setdefault("turn_records", []).extend(
             build_manager_check_turn_records(run_id, hook["round"], [output])
         )
@@ -230,6 +277,7 @@ class OrchestratorBridge:
             hook["round"],
             [output],
             payload.get("turn_records", []),
+            payload.get("actor_states", {}),
         )
         bridge = payload.setdefault("hermes_bridge", {})
         bridge["completed_actor_calls"] = int(bridge.get("completed_actor_calls") or 0) + 1
@@ -470,7 +518,11 @@ class OrchestratorBridge:
         return sanitized
 
 
-def quality_gate(output: Dict[str, Any], expected_fields: List[str]) -> Dict[str, Any]:
+def quality_gate(
+    output: Dict[str, Any],
+    expected_fields: List[str],
+    actor_state: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     required = ["position", "objections", "proposals", "gaps", "uncertainty"]
     missing = [field for field in required if output.get(field) in (None, "", [])]
     expected_missing = [
@@ -490,6 +542,23 @@ def quality_gate(output: Dict[str, Any], expected_fields: List[str]) -> Dict[str
         rejection_reasons.append("unlabeled_uncertainty")
     if canon_attempt:
         rejection_reasons.append("canon_mutation_attempt")
+    low_value_warnings = []
+    if _looks_like_empty_agreement(output):
+        low_value_warnings.append("empty_agreement_or_no_new_constraint")
+    if (
+        actor_state
+        and output.get("position") not in (None, "")
+        and actor_state.get("last_position") not in (None, "")
+        and output.get("position") == actor_state.get("last_position")
+    ):
+        low_value_warnings.append("repeated_prior_position")
+    if (
+        actor_state
+        and output.get("answer") not in (None, "")
+        and actor_state.get("last_answer") not in (None, "")
+        and output.get("answer") == actor_state.get("last_answer")
+    ):
+        low_value_warnings.append("repeated_prior_answer")
     return {
         "schema": "wsa.orchestrator.output_quality_gate.v1",
         "accepted": accepted,
@@ -498,10 +567,90 @@ def quality_gate(output: Dict[str, Any], expected_fields: List[str]) -> Dict[str
         "uncertainty_labeled": uncertainty_ok,
         "canon_mutation_attempt": canon_attempt,
         "rejection_reasons": rejection_reasons,
+        "low_value_warnings": low_value_warnings,
+        "anti_repetition_checked": True,
+        "deepening_recommended_if_low_value": bool(low_value_warnings),
         "accumulation_policy": "accepted_outputs_only",
         "rejects_empty_agreement": True,
         "rejects_unbounded_lore_dump": True,
         "rejects_unlabeled_uncertainty": True,
+    }
+
+
+def _looks_like_empty_agreement(output: Dict[str, Any]) -> bool:
+    text = " ".join(
+        str(output.get(field) or "")
+        for field in ("position", "stance", "answer")
+    ).strip().casefold()
+    return text in {
+        "agree",
+        "i agree",
+        "yes",
+        "same",
+        "no objection",
+        "looks good",
+        "동의",
+        "찬성",
+    }
+
+
+def _runtime_bridge_contract(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "schema": "wsa.runtime_bridge.contract.v1",
+        "mode": "runtime-bridge",
+        "runner_agnostic": True,
+        "compatible_runtime_families": [
+            "hermes",
+            "codex_or_local_cli_agent",
+            "custom_external_actor_runtime",
+        ],
+        "wsa_owns": [
+            "isolated_run_state",
+            "actor_state",
+            "floor_state",
+            "hook_packet_generation",
+            "callback_validation",
+            "quality_gate_records",
+            "report_and_approval_package",
+        ],
+        "external_runtime_owns": [
+            "actor_or_subagent_invocation",
+            "model_provider_selection",
+            "process_or_session_lifecycle",
+            "delivery_to_user",
+            "interrupt_execution",
+            "cleanup_execution",
+        ],
+        "required_callback_contract": {
+            "callback_dir": "hermes/callbacks",
+            "route_must_match_pending_hook": True,
+            "turn_id_required": True,
+            "structured_output_required": True,
+            "canon_mutation_forbidden": True,
+        },
+        "state_continuity": {
+            "actor_state_required": True,
+            "floor_state_required": True,
+            "later_prompts_include_prior_actor_state": True,
+            "round_is_reporting_unit_only": True,
+        },
+        "workflow": payload.get("workflow"),
+        "skill": payload.get("skill"),
+    }
+
+
+def _default_runtime_capability_manifest() -> Dict[str, Any]:
+    return {
+        "schema": "wsa.runtime_bridge.capability_manifest.v1",
+        "source": "wsa_default_assumption_until_runtime_reports_capabilities",
+        "supports_actor_callbacks": True,
+        "supports_parallel_actor_calls": "runtime_declared_or_operator_limited",
+        "supports_interrupt": "runtime_owned",
+        "supports_cleanup_report": "runtime_owned",
+        "supports_streaming": False,
+        "max_recommended_concurrency": 3,
+        "secret_owner": "external_runtime",
+        "delivery_owner": "external_runtime",
     }
 
 
@@ -554,6 +703,16 @@ def _append_next_hook(payload: Dict[str, Any], world_id: str) -> bool:
     if participant_index == 0:
         _ensure_orchestrator_turn(payload, round_index)
     context_packet = contexts[participant_index]
+    actor_state = payload.get("actor_states", {}).get(
+        context_packet["participant_id"],
+        context_packet.get("actor_state", {}),
+    )
+    scheduler_decision = build_scheduler_decision(
+        context_packet,
+        round_index,
+        actor_state,
+        payload.get("floor_state", {}),
+    )
     previous_snapshot = (
         payload.get("compressed_context_snapshots", [])[-1]
         if payload.get("compressed_context_snapshots")
@@ -565,6 +724,9 @@ def _append_next_hook(payload: Dict[str, Any], world_id: str) -> bool:
         previous_snapshot,
         payload.get("workflow_profile", {}),
         world_id,
+        actor_state=actor_state,
+        scheduler_decision=scheduler_decision,
+        floor_state=payload.get("floor_state", {}),
     )
     payload.setdefault("pending_hooks", []).append(hook)
     payload.setdefault("runtime_hook_packets", []).append(hook)
@@ -606,6 +768,13 @@ def _finalize_bridge_payload(
     payload["execution_status"] = "completed_by_hermes"
     payload["next_action"] = "author_review"
     payload.setdefault("hermes_bridge", {})["status"] = "completed_by_hermes"
+    payload.setdefault("execution_provenance", {}).update(
+        {
+            "real_actor_sessions_executed": "external_runtime_callback_report_only",
+            "callback_execution_reported": True,
+            "artifact_type": "external_runtime_callback_review_package",
+        }
+    )
     control = ControlRepository(workspace)
     closed_subsessions = []
     for session_id in payload.get("subsession_session_ids", []):
@@ -710,6 +879,14 @@ def _finalize_bridge_retry_limit(
     bridge = payload.setdefault("hermes_bridge", {})
     bridge["status"] = "callback_retry_limit_reached"
     bridge["retry_limit_turn_id"] = turn_id
+    payload.setdefault("execution_provenance", {}).update(
+        {
+            "real_actor_sessions_executed": "external_runtime_callback_report_only",
+            "callback_execution_reported": bool(payload.get("submitted_callbacks")),
+            "artifact_type": "external_runtime_partial_review_package",
+            "requires_author_decision": True,
+        }
+    )
     control = ControlRepository(workspace)
     closed_subsessions = []
     for session_id in payload.get("subsession_session_ids", []):

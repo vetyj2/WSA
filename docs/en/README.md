@@ -23,6 +23,7 @@ The public template should stay world-neutral. Author preferences, naming tastes
 - CLI-first Hermes adapter template using task and callback JSON files
 - Non-mutating meeting mode for representative diagnosis and proposal gathering
 - Manual-trigger autonomous orchestrator lifecycle for meetup/subsession review packages
+- Runtime bridge hooks with actor_state and floor_state continuity
 - Template readiness checks for copied runtime instances
 
 ## Architecture Snapshot
@@ -109,7 +110,7 @@ PYTHONPATH=src python3 -m wsa scene start <world_id> \
   --format json
 ```
 
-This creates a `scene_generation` / `scene_start` orchestrator run in `hermes-bridge` mode and returns a prep review report by default. WSA does not call actors itself; Hermes reviews the prepared requirement parse, selected context bundles, selector result, gap diagnostics, participant plan, and queue limits. If the prep is acceptable, Hermes or the user advances with `wsa orchestrator prep-approve <run_id>`, receives the first actor hook, adapts that hook to its actor/subagent runtime, writes callback JSON under `hermes/callbacks`, then advances the run with `wsa orchestrator submit`.
+This creates a `scene_generation` / `scene_start` orchestrator run in `hermes-bridge` mode and returns a prep review report by default. WSA does not call actors itself; Hermes reviews the prepared requirement parse, selected context bundles, selector result, gap diagnostics, participant plan, actor-state seeds, and queue limits. If the prep is acceptable, Hermes or the user advances with `wsa orchestrator prep-approve <run_id>`, receives the first actor hook, adapts that hook to its actor/subagent runtime, writes callback JSON under `hermes/callbacks`, then advances the run with `wsa orchestrator submit`.
 
 Pass `--no-prep-review` only when the user's Hermes runtime already performed equivalent prep approval and should open the first actor hook immediately.
 

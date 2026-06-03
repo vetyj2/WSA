@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.8 Runtime Bridge Contract</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #697386;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --blue: #2563eb;
+      --warn: #b45309;
+      --ok: #15803d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 22px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    code {
+      background: #eef1f5;
+      border-radius: 5px;
+      color: #253041;
+      padding: 2px 5px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .stack { display: grid; gap: 14px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.ok { color: var(--ok); border-color: #9bd4aa; background: #f0fbf3; }
+    .badge.warn { color: var(--warn); border-color: #f1c27d; background: #fff8ed; }
+    .badge.blue { color: var(--blue); border-color: #aac6ff; background: #f1f6ff; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+      min-height: 92px;
+    }
+    .step strong { display: block; margin-bottom: 6px; }
+    ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+    .split {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p><a href="index.html">Patch dashboards</a></p>
+      <h1>v0.2.8 Runtime Bridge Contract</h1>
+      <p>Absorbs the practical UX benefits of a full runtime broker while preserving WSA's public-safe boundary: WSA owns state, hooks, validation, and reports; external runtimes own real actor execution.</p>
+      <div class="badge-row">
+        <span class="badge ok">actor_state</span>
+        <span class="badge ok">runner-agnostic bridge</span>
+        <span class="badge blue">turn scheduler</span>
+        <span class="badge blue">verification pause</span>
+        <span class="badge warn">no direct runtime execution</span>
+      </div>
+    </header>
+
+    <section class="panel stack">
+      <h2>Patch Intent</h2>
+      <p>The C option promised a smoother one-command long-loop UX, but it would make WSA own process execution, model routing, and delivery. This patch keeps the bridge path: WSA emits better hooks and preserves better state so Hermes, Codex-style local agents, or another external runtime can execute the real actor calls.</p>
+      <div class="flow">
+        <div class="step"><strong>1. Manual Trigger</strong><span>Meetup or Scene starts a bounded run.</span></div>
+        <div class="step"><strong>2. Prep Review</strong><span>Context, selector result, participants, and actor-state seeds are reviewed.</span></div>
+        <div class="step"><strong>3. Runtime Hook</strong><span>WSA emits a focused hook with actor_state and scheduler rationale.</span></div>
+        <div class="step"><strong>4. Callback</strong><span>External runtime executes the actor turn and writes callback JSON.</span></div>
+        <div class="step"><strong>5. State Update</strong><span>WSA validates output, updates actor_state/floor_state, and opens next hook.</span></div>
+        <div class="step"><strong>6. Review Package</strong><span>WSA returns synthesis, provenance, cleanup status, and approval choices.</span></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>State Added</h2>
+        <ul>
+          <li><code>actor_states</code> per orchestrator run.</li>
+          <li>Actor mandate, scope boundaries, last position, claims, objections, unanswered questions, stance changes, and confidence history.</li>
+          <li><code>execution_provenance</code> distinguishes local simulation, bridge contract, callback review package, and world mutation status.</li>
+          <li><code>runtime_bridge_contract</code> declares a runner-agnostic external runtime boundary.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Hook Changes</h2>
+        <ul>
+          <li>Every bridge hook carries compact actor continuity.</li>
+          <li>Hooks include a scheduler decision explaining why the actor was called.</li>
+          <li>Rounds are documented as reporting units, not equal-airtime guarantees.</li>
+          <li>Prompts instruct the runtime to answer prior objections or unresolved gaps instead of restarting the actor.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Quality Gate</h2>
+        <ul>
+          <li>Still blocks missing fields, unlabeled uncertainty, and canon mutation attempts.</li>
+          <li>Adds low-value warnings for empty agreement and repeated prior position or answer.</li>
+          <li>Records when deepening or focused retry is recommended.</li>
+          <li>Verification queues can pause risky claims before they influence later turns.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="split" style="margin-top:16px;">
+      <article class="panel">
+        <h2>WSA Owns</h2>
+        <ul>
+          <li>Run state, actor_state, floor_state</li>
+          <li>Hook packet generation</li>
+          <li>Callback path, route, and shape validation</li>
+          <li>Quality-gate records</li>
+          <li>Report and approval package</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>External Runtime Owns</h2>
+        <ul>
+          <li>Actor or subagent invocation</li>
+          <li>Model/provider choice and thinking level</li>
+          <li>Docker, Telegram, Codex, or local process control</li>
+          <li>Interrupt execution and cleanup execution</li>
+          <li>User delivery and local approval UX</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

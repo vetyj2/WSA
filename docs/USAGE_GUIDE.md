@@ -48,7 +48,7 @@ WSA 쪽에는 실제 credential이나 private remote 정보를 넣지 않습니�
 
 ## Scene / Meetup 권장 방식
 
-`scene start`와 `orchestrator run --mode hermes-bridge`는 Hermes가 실제 actor/subagent 호출을 수행하도록 hook packet을 제공합니다. WSA는 준비된 context, prompt packet, queue limit, quality gate, approval package를 기록합니다.
+`scene start`와 `orchestrator run --mode hermes-bridge`는 Hermes가 실제 actor/subagent 호출을 수행하도록 hook packet을 제공합니다. WSA는 준비된 context, actor_state, floor_state, prompt packet, queue limit, quality gate, approval package를 기록합니다.
 
 권장 순서:
 
@@ -58,6 +58,12 @@ WSA 쪽에는 실제 credential이나 private remote 정보를 넣지 않습니�
 4. Hermes가 callback 작성
 5. `orchestrator submit`으로 callback 제출
 6. WSA가 quality gate와 route를 확인하고 다음 hook 또는 review package 생성
+
+Bridge hook에는 actor별 이전 position, objections, unanswered questions, stance, confidence history가 압축되어 들어갑니다. Hermes는 이 정보를 사용해서 같은 actor를 처음부터 다시 시작하지 말고, 필요한 경우 "이전 주장 X에 대한 반박 Y만 답하라" 같은 짧은 follow-up으로 호출해야 합니다.
+
+Round는 중간보고 단위입니다. 실제 비용과 루프 제한은 actor turn/callback budget으로 이해하세요. Hermes는 모든 actor를 매 라운드 호출할 필요가 없습니다. Verification need, blocking objection, domain ownership, candidate falsification value, unanswered question이 있는 actor를 우선 호출하는 것이 권장됩니다.
+
+WSA callback quality gate는 missing fields, unlabeled uncertainty, canon mutation attempt뿐 아니라 empty agreement, repeated prior position 같은 low-value turn warning도 기록합니다. 경고가 있으면 Hermes는 좁은 retry, deepening question, manager/canon verification pause 중 하나를 선택하는 것이 좋습니다.
 
 ## Canon 적용 원칙
 

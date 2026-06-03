@@ -44,7 +44,7 @@ World-Scene-Actors/
 | Persistence | `repositories.py`, `reports.py`, `tickets.py` | Owns SQLite-backed world state, reports, tickets, facts, scenes, diagnostics, and graph data. |
 | Diagnostics and updates | `manager.py`, `update.py`, `hermes_doctor.py` | Keeps health checks and safe-update logic separate from generation workflows. |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Emits task packets, validates callback shape/routes, and publishes public command-registry examples. |
-| Orchestration | `autonomous_orchestrator.py`, `orchestrator_bridge.py`, `orchestrator_*` | Records run state, hook packets, compressed continuity, quality gates, and approval packages. |
+| Orchestration | `autonomous_orchestrator.py`, `orchestrator_bridge.py`, `orchestrator_*` | Records run state, actor_state, floor_state, hook packets, compressed continuity, quality gates, and approval packages. |
 | Proposal workflows | `meeting.py`, `startup.py` | Creates non-canon meeting/interview material that later flows through reports or tickets. |
 
 ## Runtime Shape
@@ -60,6 +60,20 @@ Author or local policy decides whether anything becomes canon
 ```
 
 WSA does not execute the subagent call itself. In the current public template, mock and static paths are deterministic local simulations. Bridge mode is the contract for a user's Hermes runtime to provide real callbacks.
+
+## Runtime Bridge State
+
+Bridge mode is a runner-agnostic contract, not Hermes process control. Hermes is the first intended runtime, but the same hook/callback shape can later be consumed by Codex-style local CLI agents or other external actor runtimes.
+
+Each orchestrator run separates:
+
+- `floor_state`: shared meeting or scene-prep state, recent turns, verification queue, gaps, scheduler state
+- `actor_states`: per-actor mandate, scope boundaries, prior position, claims, objections, unanswered questions, stance changes, confidence history
+- `runtime_hook_packets`: bounded prompts and terminal argv shapes for the external runtime
+- `submitted_callbacks`: callback provenance and quality-gate results
+- `execution_provenance`: whether the artifact is local-simulated, pending bridge work, or completed from external callbacks
+
+Rounds are reporting checkpoints. Runtime cost should be understood as actor turns or callback budget. The scheduler does not promise equal airtime; it prioritizes verification need, blocking objections, domain ownership, candidate falsification value, and unanswered questions.
 
 ## Public Files Versus Runtime Files
 

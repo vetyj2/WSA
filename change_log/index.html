@@ -104,6 +104,26 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.8-runtime-bridge-contract.html">v0.2.8 Runtime Bridge Contract</a></h2>
+          <p>Adds durable actor_state continuity, runner-agnostic bridge provenance, scheduler rationale, low-value turn warnings, and verification-pause state without making WSA execute Hermes or any other runtime.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">actor_state</span>
+          <span class="badge accent">runtime bridge</span>
+          <span class="badge">scheduler</span>
+          <span class="badge">provenance</span>
+          <span class="badge warn">external execution</span>
+        </div>
+        <ul>
+          <li>Later bridge hooks include each actor's prior stance, position, objections, unanswered questions, and continuity contract.</li>
+          <li>Callback acceptance updates actor_state and floor_state so Hermes can run focused follow-ups instead of restarting actors.</li>
+          <li>Quality gates report repetition and empty-agreement warnings for retry/deepening decisions.</li>
+          <li>The bridge contract is runner-agnostic: Hermes remains first target, but Codex-style local agents can consume the same hook shape later.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.7-temporal-graph-foundation.html">v0.2.7 Temporal Graph Foundation</a></h2>
           <p>Adds additive dynamic dimensions, time-scoped entity attributes, flexible world edges, actor knowledge records, scene selector results, prep review hooks, and graph gap reporting.</p>
         </div>

@@ -46,7 +46,7 @@ World-Scene-Actors/
 | Persistence | `repositories.py`, `reports.py`, `tickets.py` | SQLite world state, report, ticket, fact, scene, diagnostic, graph data를 관리합니다. |
 | Diagnostics / update | `manager.py`, `update.py`, `hermes_doctor.py` | Health check와 safe update logic을 generation workflow와 분리합니다. |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Task packet 생성, callback shape/route validation, public registry example을 담당합니다. |
-| Orchestration | `autonomous_orchestrator.py`, `orchestrator_bridge.py`, `orchestrator_*` | Run state, hook packet, compressed continuity, quality gate, approval package를 기록합니다. |
+| Orchestration | `autonomous_orchestrator.py`, `orchestrator_bridge.py`, `orchestrator_*` | Run state, actor_state, floor_state, hook packet, compressed continuity, quality gate, approval package를 기록합니다. |
 | Proposal workflows | `meeting.py`, `startup.py` | Canon이 아닌 meeting/interview material을 만들고 report/ticket flow로 넘깁니다. |
 
 ## Runtime Shape
@@ -62,6 +62,20 @@ Author or local policy decides whether anything becomes canon
 ```
 
 WSA는 subagent call을 직접 실행하지 않습니다. 현재 public template의 mock/static path는 deterministic local simulation입니다. Bridge mode는 사용자 Hermes runtime이 real callback을 제공하기 위한 계약입니다.
+
+## Runtime Bridge State
+
+Bridge mode는 Hermes 전용 프로세스 제어가 아니라 runner-agnostic contract입니다. Hermes가 첫 runtime이지만, 같은 hook/callback shape는 Codex-style local CLI agent나 다른 external actor runtime도 사용할 수 있게 유지합니다.
+
+각 orchestrator run은 다음 상태를 분리해서 기록합니다.
+
+- `floor_state`: 회의장 전체 상태, 최근 turn, verification queue, gap, scheduler state
+- `actor_states`: actor별 mandate, scope boundary, prior position, claims, objections, unanswered questions, stance changes, confidence history
+- `runtime_hook_packets`: 외부 runtime이 실행할 bounded prompt와 terminal argv shape
+- `submitted_callbacks`: 외부 runtime이 제출한 callback provenance와 quality-gate 결과
+- `execution_provenance`: local simulation, pending bridge, completed-by-callback 같은 artifact 출처
+
+Round는 사용자/Hermes에게 보고하기 좋은 checkpoint이고, 실제 orchestration cost는 actor turn/callback budget으로 봅니다. Scheduler는 equal airtime을 보장하지 않고 verification need, blocking objection, domain ownership, falsification value, unanswered question을 기준으로 다음 actor hook을 선택합니다.
 
 ## Public Files Versus Runtime Files
 

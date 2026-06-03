@@ -25,10 +25,13 @@ from .orchestrator_contract import (
 )
 from .orchestrator_turns import (
     build_actor_turn_record,
+    build_initial_actor_states,
     build_initial_floor_state,
     build_manager_check_turn_records,
     build_orchestrator_turn_record,
     build_round_prompt_packet,
+    build_scheduler_decision,
+    update_actor_states,
     update_floor_state,
 )
 from .orchestrator_workflows import (
@@ -433,6 +436,7 @@ class AutonomousOrchestrator:
             workflow,
             workflow_profile,
         )
+        actor_states = build_initial_actor_states(participant_plan, workflow_profile)
         if len(participant_plan) > max_subsession_calls:
             raise ValueError(
                 "max_subsession_calls must be at least the participant count "
@@ -634,6 +638,8 @@ class AutonomousOrchestrator:
                 workflow_profile,
                 scene_filter_contract,
             )
+            context_packet["actor_state"] = actor_states[participant["participant_id"]]
+            context_packet["prompt_packet"]["actor_state_seed"] = context_packet["actor_state"]
             context_packets.append({**context_packet, "session_id": session_id})
             self.transport.send(
                 session_id,
@@ -696,6 +702,12 @@ class AutonomousOrchestrator:
                 "wsa_role": "orchestration_contract_and_audit_artifacts_only",
                 "plan_frame": plan_frame,
                 "floor_state": floor_state,
+                "actor_states": actor_states,
+                "execution_provenance": _execution_provenance(
+                    mode="hermes-bridge",
+                    artifact_type="runtime_bridge_contract",
+                    completed=False,
+                ),
                 "start_preflight": start_preflight,
                 "session_contract": session_contract,
                 "context_continuity": session_contract["context_continuity"],
@@ -786,12 +798,22 @@ class AutonomousOrchestrator:
             )
             round_outputs = []
             for context_packet in context_packets:
+                actor_state = actor_states.get(context_packet["participant_id"], {})
+                scheduler_decision = build_scheduler_decision(
+                    context_packet,
+                    round_index,
+                    actor_state,
+                    floor_state,
+                )
                 round_prompt_packet = build_round_prompt_packet(
                     context_packet,
                     round_index,
                     compressed_context_snapshots[-1] if compressed_context_snapshots else None,
                     workflow_profile,
                     self.world.world_id,
+                    actor_state=actor_state,
+                    scheduler_decision=scheduler_decision,
+                    floor_state=floor_state,
                 )
                 round_prompt_packets.append(round_prompt_packet)
                 output = self._subsession_output(context_packet, round_index)
@@ -800,6 +822,7 @@ class AutonomousOrchestrator:
                 if output["quality_gate"]["accepted"]:
                     subsession_outputs.append(output)
                     round_outputs.append(output)
+                    actor_states = update_actor_states(actor_states, round_prompt_packet, output)
                 turn_records.append(
                     build_actor_turn_record(round_prompt_packet, output)
                 )
@@ -823,6 +846,7 @@ class AutonomousOrchestrator:
                 round_index,
                 round_outputs,
                 turn_records,
+                actor_states,
             )
 
         lifecycle.append({"state": "synthesizing", "at": utc_now()})
@@ -864,6 +888,12 @@ class AutonomousOrchestrator:
             "wsa_role": "orchestration_contract_and_audit_artifacts_only",
             "plan_frame": plan_frame,
             "floor_state": floor_state,
+            "actor_states": actor_states,
+            "execution_provenance": _execution_provenance(
+                mode="local-simulated",
+                artifact_type="wsa_local_simulated_proposal",
+                completed=True,
+            ),
             "start_preflight": start_preflight,
             "session_contract": session_contract,
             "context_continuity": session_contract["context_continuity"],
@@ -1570,6 +1600,29 @@ def find_orchestrator_run(workspace: Path, run_id: str) -> tuple[WorldRecord, Pa
             if payload.get("run_id") == run_id:
                 return world, path, payload
     raise KeyError(f"orchestrator run not found: {run_id}")
+
+
+def _execution_provenance(
+    mode: str,
+    artifact_type: str,
+    completed: bool,
+) -> Dict[str, Any]:
+    is_bridge = mode in {"hermes-bridge", "hermes_runtime", "hermes-runtime"}
+    return {
+        "schema": "wsa.orchestrator.execution_provenance.v1",
+        "execution_mode": mode,
+        "artifact_type": artifact_type,
+        "wsa_direct_runtime_execution": False,
+        "external_runtime_owner": "user_runtime",
+        "real_actor_sessions_executed": (
+            "external_runtime_callback_report_only" if is_bridge and completed else False
+        ),
+        "callback_execution_reported": bool(is_bridge and completed),
+        "canon_write_performed": False,
+        "startup_profile_write_performed": False,
+        "world_mutation_performed": False,
+        "requires_author_decision": True,
+    }
 
 
 def _report_id_for_run(repo: WorldRepository, run_id: str) -> str:

@@ -5,12 +5,31 @@ from unittest import TestCase
 
 from wsa.autonomous_orchestrator import AutonomousOrchestrator, build_scene_filter_contract
 from wsa.hermes_adapter import HERMES_CALLBACK_SCHEMA
-from wsa.orchestrator_bridge import OrchestratorBridge
+from wsa.orchestrator_bridge import OrchestratorBridge, quality_gate
 from wsa.repositories import ControlRepository, WorldRepository
 from wsa.workspace import create_world, utc_now
 
 
 class AutonomousOrchestratorTests(TestCase):
+    def test_quality_gate_does_not_warn_repeated_missing_optional_answer(self) -> None:
+        gate = quality_gate(
+            {
+                "position": "Bounded scene-prep answer.",
+                "objections": ["Keep proposal-only."],
+                "proposals": ["Carry forward."],
+                "gaps": ["Needs review."],
+                "uncertainty": "medium",
+            },
+            expected_fields=[],
+            actor_state={
+                "last_position": None,
+                "last_answer": None,
+            },
+        )
+
+        self.assertTrue(gate["accepted"])
+        self.assertEqual(gate["low_value_warnings"], [])
+
     def test_manual_trigger_runs_autonomous_subsessions_to_review_boundary(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -49,6 +68,16 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertTrue(payload["workflow_profile"]["dynamic_facilitation_hooks"])
             self.assertIn("floor_state", payload)
             self.assertEqual(payload["floor_state"]["workflow"], "meetup")
+            self.assertIn("actor_states", payload)
+            self.assertEqual(payload["actor_states"]["P001"]["represents"], "Northern Institute")
+            self.assertGreater(payload["actor_states"]["P001"]["turn_count"], 0)
+            self.assertEqual(
+                payload["execution_provenance"]["execution_mode"],
+                "local-simulated",
+            )
+            self.assertFalse(
+                payload["execution_provenance"]["wsa_direct_runtime_execution"]
+            )
             self.assertTrue(
                 any(
                     item["turn_type"] == "orchestrator_turn"
@@ -141,6 +170,12 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(first_next["execution_status"], "waiting_for_hermes")
             self.assertEqual(first_next["hook"]["round"], 1)
             self.assertEqual(first_next["hook"]["participant_id"], "P001")
+            self.assertEqual(first_next["hook"]["actor_state"]["actor_id"], "P001")
+            self.assertEqual(
+                first_next["hook"]["scheduler_decision"]["called_because"],
+                "initial_position_needed",
+            )
+            self.assertTrue(first_next["runtime_bridge_contract"]["runner_agnostic"])
             self.assertEqual(
                 first_next["progress_report_policy"]["availability"],
                 "optional_runtime_opt_in",
@@ -160,6 +195,14 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(first_submit["status"], "awaiting_callback")
             self.assertEqual(second_next["hook"]["round"], 2)
             self.assertIn("Bridge round 1 accepted", second_next["hook"]["prompt"])
+            self.assertEqual(
+                second_next["active_actor_state"]["last_position"],
+                "Bridge output round one.",
+            )
+            self.assertEqual(
+                second_next["hook"]["scheduler_decision"]["called_because"],
+                "actor_owns_unanswered_question",
+            )
 
             second_callback = _write_bridge_callback(
                 workspace,
@@ -176,6 +219,11 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(second_submit["execution_status"], "completed_by_hermes")
             self.assertEqual(final_payload["subsession_execution_mode"], "hermes_bridge_pending_callbacks")
             self.assertEqual(final_payload["execution_status"], "completed_by_hermes")
+            self.assertEqual(
+                final_payload["execution_provenance"]["artifact_type"],
+                "external_runtime_callback_review_package",
+            )
+            self.assertEqual(final_payload["actor_states"]["P001"]["turn_count"], 2)
             self.assertEqual(len(final_payload["subsession_outputs"]), 2)
             self.assertEqual(len(final_payload["submitted_callbacks"]), 2)
             self.assertEqual(final_payload["pending_hooks"], [])

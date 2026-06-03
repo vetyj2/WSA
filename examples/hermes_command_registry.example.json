@@ -929,6 +929,11 @@
         "Generated material stays proposal-only until explicit author approval."
       ],
       "runtime_contract": {
+        "actor_state_policy": {
+          "carried_into_later_prompts": true,
+          "durable_per_actor": true,
+          "tracks_identity_claims_objections_and_stance_changes": true
+        },
         "bridge_loop": {
           "callback_path_policy": "workspace/hermes/callbacks_only",
           "mode": "hermes-bridge",
@@ -1050,6 +1055,23 @@
           "default_max_subsession_calls": 48,
           "infinite_loop_guard": true,
           "termination_on_max_queue_turns": true
+        },
+        "runtime_bridge_contract": {
+          "compatible_runtime_families": [
+            "hermes",
+            "codex_or_local_cli_agent",
+            "custom_external_actor_runtime"
+          ],
+          "external_runtime_executes_actor_calls": true,
+          "runner_agnostic": true,
+          "schema": "wsa.runtime_bridge.contract.v1",
+          "wsa_does_not_start_runtime": true
+        },
+        "scheduler_policy": {
+          "equal_airtime_not_required": true,
+          "manager_check_can_pause_risky_claims": true,
+          "round_is_reporting_unit_only": true,
+          "turn_based": true
         },
         "schema": "wsa.hermes.orchestrator_runtime_contract.v1",
         "session_cleanup": {
@@ -1281,6 +1303,11 @@
         "Hermes owns actual actor/subagent calls. WSA records prompt packets, floor state, turn records, quality gates, and approval package."
       ],
       "runtime_contract": {
+        "actor_state_policy": {
+          "carried_into_later_prompts": true,
+          "durable_per_actor": true,
+          "tracks_identity_claims_objections_and_stance_changes": true
+        },
         "bridge_loop": {
           "callback_path_policy": "workspace/hermes/callbacks_only",
           "mode": "hermes-bridge",
@@ -1402,6 +1429,23 @@
           "default_max_subsession_calls": 48,
           "infinite_loop_guard": true,
           "termination_on_max_queue_turns": true
+        },
+        "runtime_bridge_contract": {
+          "compatible_runtime_families": [
+            "hermes",
+            "codex_or_local_cli_agent",
+            "custom_external_actor_runtime"
+          ],
+          "external_runtime_executes_actor_calls": true,
+          "runner_agnostic": true,
+          "schema": "wsa.runtime_bridge.contract.v1",
+          "wsa_does_not_start_runtime": true
+        },
+        "scheduler_policy": {
+          "equal_airtime_not_required": true,
+          "manager_check_can_pause_risky_claims": true,
+          "round_is_reporting_unit_only": true,
+          "turn_based": true
         },
         "schema": "wsa.hermes.orchestrator_runtime_contract.v1",
         "session_cleanup": {
