@@ -88,6 +88,13 @@ Preflight가 확인하는 핵심 항목:
 - active task state
 - active scheduler jobs
 - local command overlay collision
+
+Hermes 사용자별 shortcut은 `workspace/hermes/adapter_config/hermes_commands.local.json`에 둡니다. 업데이트 전후에는 아래 검진을 함께 실행하고, 충돌이나 mutating command metadata 부족이 나오면 Hermes가 사용자에게 변경 권고를 보고하세요.
+
+```bash
+wsa --workspace <live-workspace> hermes commands --validate-local-overlay --format json
+wsa --workspace <live-workspace> hermes commands --merged --format json
+```
 - live adapter config
 - update lock
 

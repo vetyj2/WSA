@@ -104,6 +104,26 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.9-local-overlay-safety.html">v0.2.9 Local Overlay Safety</a></h2>
+          <p>Adds local Hermes command overlay validation, merged registry preview, side-effect metadata warnings, and update preflight recommendations without expanding the official compact command surface.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">local overlay</span>
+          <span class="badge accent">merged preview</span>
+          <span class="badge">update preflight</span>
+          <span class="badge">side effects</span>
+          <span class="badge warn">collision blocks</span>
+        </div>
+        <ul>
+          <li>Runtime-specific Hermes shortcuts stay in <code>hermes_commands.local.json</code> instead of becoming upstream commands.</li>
+          <li><code>wsa hermes commands</code> can write a local template, validate overlays, and preview the merged registry.</li>
+          <li>Preflight blocks base/reserved namespace collisions and warns when mutating local commands lack briefing metadata.</li>
+          <li>Hermes can report high-risk findings before and after source updates or live command execution resumes.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.8-runtime-bridge-contract.html">v0.2.8 Runtime Bridge Contract</a></h2>
           <p>Adds durable actor_state continuity, runner-agnostic bridge provenance, scheduler rationale, low-value turn warnings, and verification-pause state without making WSA execute Hermes or any other runtime.</p>
         </div>

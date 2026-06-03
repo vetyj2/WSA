@@ -2338,13 +2338,26 @@
     "base_updates_replace_generated_registry_only": true,
     "conflict_policy": "block_update_until_resolved",
     "filename": "hermes_commands.local.json",
+    "local_namespace_recommendation": "Use user/runtime-specific commands such as /local_status or /project_status; the /wsa_ and /filltherest namespaces are reserved for upstream compatibility.",
     "local_overlay_preserved_across_updates": true,
     "merge_order": [
       "base_registry",
       "local_overlay"
     ],
+    "official_command_surface_policy": "Do not upstream personal shortcut names; preserve them as local overlay commands unless a pattern is broadly useful and can attach to an existing compact entrypoint.",
     "override_base_commands": "forbidden_by_default",
     "owner": "user_hermes_runtime",
+    "pre_post_update_diagnostics": {
+      "high_risk_policy": "If block findings or mutating-command warnings exist, Hermes should report them to the user and recommend overlay changes before live execution resumes.",
+      "run_after_source_update": [
+        "wsa hermes commands --validate-local-overlay --format json",
+        "wsa update preflight --format json"
+      ],
+      "run_before_source_update": [
+        "wsa hermes commands --validate-local-overlay --format json",
+        "wsa update preflight --format json"
+      ]
+    },
     "schema": "wsa.hermes.command_registry.local.v1"
   },
   "owner": "user_hermes_runtime",
@@ -2370,5 +2383,22 @@
     "workspace_env": "WSA_WORKSPACE"
   },
   "schema": "wsa.hermes.command_registry.v1",
-  "schema_version": 1
+  "schema_version": 1,
+  "side_effect_metadata_policy": {
+    "adapter_briefing_rule": "Hermes should brief the user before workspace/world mutating commands and should show update-preflight overlay findings before and after source updates.",
+    "applies_to": [
+      "base_commands",
+      "local_overlay_commands"
+    ],
+    "recommended_for_mutating_commands": [
+      "execution_policy.requires_user_confirmation",
+      "side_effects",
+      "rollback_or_backup_recommendation",
+      "delivery.default"
+    ],
+    "required_fields": [
+      "safety",
+      "intent"
+    ]
+  }
 }

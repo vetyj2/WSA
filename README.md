@@ -96,11 +96,14 @@ WSA의 Hermes adapter는 CLI/file-contract 템플릿입니다. Task JSON을 만�
 ```bash
 PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes init-example
 PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes commands
+PYTHONPATH=src python3 -m wsa --workspace /tmp/wsa-smoke hermes commands --validate-local-overlay
 ```
 
 Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받습니다. 이 검증은 구조/route 기반이며 cryptographic authentication이나 OAuth authorization이 아닙니다. 해당 디렉터리는 신뢰된 로컬 Hermes runtime 또는 operator automation만 쓸 수 있게 유지하세요.
 
 `orchestrator run --mode hermes-bridge`와 `scene start`는 실제 actor를 직접 호출하지 않습니다. 대신 WSA가 `actor_state`, `floor_state`, scheduler rationale, bounded prompt, expected callback route를 담은 hook packet을 만들고, Hermes 또는 다른 외부 agent runtime이 그 hook을 실행한 뒤 callback을 돌려줍니다. 이 bridge contract는 runner-agnostic하게 설계되어 있어 향후 Codex-style local CLI agent나 custom actor runtime도 같은 callback 규격을 사용할 수 있습니다.
+
+사용자별 Hermes shortcut은 공식 명령어로 계속 흡수하지 않고 `workspace/hermes/adapter_config/hermes_commands.local.json` overlay로 둡니다. WSA는 `hermes commands --write-local-template`, `--validate-local-overlay`, `--merged`로 충돌 진단과 병합 미리보기를 제공하며, update preflight는 `/wsa_`/`/filltherest` 충돌이나 mutating command metadata 부족을 Hermes가 사용자에게 보고하도록 노출합니다.
 
 ## 공개 저장소 안전 원칙
 

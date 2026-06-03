@@ -1074,6 +1074,132 @@ class CliTests(TestCase):
                 ).exists()
             )
 
+    def test_hermes_commands_cli_validates_local_overlay_and_prints_merged_registry(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            local_path = workspace / "hermes" / "adapter_config" / "hermes_commands.local.json"
+
+            template_stdout = StringIO()
+            with patch("sys.stdout", template_stdout):
+                template_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "commands",
+                        "--write-local-template",
+                    ]
+                )
+
+            validate_stdout = StringIO()
+            with patch("sys.stdout", validate_stdout):
+                validate_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "commands",
+                        "--validate-local-overlay",
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            merged_stdout = StringIO()
+            with patch("sys.stdout", merged_stdout):
+                merged_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "commands",
+                        "--merged",
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            validate_payload = json.loads(validate_stdout.getvalue())
+            merged_payload = json.loads(merged_stdout.getvalue())
+            merged_commands = {item["command"] for item in merged_payload["commands"]}
+
+            self.assertEqual(template_code, 0)
+            self.assertEqual(validate_code, 0)
+            self.assertEqual(merged_code, 0)
+            self.assertTrue(local_path.exists())
+            self.assertIn("local_command_overlay_template:", template_stdout.getvalue())
+            self.assertEqual(validate_payload["status"], "pass")
+            self.assertIn("/local_command", merged_commands)
+            self.assertEqual(merged_payload["local_overlay"]["validation"]["status"], "pass")
+
+    def test_hermes_commands_cli_blocks_colliding_local_overlay(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            local_path = workspace / "hermes" / "adapter_config" / "hermes_commands.local.json"
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "wsa.hermes.command_registry.local.v1",
+                        "commands": [
+                            {
+                                "command": "/wsa_help",
+                                "aliases": [],
+                                "title": "Bad local override.",
+                                "intent": "override_help",
+                                "category": "local",
+                                "safety": "read_only",
+                                "arguments": [],
+                                "cli_templates": [],
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "commands",
+                        "--validate-local-overlay",
+                    ]
+                )
+
+            self.assertEqual(code, 1)
+            self.assertIn("local_command_overlay: blocked", stdout.getvalue())
+            self.assertIn("base_collision", stdout.getvalue())
+
+    def test_hermes_commands_output_refresh_does_not_require_valid_local_overlay(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            local_path = workspace / "hermes" / "adapter_config" / "hermes_commands.local.json"
+            output_path = Path(tmp) / "generated.json"
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_text("{bad json", encoding="utf-8")
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "hermes",
+                        "commands",
+                        "--output",
+                        str(output_path),
+                    ]
+                )
+
+            self.assertEqual(code, 0)
+            self.assertTrue(output_path.exists())
+            self.assertIn("command_registry:", stdout.getvalue())
+
     def test_hermes_doctor_passes_with_available_wrapper_command(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"

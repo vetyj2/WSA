@@ -2,7 +2,7 @@
   "commands": [
     {
       "aliases": [
-        "/my-command"
+        "/local-command"
       ],
       "arguments": [
         {
@@ -16,7 +16,7 @@
         "execution": "run_single"
       },
       "cli_templates": [],
-      "command": "/my_command",
+      "command": "/local_command",
       "delivery": {
         "default": "chat_summary",
         "full_artifact": "local_report_or_file_attachment"
@@ -28,17 +28,26 @@
       "intent": "local_custom_command_example",
       "notes": [
         "Copy this shape to workspace/hermes/adapter_config/hermes_commands.local.json.",
-        "Do not reuse a base command name or alias; update preflight blocks collisions."
+        "Do not use /wsa_ or /filltherest names for local-only commands."
       ],
+      "rollback_or_backup_recommendation": "not_required_for_read_only_commands",
       "safety": "read_only",
+      "side_effects": {
+        "external_runtime": false,
+        "workspace": false,
+        "world": false
+      },
       "title": "Example local Hermes command."
     }
   ],
   "notes": [
     "Local overlays are runtime-owned and should stay outside the public repository.",
-    "Base WSA updates may refresh hermes_commands.example.json, but must preserve this local file."
+    "Base WSA updates may refresh hermes_commands.example.json, but must preserve this local file.",
+    "Do not reuse a base command name or alias; update preflight blocks collisions.",
+    "Keep personal path-bound commands here rather than upstreaming them into the official registry."
   ],
   "owner": "user_hermes_runtime",
+  "purpose": "Runtime-owned custom shortcuts preserved across WSA source updates.",
   "schema": "wsa.hermes.command_registry.local.v1",
   "schema_version": 1
 }

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from io import StringIO
 from pathlib import Path
@@ -16,25 +18,31 @@ from wsa.update import backup_workspace, run_update_preflight, update_preflight_
 from wsa.workspace import create_world
 
 
-def write_local_registry(path: Path, command: str = "/local_ping") -> None:
+def write_local_registry(
+    path: Path,
+    command: str = "/local_ping",
+    safety: str = "read_only",
+    extra: dict | None = None,
+) -> None:
+    command_payload = {
+        "command": command,
+        "aliases": [command.replace("_", "-")],
+        "title": "Local ping.",
+        "intent": "local_ping",
+        "category": "local",
+        "safety": safety,
+        "arguments": [],
+        "cli_templates": [],
+    }
+    if extra:
+        command_payload.update(extra)
     path.write_text(
         json.dumps(
             {
                 "schema": "wsa.hermes.command_registry.local.v1",
                 "schema_version": 1,
                 "owner": "user_hermes_runtime",
-                "commands": [
-                    {
-                        "command": command,
-                        "aliases": [command.replace("_", "-")],
-                        "title": "Local ping.",
-                        "intent": "local_ping",
-                        "category": "local",
-                        "safety": "read_only",
-                        "arguments": [],
-                        "cli_templates": [],
-                    }
-                ],
+                "commands": [command_payload],
             },
             ensure_ascii=False,
             indent=2,
@@ -113,6 +121,23 @@ class UpdatePreflightTests(TestCase):
             self.assertEqual(checks["local_command_overlay"].status, "block")
             self.assertIn("reserved WSA namespace", checks["local_command_overlay"].detail)
 
+    def test_preflight_warns_for_mutating_local_command_without_briefing_metadata(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            TemplateChecker(workspace).run(write_missing=True)
+            local_path = workspace / "hermes" / "adapter_config" / HERMES_LOCAL_COMMAND_REGISTRY_FILENAME
+            write_local_registry(local_path, command="/my_mutation", safety="workspace_mutating")
+
+            report = run_update_preflight(workspace)
+            payload = update_preflight_to_dict(report)
+            checks = {check.name: check for check in report.checks}
+
+            self.assertFalse(report.blocked)
+            self.assertTrue(report.warnings)
+            self.assertEqual(checks["local_command_overlay"].status, "warn")
+            self.assertIn("mutating_without_confirmation_metadata", checks["local_command_overlay"].detail)
+            self.assertIn("local Hermes mutating-command metadata", " ".join(payload["recommended_actions"]))
+
     def test_command_registry_merge_preserves_non_colliding_local_commands(self) -> None:
         base = build_hermes_command_registry()
         local = {
@@ -138,6 +163,7 @@ class UpdatePreflightTests(TestCase):
         self.assertIn("/wsa_help", commands)
         self.assertIn("/local_ping", commands)
         self.assertEqual(merged["local_overlay"]["command_count"], 1)
+        self.assertEqual(merged["local_overlay"]["validation"]["status"], "pass")
 
     def test_update_preflight_cli_returns_nonzero_when_blocked(self) -> None:
         with TemporaryDirectory() as tmp:

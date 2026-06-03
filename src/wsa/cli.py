@@ -28,9 +28,15 @@ from .hermes_adapter import (
 )
 from .hermes_commands import (
     HERMES_COMMAND_REGISTRY_FILENAME,
+    HERMES_LOCAL_COMMAND_REGISTRY_FILENAME,
     build_hermes_command_registry,
+    empty_local_command_overlay_report,
+    format_local_command_overlay_report,
     format_hermes_commands,
+    merge_hermes_command_registries,
+    validate_local_command_registry_report,
     write_hermes_command_registry,
+    write_hermes_local_command_registry_template,
 )
 from .hermes_doctor import HermesDoctor, format_hermes_doctor
 from .manager import WorldManager
@@ -598,6 +604,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--write-example",
         action="store_true",
         help="Write hermes_commands.example.json under workspace/hermes/adapter_config.",
+    )
+    hermes_commands.add_argument(
+        "--write-local-template",
+        action="store_true",
+        help="Write hermes_commands.local.json template under workspace/hermes/adapter_config.",
+    )
+    hermes_commands.add_argument(
+        "--validate-local-overlay",
+        action="store_true",
+        help="Validate local Hermes command overlay collisions and side-effect metadata.",
+    )
+    hermes_commands.add_argument(
+        "--merged",
+        action="store_true",
+        help="Print or write the base registry merged with a valid local overlay.",
+    )
+    hermes_commands.add_argument(
+        "--local-overlay",
+        help="Optional local overlay path. Defaults to workspace/hermes/adapter_config/hermes_commands.local.json.",
     )
     hermes_commands.add_argument("--output", help="Optional output path for registry JSON.")
     hermes_commands.add_argument("--overwrite", action="store_true", help="Overwrite existing output.")
@@ -1478,11 +1503,29 @@ def run_hermes_commands(
     workspace: Path,
     output_format: str,
     write_example: bool,
+    write_local_template: bool,
+    validate_local_overlay: bool,
+    merged: bool,
+    local_overlay_path: str | None,
     output_path: str | None,
     overwrite: bool,
 ) -> int:
     registry = build_hermes_command_registry()
-    if write_example or output_path:
+    local_path = (
+        Path(local_overlay_path).expanduser()
+        if local_overlay_path
+        else HermesCliTemplateAdapter(workspace).adapter_config_dir() / HERMES_LOCAL_COMMAND_REGISTRY_FILENAME
+    )
+
+    if write_local_template:
+        if not guard_update_unlocked(workspace, "hermes.commands.write"):
+            return 1
+        path = Path(output_path).expanduser() if output_path else local_path
+        written = write_hermes_local_command_registry_template(path, overwrite=overwrite)
+        print(f"local_command_overlay_template: {written}")
+        return 0
+
+    if write_example or (output_path and not validate_local_overlay and not merged):
         if not guard_update_unlocked(workspace, "hermes.commands.write"):
             return 1
         if output_path:
@@ -1493,6 +1536,81 @@ def run_hermes_commands(
             path = adapter.adapter_config_dir() / HERMES_COMMAND_REGISTRY_FILENAME
         written = write_hermes_command_registry(path, overwrite=overwrite)
         print(f"command_registry: {written}")
+        return 0
+
+    local_registry = None
+    if local_path.exists():
+        try:
+            local_registry = json.loads(local_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            report = {
+                "schema": "wsa.hermes.command_overlay_report.v1",
+                "status": "blocked",
+                "blocked": True,
+                "warnings": False,
+                "path": str(local_path),
+                "command_count": 0,
+                "finding_counts": {"block": 1, "warn": 0, "info": 0},
+                "findings": [
+                    {
+                        "severity": "block",
+                        "code": "invalid_json",
+                        "message": f"invalid local overlay JSON: {exc}",
+                        "recommendation": "Fix the JSON before update or live command execution.",
+                    }
+                ],
+                "recommended_actions": ["repair local command overlay JSON"],
+            }
+            if output_format == "json":
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                for line in format_local_command_overlay_report(report):
+                    print(line)
+            return 1
+
+    if validate_local_overlay:
+        report = (
+            validate_local_command_registry_report(local_registry, registry, local_path)
+            if local_registry is not None
+            else empty_local_command_overlay_report(local_path)
+        )
+        if output_format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            for line in format_local_command_overlay_report(report):
+                print(line)
+        return 1 if report["blocked"] else 0
+
+    if merged:
+        if local_registry is not None:
+            report = validate_local_command_registry_report(local_registry, registry, local_path)
+            if report["blocked"]:
+                if output_format == "json":
+                    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+                else:
+                    for line in format_local_command_overlay_report(report):
+                        print(line)
+                return 1
+            registry = merge_hermes_command_registries(registry, local_registry)
+        if output_path:
+            if not guard_update_unlocked(workspace, "hermes.commands.write"):
+                return 1
+            path = Path(output_path).expanduser()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists() and not overwrite:
+                print(f"command_registry: {path}")
+                return 0
+            path.write_text(
+                json.dumps(registry, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            print(f"command_registry: {path}")
+            return 0
+        if output_format == "json":
+            print(json.dumps(registry, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            for line in format_hermes_commands(registry):
+                print(line)
         return 0
 
     if output_format == "json":
@@ -1905,6 +2023,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 config.workspace,
                 args.format,
                 args.write_example,
+                args.write_local_template,
+                args.validate_local_overlay,
+                args.merged,
+                args.local_overlay,
                 args.output,
                 args.overwrite,
             )

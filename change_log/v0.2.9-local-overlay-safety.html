@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.9 Local Overlay Safety</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #697386;
+      --line: #d9dee7;
+      --ok: #15803d;
+      --warn: #b45309;
+      --block: #b91c1c;
+      --blue: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 48px; }
+    header, .stack { display: grid; gap: 12px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 16px; }
+    p { margin: 0; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; color: #253041; padding: 2px 5px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+    .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 14px; }
+    .step { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfe; min-height: 102px; }
+    .step strong { display: block; margin-bottom: 6px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.ok { color: var(--ok); border-color: #9bd4aa; background: #f0fbf3; }
+    .badge.warn { color: var(--warn); border-color: #f1c27d; background: #fff8ed; }
+    .badge.block { color: var(--block); border-color: #fecaca; background: #fff1f2; }
+    .badge.blue { color: var(--blue); border-color: #aac6ff; background: #f1f6ff; }
+    ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px; text-align: left; vertical-align: top; }
+    th { color: var(--ink); background: #fbfcfe; }
+  </style>
+</head>
+<body>
+  <main class="stack">
+    <header>
+      <p><a href="index.html">Patch dashboards</a></p>
+      <h1>v0.2.9 Local Overlay Safety</h1>
+      <p>Lets each user's Hermes runtime keep evolving local shortcuts without turning the public template into a personal command repo. WSA now validates, reports, and previews local command overlays around update and live-use boundaries.</p>
+      <div class="badge-row">
+        <span class="badge ok">version v0.2.9</span>
+        <span class="badge blue">merged preview</span>
+        <span class="badge block">collision blocks</span>
+        <span class="badge warn">side-effect warnings</span>
+        <span class="badge">compact command surface preserved</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>Patch Intent</h2>
+      <p>Official WSA keeps the compact Startup, Meetup, Scene, Patrol, Doctor, and Database surface. Runtime-local aliases stay in <code>hermes_commands.local.json</code>. The new safety layer makes collisions and risky side effects visible before updates or live command execution resume.</p>
+      <div class="flow">
+        <div class="step"><strong>1. Base Registry</strong><span>Generated from source and safe to refresh after updates.</span></div>
+        <div class="step"><strong>2. Local Overlay</strong><span>User/Hermes-owned shortcuts, path wrappers, and preferences.</span></div>
+        <div class="step"><strong>3. Validate</strong><span>Blocks base collisions and reserved namespace reuse.</span></div>
+        <div class="step"><strong>4. Warn</strong><span>Flags mutating commands missing confirmation, side effects, or rollback guidance.</span></div>
+        <div class="step"><strong>5. Merge Preview</strong><span>Shows the combined command surface without mutating the official registry.</span></div>
+        <div class="step"><strong>6. Pre/Post Update</strong><span>Hermes reports high-risk findings to the user before live use resumes.</span></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>CLI Surface</h2>
+        <ul>
+          <li><code>wsa hermes commands --write-local-template</code></li>
+          <li><code>wsa hermes commands --validate-local-overlay --format json</code></li>
+          <li><code>wsa hermes commands --merged --format json</code></li>
+          <li><code>--local-overlay</code> can inspect a custom overlay path.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Update Preflight</h2>
+        <ul>
+          <li>Local overlay collision now returns actionable block details.</li>
+          <li>Mutating local commands with weak metadata return warnings.</li>
+          <li>Recommended actions tell Hermes what to brief before and after updates.</li>
+          <li>Generated base registries remain refreshable; local overlays remain protected.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>What Stayed Out</h2>
+        <ul>
+          <li>No personal live-workspace command names were officialized.</li>
+          <li>No Telegram-specific natural-language routing was added to core.</li>
+          <li>No extra top-level status/preflight shortcuts were created.</li>
+          <li>No Hermes execution ownership moved into WSA.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>Risk Rules</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Finding</th>
+            <th>Status</th>
+            <th>Hermes/User Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Local command or alias collides with base registry</td>
+            <td><span class="badge block">block</span></td>
+            <td>Rename the local shortcut before update or live use.</td>
+          </tr>
+          <tr>
+            <td>Local shortcut uses reserved <code>/wsa_</code> or <code>/filltherest</code> namespace</td>
+            <td><span class="badge block">block</span></td>
+            <td>Move it to a runtime-local namespace.</td>
+          </tr>
+          <tr>
+            <td>Mutating local command lacks confirmation or rollback metadata</td>
+            <td><span class="badge warn">warn</span></td>
+            <td>Brief the user and add side-effect metadata when possible.</td>
+          </tr>
+          <tr>
+            <td>Overlay absent or valid read-only overlay</td>
+            <td><span class="badge ok">pass</span></td>
+            <td>No action required.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

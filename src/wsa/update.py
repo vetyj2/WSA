@@ -14,7 +14,7 @@ from .hermes_commands import (
     HERMES_COMMAND_REGISTRY_FILENAME,
     HERMES_LOCAL_COMMAND_REGISTRY_FILENAME,
     build_hermes_command_registry,
-    validate_local_command_registry,
+    validate_local_command_registry_report,
 )
 from .paths import safe_child_path
 from .workspace import (
@@ -272,8 +272,24 @@ def recommended_update_actions(report: UpdatePreflightReport) -> List[str]:
         "create a backup snapshot of the workspace outside the source checkout before update",
         "update only the source/package layer; do not delete or recopy the live workspace",
         "refresh generated base command registry after update, preserving hermes_commands.local.json",
+        "validate local Hermes command overlay before and after update; report collision risk to the user",
         "run update preflight again, then wsa doctor and manager diagnose before resuming Hermes",
     ]
+    local_overlay = next(
+        (check for check in report.checks if check.name == "local_command_overlay"),
+        None,
+    )
+    if local_overlay is not None:
+        if local_overlay.status == "block":
+            actions.insert(
+                0,
+                "rename or remove colliding local Hermes commands before updating or resuming live use",
+            )
+        elif local_overlay.status == "warn":
+            actions.insert(
+                0,
+                "review local Hermes mutating-command metadata and brief the user before side effects",
+            )
     if report.blocked:
         actions.insert(0, "do not update until block checks are resolved")
     return actions
@@ -398,9 +414,29 @@ def _command_overlay_check(workspace: Path) -> UpdateCheck:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return UpdateCheck("local_command_overlay", "block", f"invalid local overlay JSON: {exc}")
-    issues = validate_local_command_registry(payload, build_hermes_command_registry())
-    if issues:
-        return UpdateCheck("local_command_overlay", "block", "; ".join(issues))
+    report = validate_local_command_registry_report(payload, build_hermes_command_registry(), path)
+    if report["blocked"]:
+        findings = [
+            f"{item['code']}: {item['message']}"
+            for item in report["findings"]
+            if item["severity"] == "block"
+        ]
+        actions = "; ".join(report.get("recommended_actions", []))
+        detail = "; ".join(findings[:5])
+        if actions:
+            detail = f"{detail}; recommended: {actions}"
+        return UpdateCheck("local_command_overlay", "block", detail)
+    if report["warnings"]:
+        findings = [
+            f"{item['code']}: {item['message']}"
+            for item in report["findings"]
+            if item["severity"] == "warn"
+        ]
+        actions = "; ".join(report.get("recommended_actions", []))
+        detail = "; ".join(findings[:5])
+        if actions:
+            detail = f"{detail}; recommended: {actions}"
+        return UpdateCheck("local_command_overlay", "warn", detail)
     count = len(payload.get("commands", []))
     return UpdateCheck("local_command_overlay", "ok", f"{count} local commands preserved by overlay")
 

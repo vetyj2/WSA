@@ -245,6 +245,16 @@ Existing slash commands in the registry are compatibility and implementation rou
 
 Runtime-specific shortcuts should live in `workspace/hermes/adapter_config/hermes_commands.local.json`, using the shape in `examples/hermes_command_registry.local.example.json`. Base updates may replace the generated example registry, but must preserve the local overlay. Local commands must not reuse a base command name or alias; `wsa update preflight` blocks that collision so a stale override cannot hide a new WSA command.
 
+WSA should not upstream every live user's Hermes shortcuts into the official registry. User/path/world-specific aliases belong in the local overlay. The official template provides the compatibility layer: write a local template, validate it, and preview the merged registry:
+
+```bash
+wsa --workspace <live-workspace> hermes commands --write-local-template
+wsa --workspace <live-workspace> hermes commands --validate-local-overlay --format json
+wsa --workspace <live-workspace> hermes commands --merged --format json
+```
+
+Hermes should run local overlay validation before and after source updates. Blocking findings mean a local command or alias collides with the official registry or reserved `/wsa_`/`/filltherest` namespace. Warning findings usually mean a mutating local command is missing confirmation, side-effect, or rollback metadata; Hermes can continue only after briefing the user and recommending cleanup.
+
 ## Hermes Adapter Template
 
 The Hermes adapter in this repository is a CLI/file-contract template. It writes task JSON files and collects callback JSON files. It does not start Docker, run Telegram bots, open sockets, or store raw secrets.
@@ -441,6 +451,7 @@ Safe update architecture:
 
 - Treat the source/package layer, live workspace, and runtime-local config as separate layers.
 - Preserve `workspace/hermes/adapter_config/hermes_commands.local.json`; refresh only generated base files such as `hermes_commands.example.json`.
+- Validate local command overlays before and after source updates. If preflight reports high collision risk, Hermes should tell the user which local command should be renamed or documented before live use resumes.
 - Pause Hermes task intake, callbacks, and cron jobs before updating. Preflight blocks when pending task queue files, callback files, report outbox files, active task state, or active scheduler jobs are present.
 - Back up the live workspace outside the source checkout before updating. SQLite databases, world folders, reports, runtime queues, and local Hermes config should all be restorable.
 - During update or backup, mutating WSA CLI paths should respect `workspace/hermes/maintenance/update.lock`; if that lock exists, commands such as world creation, startup answers, task creation, callback collection, meeting decisions, and ticket approval must block.
