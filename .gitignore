@@ -17,6 +17,9 @@ SESSION_HANDOFF.md
 docs/human_review/
 docs/requirements/
 
+# Local operator/admin layer
+/local_admin/
+
 # Local runtime instance folders / snapshots
 /wsa_instance*/
 /wsa-instance*/
@@ -62,6 +65,12 @@ build/
 *.key
 *.p8
 *.p12
+/operation_policy*.json
+/hermes_operation_policy*.json
+**/*operation_policy*.local.json
+!/operation_policy.example.json
+!/hermes_operation_policy.example.json
+!tests/**/*operation_policy*.local.json
 
 # WSA runtime state
 workspace/
