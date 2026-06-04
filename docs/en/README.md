@@ -120,6 +120,8 @@ Scene generation mode is disclosed rather than forced. `--generation-mode auto` 
 
 `fact-audit-synthesis` is treated as deep fact-audit only when callbacks provide evidence fields such as `source_refs`, `fact_lookup_queries`, `checked_tables`, `checked_reports`, `conflicts_found`, or `deferred_claims`. `writing-room-line-build` is treated as collaborative drafting only when a `line_build_ledger` records candidate text or beats, PASS/FAIL/HOLD/RETRY decisions, rollback reasons, and adopted markers.
 
+Hook packets include a `mode_aware_turn_contract` for the current workflow and scene mode. Meetup turns ask for useful constraints, objections, dependencies, or proposal movement rather than shallow agreement. Fact-audit scene turns ask for evidence and deferred/unchecked claims. Line-build scene turns ask for 1-3 candidate lines or beats plus a validator decision.
+
 Scene and meetup reporting should follow the shared `wsa.reporting.artifact_contract.v1` contract. WSA recommends keeping one date-scoped session log as the source of truth, then exporting human-facing artifacts on demand rather than storing every possible format by default:
 
 - `human_session_minutes`: readable meetup or scene-generation session minutes in TXT/HTML.

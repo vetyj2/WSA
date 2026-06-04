@@ -150,6 +150,37 @@ def build_reporting_artifact_contract(
                 "no_ledger_wording": "synthesis draft, not line-build consensus",
             },
         },
+        "mode_aware_hook_policy": {
+            "schema": "wsa.orchestrator.mode_aware_hook_policy.v1",
+            "applies_to": ["meetup", "scene_generation"],
+            "packet_field": "mode_aware_turn_contract",
+            "meetup_turns": {
+                "goal": "advance the live floor with a useful constraint, objection, dependency, or proposal movement",
+                "avoid": ["shallow agreement", "broad lore dump", "canon mutation"],
+            },
+            "fact_audit_synthesis_turns": {
+                "goal": "verify scene-relevant facts and mark unchecked or deferred claims",
+                "required_evidence_family": [
+                    "source_refs",
+                    "fact_lookup_queries",
+                    "checked_tables",
+                    "checked_reports",
+                    "conflicts_found",
+                    "deferred_claims",
+                ],
+            },
+            "writing_room_line_build_turns": {
+                "goal": "propose or validate one beat or 1-3 candidate lines",
+                "required_ledger_family": [
+                    "candidate_text",
+                    "line_candidates",
+                    "validation_decision",
+                    "rollback_reason",
+                    "retry_count",
+                    "accepted_lines",
+                ],
+            },
+        },
         "runtime_customization": {
             "automatic_export_policy": "user_or_hermes_profile_custom",
             "default_delivery": "none_until_runtime_requests_export",

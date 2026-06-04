@@ -135,6 +135,16 @@ class HermesCommandSyntaxTests(TestCase):
                 "required_to_claim_deep_fact_audit"
             ][0],
         )
+        self.assertEqual(
+            reporting["mode_aware_hook_policy"]["packet_field"],
+            "mode_aware_turn_contract",
+        )
+        self.assertIn(
+            "validation_decision",
+            reporting["mode_aware_hook_policy"]["writing_room_line_build_turns"][
+                "required_ledger_family"
+            ],
+        )
 
     def test_canonical_commands_are_telegram_menu_safe_and_aliases_do_not_cross_collide(self) -> None:
         registry = build_hermes_command_registry()

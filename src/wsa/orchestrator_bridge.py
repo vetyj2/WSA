@@ -267,6 +267,7 @@ class OrchestratorBridge:
             output,
             hook.get("expected_fields", []),
             actor_state=actor_state,
+            mode_aware_turn_contract=hook.get("mode_aware_turn_contract"),
         )
         payload.setdefault("submitted_callbacks", []).append(
             self._callback_record(callback, callback_path, turn_id, output["quality_gate"])
@@ -543,6 +544,7 @@ def quality_gate(
     output: Dict[str, Any],
     expected_fields: List[str],
     actor_state: Dict[str, Any] | None = None,
+    mode_aware_turn_contract: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     required = ["position", "objections", "proposals", "gaps", "uncertainty"]
     missing = [field for field in required if output.get(field) in (None, "", [])]
@@ -580,6 +582,7 @@ def quality_gate(
         and output.get("answer") == actor_state.get("last_answer")
     ):
         low_value_warnings.append("repeated_prior_answer")
+    mode_warnings = _mode_contract_warnings(output, mode_aware_turn_contract)
     return {
         "schema": "wsa.orchestrator.output_quality_gate.v1",
         "accepted": accepted,
@@ -589,8 +592,10 @@ def quality_gate(
         "canon_mutation_attempt": canon_attempt,
         "rejection_reasons": rejection_reasons,
         "low_value_warnings": low_value_warnings,
+        "mode_warnings": mode_warnings,
+        "mode_aware_contract_checked": bool(mode_aware_turn_contract),
         "anti_repetition_checked": True,
-        "deepening_recommended_if_low_value": bool(low_value_warnings),
+        "deepening_recommended_if_low_value": bool(low_value_warnings or mode_warnings),
         "accumulation_policy": "accepted_outputs_only",
         "rejects_empty_agreement": True,
         "rejects_unbounded_lore_dump": True,
@@ -613,6 +618,31 @@ def _looks_like_empty_agreement(output: Dict[str, Any]) -> bool:
         "동의",
         "찬성",
     }
+
+
+def _mode_contract_warnings(
+    output: Dict[str, Any],
+    mode_aware_turn_contract: Dict[str, Any] | None,
+) -> List[str]:
+    if not mode_aware_turn_contract:
+        return []
+    mode = mode_aware_turn_contract.get("mode")
+    warnings: List[str] = []
+    if mode == "fact_audit_synthesis":
+        if not any(output.get(field) not in (None, "", []) for field in FACT_AUDIT_EVIDENCE_FIELDS):
+            warnings.append("fact_audit_evidence_missing_for_requested_mode")
+    elif mode == "writing_room_line_build":
+        if not any(output.get(field) not in (None, "", []) for field in LINE_BUILD_LEDGER_FIELDS):
+            warnings.append("line_build_ledger_missing_for_requested_mode")
+        if output.get("validation_decision") in (None, "", []):
+            warnings.append("line_build_validation_decision_missing")
+        if str(output.get("validation_decision") or "").strip().upper() in {"FAIL", "RETRY"}:
+            if output.get("rollback_reason") in (None, "", []):
+                warnings.append("rollback_reason_missing_for_fail_or_retry")
+    elif mode == "meetup_facilitation":
+        if _looks_like_empty_agreement(output):
+            warnings.append("meetup_turn_low_value_or_repetitive")
+    return warnings
 
 
 def _runtime_bridge_contract(payload: Dict[str, Any]) -> Dict[str, Any]:

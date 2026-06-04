@@ -30,6 +30,30 @@ class AutonomousOrchestratorTests(TestCase):
         self.assertTrue(gate["accepted"])
         self.assertEqual(gate["low_value_warnings"], [])
 
+    def test_quality_gate_warns_when_line_build_mode_lacks_ledger(self) -> None:
+        gate = quality_gate(
+            {
+                "position": "Bounded scene-prep answer.",
+                "objections": ["Keep proposal-only."],
+                "proposals": ["Carry forward."],
+                "gaps": ["Needs review."],
+                "uncertainty": "medium",
+            },
+            expected_fields=[],
+            mode_aware_turn_contract={"mode": "writing_room_line_build"},
+        )
+
+        self.assertTrue(gate["accepted"])
+        self.assertTrue(gate["mode_aware_contract_checked"])
+        self.assertIn(
+            "line_build_ledger_missing_for_requested_mode",
+            gate["mode_warnings"],
+        )
+        self.assertIn(
+            "line_build_validation_decision_missing",
+            gate["mode_warnings"],
+        )
+
     def test_manual_trigger_runs_autonomous_subsessions_to_review_boundary(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -417,6 +441,10 @@ class AutonomousOrchestratorTests(TestCase):
             )
             bridge = OrchestratorBridge(workspace)
             next_payload = bridge.next(result.run_id)
+            hook_contract = next_payload["hook"]["mode_aware_turn_contract"]
+            self.assertEqual(hook_contract["mode"], "writing_room_line_build")
+            self.assertIn("validation_decision", hook_contract["recommended_output_fields"])
+            self.assertIn("1-3 candidate lines", next_payload["hook"]["prompt"])
             callback = _write_bridge_callback(
                 workspace,
                 world.world_id,
@@ -452,6 +480,8 @@ class AutonomousOrchestratorTests(TestCase):
             package = run_payload["synthesis"]["scene_prep_package"]
 
             self.assertTrue(submitted["accepted"])
+            self.assertEqual(submitted["quality_gate"]["mode_warnings"], [])
+            self.assertTrue(submitted["quality_gate"]["mode_aware_contract_checked"])
             self.assertEqual(submitted["execution_status"], "completed_by_hermes")
             self.assertEqual(package["scene_filter_contract"]["time_scope"], "day 3")
             self.assertIn("arrival pressure", package["facts_to_include"])
@@ -572,6 +602,14 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertIn(
                 "orchestrator_scene_generation_actor_turn",
                 payload["runtime_hook_packets"][0]["terminal_command"]["argv"],
+            )
+            self.assertEqual(
+                payload["runtime_hook_packets"][0]["mode_aware_turn_contract"]["mode"],
+                "fact_audit_synthesis",
+            )
+            self.assertIn(
+                "Verify scene-relevant facts",
+                payload["runtime_hook_packets"][0]["prompt"],
             )
             self.assertTrue(
                 any(

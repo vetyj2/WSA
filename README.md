@@ -113,6 +113,8 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 
 `fact-audit-synthesis`는 `source_refs`, `fact_lookup_queries`, `checked_tables`, `checked_reports`, `conflicts_found`, `deferred_claims` 같은 evidence가 있을 때만 깊은 fact-audit으로 해석합니다. `writing-room-line-build`는 `line_build_ledger`에 후보 문장/beat, PASS/FAIL/HOLD/RETRY, rollback reason, adopted marker가 남아야 공동 작성으로 보고합니다.
 
+Hook packet은 workflow와 scene mode에 맞는 `mode_aware_turn_contract`를 포함합니다. Meetup은 얕은 동의 대신 제약/반박/의존성을 요구하고, fact-audit scene turn은 근거와 보류 claim을 요구하며, line-build scene turn은 1-3개 후보 문장/beat와 검증 결정을 요구합니다.
+
 ## 공개 저장소 안전 원칙
 
 이 저장소는 local workspace, SQLite DB, runtime queue, callback file, log, environment file, secret, session handoff note, root-local `local_admin/`, live operation policy JSON을 ignore합니다.

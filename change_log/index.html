@@ -104,6 +104,27 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.13-mode-aware-hooks.html">v0.2.13 Mode-Aware Hooks</a></h2>
+          <p>Adds workflow- and scene-mode-specific turn contracts to hook packets so external runtimes receive narrower instructions for Meetup, fact-audit Scene, and writing-room line-build Scene work.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">mode-aware hooks</span>
+          <span class="badge accent">turn contract</span>
+          <span class="badge">meetup</span>
+          <span class="badge">fact audit</span>
+          <span class="badge">line build</span>
+          <span class="badge warn">runtime owned</span>
+        </div>
+        <ul>
+          <li>Hook packets now include <code>mode_aware_turn_contract</code> with turn objective, focus fields, success criteria, and prompt directives.</li>
+          <li>Meetup turns discourage shallow agreement and ask for constraints, objections, dependencies, or proposal movement.</li>
+          <li>Fact-audit turns request evidence or deferred/unchecked claim labels; line-build turns request candidate lines/beats and validation decisions.</li>
+          <li>Quality gates now report mode warnings without making WSA own external runtime execution.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.12-scene-evidence-ledgers.html">v0.2.12 Scene Evidence Ledgers</a></h2>
           <p>Adds explicit fact-audit evidence and writing-room line-build ledger contracts so Scene reports can prove what actors actually checked, proposed, rejected, retried, or adopted.</p>
         </div>

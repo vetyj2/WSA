@@ -7,6 +7,7 @@ SCENE_MODE_DISCLOSURE_SCHEMA = "wsa.scene_generation.mode_disclosure.v1"
 ACTOR_CONTRIBUTION_SUMMARY_SCHEMA = "wsa.actor_contribution_summary.v1"
 FACT_AUDIT_EVIDENCE_SCHEMA = "wsa.scene.fact_audit_evidence.v1"
 LINE_BUILD_LEDGER_SCHEMA = "wsa.scene.line_build_ledger.v1"
+MODE_AWARE_TURN_CONTRACT_SCHEMA = "wsa.orchestrator.mode_aware_turn_contract.v1"
 SCENE_GENERATION_MODES = {
     "auto",
     "fact_audit_synthesis",
@@ -270,6 +271,142 @@ def build_line_build_ledger_contract() -> Dict[str, Any]:
             "Do not present the run as line-build consensus when no ledger entries exist."
         ),
         "side_effect_status": "proposal_only_no_canon_or_scene_db_mutation",
+    }
+
+
+def build_mode_aware_turn_contract(
+    context_packet: Dict[str, Any],
+    workflow_profile: Dict[str, Any],
+    scheduler_decision: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    workflow = str(workflow_profile.get("workflow") or context_packet.get("workflow") or "meetup")
+    scheduler_decision = scheduler_decision or {}
+    base = {
+        "schema": MODE_AWARE_TURN_CONTRACT_SCHEMA,
+        "workflow": workflow,
+        "participant_id": context_packet.get("participant_id"),
+        "represents": context_packet.get("represents"),
+        "scheduler_reason": scheduler_decision.get("called_because"),
+        "scheduler_action": scheduler_decision.get("recommended_action"),
+        "response_budget": {
+            "prefer_one_sentence_per_field": True,
+            "avoid_whole_scene_or_lore_dump": True,
+            "return_structured_callback_only": True,
+        },
+        "side_effect_boundary": {
+            "canon_mutation_forbidden": True,
+            "world_db_mutation_forbidden": True,
+            "approval_required_before_canon_or_scene_db_write": True,
+        },
+    }
+    if workflow == "scene_generation":
+        scene_mode = (
+            (context_packet.get("scene_mode_contract") or {}).get("mode")
+            or (context_packet.get("scene_generation_mode") or {}).get("resolved_mode")
+            or "fact_audit_synthesis"
+        )
+        if scene_mode == "writing_room_line_build":
+            return {
+                **base,
+                "mode": "writing_room_line_build",
+                "turn_objective": (
+                    "Propose or validate one small beat or 1-3 candidate lines, then mark "
+                    "PASS, FAIL, HOLD, or RETRY."
+                ),
+                "required_focus": [
+                    "candidate_text or line_candidates",
+                    "validation_decision",
+                    "rollback_reason when FAIL or RETRY",
+                    "adopted marker only when the line/beat may enter the draft ledger",
+                ],
+                "recommended_output_fields": LINE_BUILD_LEDGER_FIELDS,
+                "mode_success_criteria": [
+                    "one bounded beat or 1-3 lines",
+                    "explicit validator decision",
+                    "retry_count included when revising a failed beat",
+                    "no whole-scene draft dump",
+                ],
+                "prompt_directives": [
+                    "Do not synthesize the whole scene.",
+                    "If validating, accept/reject only the current candidate beat or lines.",
+                    "If failing the candidate, provide rollback_reason and a narrower retry target.",
+                    "Keep hidden facts out of viewpoint-visible prose.",
+                ],
+                "missing_mode_evidence_warning": "line_build_ledger_missing_for_requested_mode",
+            }
+        return {
+            **base,
+            "mode": "fact_audit_synthesis",
+            "turn_objective": (
+                "Verify scene-relevant facts, memory, reports, and constraints before any draft "
+                "synthesis; identify unchecked or deferred claims."
+            ),
+            "required_focus": [
+                "source_refs or checked_tables/checked_reports",
+                "fact_lookup_queries when a lookup was performed or recommended",
+                "conflicts_found for contradictions",
+                "deferred_claims or unchecked_claims for anything not verified",
+            ],
+            "recommended_output_fields": FACT_AUDIT_EVIDENCE_FIELDS,
+            "mode_success_criteria": [
+                "evidence or explicit unchecked/deferred claim labels",
+                "hidden facts separated from viewpoint-visible facts",
+                "no final prose claim without evidence status",
+            ],
+            "prompt_directives": [
+                "Do not write final prose.",
+                "List only facts that affect stakes, viewpoint, causality, or continuity.",
+                "If evidence is unavailable, use unchecked_claims or deferred_claims.",
+                "Mark authoring workflow notes as non-canon.",
+            ],
+            "missing_mode_evidence_warning": "fact_audit_evidence_missing_for_requested_mode",
+        }
+    if workflow == "meetup":
+        return {
+            **base,
+            "mode": "meetup_facilitation",
+            "turn_objective": (
+                "Advance the live meeting floor with one useful constraint, objection, answer, "
+                "or proposal; do not restate shallow agreement."
+            ),
+            "required_focus": [
+                "answer the scheduler target",
+                "respond to prior objection when present",
+                "state new_claims as proposal-only",
+                "label conflicts, dependencies, and uncertainty",
+            ],
+            "recommended_output_fields": [
+                "stance",
+                "answer",
+                "new_claims",
+                "objections",
+                "dependencies",
+                "conflicts",
+                "worldbuilding_use",
+                "confidence",
+                "next_actor_suggestion",
+            ],
+            "mode_success_criteria": [
+                "adds a new constraint, challenge, dependency, or concrete option",
+                "does not treat consensus as valid until challenged",
+                "keeps canon conversion behind author approval",
+            ],
+            "prompt_directives": [
+                "Do not merely agree.",
+                "If consensus is too easy, name who pays, who loses, or where the rule fails.",
+                "If the claim is risky, recommend manager_check instead of grounding it.",
+            ],
+            "missing_mode_evidence_warning": "meetup_turn_low_value_or_repetitive",
+        }
+    return {
+        **base,
+        "mode": "generic_bounded_orchestration",
+        "turn_objective": "Return one bounded proposal, risk, or gap for the current orchestration task.",
+        "required_focus": ["position", "objections", "proposals", "gaps", "uncertainty"],
+        "recommended_output_fields": context_packet.get("expected_output", []),
+        "mode_success_criteria": ["bounded output", "uncertainty labeled", "no canon mutation"],
+        "prompt_directives": ["Keep output proposal-only and structured."],
+        "missing_mode_evidence_warning": "generic_turn_low_value",
     }
 
 

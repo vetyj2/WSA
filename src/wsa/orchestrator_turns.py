@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any, Dict, List
 
 from .orchestrator_contract import DEFAULT_UTTERANCE_TARGET
+from .scene_modes import build_mode_aware_turn_contract
 
 
 ACTOR_STATE_SCHEMA = "wsa.orchestrator.actor_state.v1"
@@ -180,6 +181,11 @@ def build_round_prompt_packet(
         actor_state_summary,
         floor_state,
     )
+    mode_aware_turn_contract = build_mode_aware_turn_contract(
+        context_packet,
+        workflow_profile,
+        scheduler_decision,
+    )
     prompt = build_runtime_prompt(
         context_packet,
         round_index,
@@ -187,6 +193,7 @@ def build_round_prompt_packet(
         workflow_profile,
         actor_state_summary,
         scheduler_decision,
+        mode_aware_turn_contract,
     )
     task_type = f"orchestrator_{workflow_profile.get('workflow', context_packet['workflow'])}_actor_turn"
     return {
@@ -204,6 +211,7 @@ def build_round_prompt_packet(
         "execution_owner": "external_agent_runtime",
         "actor_state": actor_state_summary,
         "scheduler_decision": scheduler_decision,
+        "mode_aware_turn_contract": mode_aware_turn_contract,
         "identity_continuity_contract": {
             "must_answer_relevant_prior_objections": True,
             "must_not_reset_actor_identity_between_turns": True,
@@ -259,6 +267,8 @@ def build_round_prompt_packet(
         "quality_gate": {
             "accepted_only_if_complete": True,
             "missing_or_unbounded_output_requires_retry": True,
+            "mode_aware_contract_checked": True,
+            "mode_success_criteria": mode_aware_turn_contract.get("mode_success_criteria", []),
         },
     }
 
@@ -270,6 +280,7 @@ def build_runtime_prompt(
     workflow_profile: Dict[str, Any],
     actor_state: Dict[str, Any] | None = None,
     scheduler_decision: Dict[str, Any] | None = None,
+    mode_aware_turn_contract: Dict[str, Any] | None = None,
 ) -> str:
     expected = ", ".join(context_packet.get("expected_output", []))
     snapshot = "none"
@@ -302,12 +313,23 @@ def build_runtime_prompt(
             f"scene mode={mode_contract.get('mode')}; "
             f"recommended_mode_fields={fields[:8]}"
         )
+    turn_contract = mode_aware_turn_contract or build_mode_aware_turn_contract(
+        context_packet,
+        workflow_profile,
+        scheduler_decision,
+    )
+    turn_contract_note = (
+        f"turn_objective={turn_contract.get('turn_objective')}; "
+        f"required_focus={turn_contract.get('required_focus', [])}; "
+        f"directives={turn_contract.get('prompt_directives', [])}"
+    )
     return (
         f"WSA {workflow_profile.get('workflow')} turn. Round {round_index}. "
         f"Represent: {context_packet['represents']}. Topic: {context_packet['topic']}. "
         f"Question: {context_packet['question']}. Previous floor summary: {snapshot}. "
         f"Your actor continuity: {actor_note}. Scheduler reason: {schedule_note}. "
         f"Mode contract: {mode_note}. "
+        f"Turn contract: {turn_contract_note}. "
         f"Return only these fields: {expected}. Keep each field bounded, label uncertainty, "
         "do not mutate canon, and suggest the next actor only if useful. "
         f"Orchestrator hooks in scope: {hooks or 'manager_check'}."
