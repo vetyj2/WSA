@@ -104,6 +104,26 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.12-scene-evidence-ledgers.html">v0.2.12 Scene Evidence Ledgers</a></h2>
+          <p>Adds explicit fact-audit evidence and writing-room line-build ledger contracts so Scene reports can prove what actors actually checked, proposed, rejected, retried, or adopted.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">fact-audit evidence</span>
+          <span class="badge accent">line-build ledger</span>
+          <span class="badge">callback fields</span>
+          <span class="badge">scene prep</span>
+          <span class="badge warn">claim discipline</span>
+        </div>
+        <ul>
+          <li><code>wsa.scene.fact_audit_evidence.v1</code> records source refs, lookup queries, checked tables/reports, conflicts, and deferred claims.</li>
+          <li><code>wsa.scene.line_build_ledger.v1</code> records candidate text, PASS/FAIL/HOLD/RETRY decisions, rollback reasons, and adopted markers.</li>
+          <li>Mode contracts are embedded into scene hook packets for Hermes or other external actor runtimes.</li>
+          <li>Reports stay conservative when evidence or ledger entries are absent.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.11-scene-mode-disclosure.html">v0.2.11 Scene Mode Disclosure</a></h2>
           <p>Adds scene mode disclosure and actor contribution accounting so Scene Start reports distinguish fact-audit synthesis from writing-room line-build work.</p>
         </div>

@@ -118,6 +118,8 @@ Scene start is proposal-only. It prepares actor packets, hidden/visible fact fil
 
 Scene generation mode is disclosed rather than forced. `--generation-mode auto` lets the user's Hermes runtime, profile, or natural-language interpretation choose the practical mode; explicit values are `fact-audit-synthesis` and `writing-room-line-build`. Run artifacts record `requested_mode`, `resolved_mode`, `mode_resolution_source`, `mode_confidence`, what actors actually did, and what was not performed. Actor contribution accounting also records callback counts, rejected/rollback events, fact-audit evidence, actor-authored sentence counts, adopted actor proposals, final synthesizer, and actor function labels such as `observer`, `constraint_panel`, `sql_auditor`, `co_writer`, `validator`, and `rollback_trigger`.
 
+`fact-audit-synthesis` is treated as deep fact-audit only when callbacks provide evidence fields such as `source_refs`, `fact_lookup_queries`, `checked_tables`, `checked_reports`, `conflicts_found`, or `deferred_claims`. `writing-room-line-build` is treated as collaborative drafting only when a `line_build_ledger` records candidate text or beats, PASS/FAIL/HOLD/RETRY decisions, rollback reasons, and adopted markers.
+
 Scene and meetup reporting should follow the shared `wsa.reporting.artifact_contract.v1` contract. WSA recommends keeping one date-scoped session log as the source of truth, then exporting human-facing artifacts on demand rather than storing every possible format by default:
 
 - `human_session_minutes`: readable meetup or scene-generation session minutes in TXT/HTML.

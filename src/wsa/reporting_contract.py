@@ -123,10 +123,32 @@ def build_reporting_artifact_contract(
                 "callback_rejected",
                 "rollback_event_count",
                 "sql_or_fact_lookup_performed",
+                "fact_audit_evidence_available",
+                "fact_audit_evidence_count",
+                "line_build_ledger_entry_count",
                 "actor_authored_sentence_count",
                 "adopted_actor_proposal_count",
                 "final_synthesizer",
             ],
+        },
+        "scene_mode_evidence_contracts": {
+            "fact_audit_synthesis": {
+                "required_to_claim_deep_fact_audit": [
+                    "source_refs",
+                    "fact_lookup_queries or checked_tables/checked_reports",
+                    "conflicts_found/deferred_claims/unchecked_claims when relevant",
+                ],
+                "no_evidence_wording": "guardrail/synthesis run, not deep fact-audit",
+            },
+            "writing_room_line_build": {
+                "required_to_claim_consensus_drafting": [
+                    "line_build_ledger.entry_count > 0",
+                    "candidate_text or line_candidates",
+                    "validation_decision or rollback_reason",
+                    "adopted_into_draft marker for final text",
+                ],
+                "no_ledger_wording": "synthesis draft, not line-build consensus",
+            },
         },
         "runtime_customization": {
             "automatic_export_policy": "user_or_hermes_profile_custom",

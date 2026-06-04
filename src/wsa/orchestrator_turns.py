@@ -294,11 +294,20 @@ def build_runtime_prompt(
             f"{scheduler_decision.get('called_because')}: "
             f"{scheduler_decision.get('recommended_action')}"
         )
+    mode_contract = context_packet.get("scene_mode_contract") or {}
+    mode_note = "no scene mode contract"
+    if mode_contract:
+        fields = mode_contract.get("recommended_output_fields", [])
+        mode_note = (
+            f"scene mode={mode_contract.get('mode')}; "
+            f"recommended_mode_fields={fields[:8]}"
+        )
     return (
         f"WSA {workflow_profile.get('workflow')} turn. Round {round_index}. "
         f"Represent: {context_packet['represents']}. Topic: {context_packet['topic']}. "
         f"Question: {context_packet['question']}. Previous floor summary: {snapshot}. "
         f"Your actor continuity: {actor_note}. Scheduler reason: {schedule_note}. "
+        f"Mode contract: {mode_note}. "
         f"Return only these fields: {expected}. Keep each field bounded, label uncertainty, "
         "do not mutate canon, and suggest the next actor only if useful. "
         f"Orchestrator hooks in scope: {hooks or 'manager_check'}."

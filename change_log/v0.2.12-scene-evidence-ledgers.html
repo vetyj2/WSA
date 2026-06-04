@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.12 Scene Evidence Ledgers</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d7dee8;
+      --accent: #0f766e;
+      --accent-2: #5b5f97;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul {
+      margin: 10px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+    code {
+      background: #eef1f5;
+      border-radius: 5px;
+      padding: 2px 5px;
+      color: #253041;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.12 Scene Evidence Ledgers</h1>
+      <p>Fact-audit and writing-room scene modes now have explicit evidence contracts, so reports can distinguish real checks from guardrail synthesis.</p>
+      <div class="badges">
+        <span class="badge accent">fact-audit evidence</span>
+        <span class="badge accent">line-build ledger</span>
+        <span class="badge">callback contract</span>
+        <span class="badge">scene prep package</span>
+        <span class="badge warn">honest mode claims</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Why This Patch Exists</h2>
+        <p>v0.2.11 disclosed the requested scene mode. v0.2.12 adds the minimum evidence required to support that disclosure.</p>
+        <ul>
+          <li><code>fact_audit_synthesis</code> needs source refs, lookup notes, checked tables/reports, conflicts, and deferred claims.</li>
+          <li><code>writing_room_line_build</code> needs ledger entries for proposed lines or beats, validator decisions, rollback reasons, and adopted markers.</li>
+          <li>Without those fields, the report stays conservative: guardrail/synthesis, not deep audit or consensus drafting.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>New Contracts</h2>
+        <ul>
+          <li><code>wsa.scene.fact_audit_evidence.v1</code></li>
+          <li><code>wsa.scene.line_build_ledger.v1</code></li>
+          <li>Mode contracts are included in scene prompt packets.</li>
+          <li>Actor contribution summaries include evidence and ledger counts.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Runtime Boundary</h2>
+        <p>WSA still does not execute Hermes actors directly. The external runtime fills callback fields; WSA validates, records, summarizes, and reports.</p>
+        <ul>
+          <li>Callback fields remain bounded and sanitized.</li>
+          <li>Canon mutation remains forbidden.</li>
+          <li>Reports only upgrade claims when evidence exists.</li>
+        </ul>
+      </article>
+
+      <article class="panel wide">
+        <h2>Scene Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>1. Scene Start</strong>
+            <span>Hermes/user selects auto, fact-audit synthesis, or writing-room line-build.</span>
+          </div>
+          <div class="step">
+            <strong>2. Hook Packet</strong>
+            <span>WSA includes the relevant mode contract and expected callback shape.</span>
+          </div>
+          <div class="step">
+            <strong>3. Runtime Callback</strong>
+            <span>Hermes reports source refs, checked records, candidate lines, validation decisions, or rollback reasons.</span>
+          </div>
+          <div class="step">
+            <strong>4. WSA Report</strong>
+            <span>Scene prep package carries evidence summary and line-build ledger for author review.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Fact-Audit Evidence</h2>
+        <ul>
+          <li><code>source_refs</code></li>
+          <li><code>fact_lookup_queries</code></li>
+          <li><code>checked_tables</code> and <code>checked_reports</code></li>
+          <li><code>proposal_or_quarantine_refs</code></li>
+          <li><code>conflicts_found</code>, <code>deferred_claims</code>, <code>unchecked_claims</code></li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Line-Build Ledger</h2>
+        <ul>
+          <li><code>beat_id</code>, <code>line_id</code>, <code>candidate_text</code></li>
+          <li><code>line_candidates</code>, <code>accepted_lines</code>, <code>accepted_beats</code></li>
+          <li><code>validation_decision</code>: PASS, FAIL, HOLD, RETRY</li>
+          <li><code>rollback_reason</code>, <code>retry_count</code>, adopted marker</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Implementation Footprint</h2>
+        <ul>
+          <li><code>scene_modes.py</code> owns contracts and summaries.</li>
+          <li><code>orchestrator_bridge.py</code> accepts evidence/ledger callback fields.</li>
+          <li><code>autonomous_orchestrator.py</code> records empty summaries for local simulation and populated summaries for callbacks.</li>
+          <li><code>reporting_contract.py</code> declares the reporting criteria.</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

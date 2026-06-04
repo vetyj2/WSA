@@ -426,11 +426,23 @@ class AutonomousOrchestratorTests(TestCase):
                     "scene_relevance": "The hub constrains movement and first impressions.",
                     "facts_to_include": ["arrival pressure", "public authority nearby"],
                     "facts_to_hide": ["private author-only twist"],
+                    "source_refs": ["world.fact:R001", "report:scene-prep-001"],
+                    "fact_lookup_queries": ["facts where location_scope='transit hub'"],
+                    "checked_tables": ["facts", "reports"],
+                    "checked_reports": ["scene-prep-001"],
+                    "proposal_or_quarantine_refs": ["proposal-ledger:arrival-pressure"],
+                    "conflicts_found": [],
+                    "deferred_claims": ["private authority motive"],
                     "memory_filter": "Give the newcomer only public facts.",
                     "actor_assignment": "Narrator handles crowd texture.",
                     "role_isolation": "Do not mix narrator knowledge into newcomer memory.",
                     "viewpoint_constraints": "Newcomer does not know private authority motives.",
                     "scene_beat": "A delayed gate forces the newcomer to ask for help.",
+                    "beat_id": "beat-001",
+                    "line_id": "line-001",
+                    "line_candidates": ["The gate delay pushed the newcomer into public view."],
+                    "accepted_lines": ["The gate delay pushed the newcomer into public view."],
+                    "validation_decision": "PASS",
                     "model_thinking_recommendation": "Use higher thinking for hidden knowledge checks.",
                     "risk_flags": ["verify visible knowledge before drafting"],
                 },
@@ -459,7 +471,14 @@ class AutonomousOrchestratorTests(TestCase):
             summary = run_payload["actor_contribution_summary"]
             self.assertEqual(summary["callback_total"], 1)
             self.assertEqual(summary["callback_accepted"], 1)
-            self.assertEqual(summary["actor_authored_sentence_count"], 1)
+            self.assertGreaterEqual(summary["actor_authored_sentence_count"], 1)
+            self.assertTrue(summary["fact_audit_evidence_available"])
+            self.assertGreater(summary["fact_audit_evidence_count"], 0)
+            self.assertEqual(summary["line_build_ledger_entry_count"], 1)
+            self.assertTrue(package["fact_audit_evidence_summary"]["evidence_available"])
+            self.assertIn("facts", package["fact_audit_evidence_summary"]["checked_tables"])
+            self.assertEqual(package["line_build_ledger"]["entry_count"], 1)
+            self.assertEqual(package["line_build_ledger"]["entries"][0]["status"], "PASS")
             labels = summary["actor_function_labels"][0]["function_labels"]
             self.assertIn("co_writer", labels)
             self.assertIn("sql_auditor", labels)
@@ -528,8 +547,10 @@ class AutonomousOrchestratorTests(TestCase):
             )
             self.assertEqual(
                 payload["actor_contribution_summary"]["interpretation"],
-                "fact_audit_or_constraint_synthesis_run",
+                "guardrail_or_synthesis_run_not_line_build_consensus",
             )
+            self.assertFalse(payload["fact_audit_evidence_summary"]["evidence_available"])
+            self.assertEqual(payload["line_build_ledger"]["entry_count"], 0)
             self.assertEqual(payload["workflow_profile"]["workflow"], "scene_generation")
             self.assertIn("actor_session_policy", payload["workflow_profile"])
             self.assertEqual(payload["floor_state"]["workflow"], "scene_generation")

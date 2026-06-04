@@ -120,6 +120,21 @@ class HermesCommandSyntaxTests(TestCase):
                 "round_orchestration_report",
             ],
         )
+        self.assertIn(
+            "fact_audit_evidence_count",
+            reporting["actor_contribution_accounting"]["recommended_counts"],
+        )
+        self.assertIn(
+            "line_build_ledger_entry_count",
+            reporting["actor_contribution_accounting"]["recommended_counts"],
+        )
+        self.assertIn("scene_mode_evidence_contracts", reporting)
+        self.assertIn(
+            "source_refs",
+            reporting["scene_mode_evidence_contracts"]["fact_audit_synthesis"][
+                "required_to_claim_deep_fact_audit"
+            ][0],
+        )
 
     def test_canonical_commands_are_telegram_menu_safe_and_aliases_do_not_cross_collide(self) -> None:
         registry = build_hermes_command_registry()

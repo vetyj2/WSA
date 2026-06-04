@@ -45,6 +45,8 @@ from .reports import ReportMailbox
 from .repositories import EntityRecord, TicketRecord, WorldRepository, new_id
 from .scene_modes import (
     build_actor_contribution_summary,
+    build_fact_audit_evidence_summary,
+    build_line_build_ledger,
     build_scene_mode_disclosure,
     update_scene_mode_disclosure_for_outputs,
 )
@@ -650,6 +652,7 @@ class AutonomousOrchestrator:
                 context_policy,
                 workflow_profile,
                 scene_filter_contract,
+                scene_mode_disclosure,
             )
             context_packet["actor_state"] = actor_states[participant["participant_id"]]
             context_packet["prompt_packet"]["actor_state_seed"] = context_packet["actor_state"]
@@ -736,6 +739,8 @@ class AutonomousOrchestrator:
                 "scene_filter_contract": scene_filter_contract,
                 "scene_mode_disclosure": scene_mode_disclosure,
                 "actor_contribution_summary": build_actor_contribution_summary([]),
+                "fact_audit_evidence_summary": build_fact_audit_evidence_summary([]),
+                "line_build_ledger": build_line_build_ledger([]),
                 "prep_review_policy": prep_review_policy,
                 "prep_report": prep_report,
                 "lifecycle": lifecycle,
@@ -884,6 +889,8 @@ class AutonomousOrchestrator:
             final_synthesizer="wsa_local_simulated_synthesis",
             actor_authorship_evidence=False,
         )
+        fact_audit_evidence_summary = build_fact_audit_evidence_summary(subsession_outputs)
+        line_build_ledger = build_line_build_ledger(subsession_outputs)
         scene_mode_disclosure = update_scene_mode_disclosure_for_outputs(
             scene_mode_disclosure,
             actor_contribution_summary,
@@ -933,6 +940,8 @@ class AutonomousOrchestrator:
             "scene_filter_contract": scene_filter_contract,
             "scene_mode_disclosure": scene_mode_disclosure,
             "actor_contribution_summary": actor_contribution_summary,
+            "fact_audit_evidence_summary": fact_audit_evidence_summary,
+            "line_build_ledger": line_build_ledger,
             "prep_review_policy": prep_review_policy,
             "prep_report": prep_report,
             "lifecycle": lifecycle,
@@ -1231,6 +1240,7 @@ class AutonomousOrchestrator:
         context_policy: str,
         workflow_profile: Dict[str, Any],
         scene_filter_contract: Dict[str, Any] | None = None,
+        scene_mode_disclosure: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         anchors = []
         if entity is not None:
@@ -1250,6 +1260,10 @@ class AutonomousOrchestrator:
         }
         if scene_filter_contract is not None:
             relevant_context["scene_filter_contract"] = scene_filter_contract
+        scene_mode_contract = None
+        if scene_mode_disclosure and scene_mode_disclosure.get("applicable"):
+            mode_contracts = scene_mode_disclosure.get("mode_contracts", {})
+            scene_mode_contract = mode_contracts.get(scene_mode_disclosure.get("resolved_mode"))
         prompt_packet = {
             "schema": "wsa.orchestrator.subagent_prompt_packet.v1",
             "run_id": run_id,
@@ -1270,6 +1284,8 @@ class AutonomousOrchestrator:
                 "context_mode": "compressed_floor_summary_plus_relevant_recent_outputs",
             },
             "expected_output": expected_fields,
+            "scene_generation_mode": scene_mode_disclosure,
+            "scene_mode_contract": scene_mode_contract,
             "workflow_phase_model": workflow_profile.get("phase_model", []),
             "facilitation_hooks": workflow_profile.get("dynamic_facilitation_hooks", []),
             "response_shape": {
@@ -1309,6 +1325,8 @@ class AutonomousOrchestrator:
             },
             "canon_anchors": anchors,
             "scene_filter_contract": scene_filter_contract,
+            "scene_generation_mode": scene_mode_disclosure,
+            "scene_mode_contract": scene_mode_contract,
             "prompt_packet": prompt_packet,
             "proposal_policy": "do_not_mutate_canon",
         }
@@ -1547,6 +1565,8 @@ class AutonomousOrchestrator:
                 "model_thinking_recommendation",
             ),
             "risk_flags": _collect_output_values(outputs, "risk_flags"),
+            "fact_audit_evidence_summary": build_fact_audit_evidence_summary(outputs),
+            "line_build_ledger": build_line_build_ledger(outputs),
             "prep_completion_check": {
                 "status": "requires_author_or_hermes_review",
                 "required_before_draft": [

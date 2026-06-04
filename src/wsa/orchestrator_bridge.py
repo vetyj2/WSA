@@ -21,6 +21,10 @@ from .reporting_contract import build_reporting_artifact_contract
 from .reports import ReportMailbox
 from .scene_modes import (
     build_actor_contribution_summary,
+    build_fact_audit_evidence_summary,
+    build_line_build_ledger,
+    FACT_AUDIT_EVIDENCE_FIELDS,
+    LINE_BUILD_LEDGER_FIELDS,
     update_scene_mode_disclosure_for_outputs,
 )
 from .workspace import WorldRecord, list_worlds, utc_now
@@ -67,6 +71,8 @@ ALLOWED_OUTPUT_FIELDS = {
     "viewpoint_scope",
     "worldbuilding_use",
 }
+ALLOWED_OUTPUT_FIELDS.update(FACT_AUDIT_EVIDENCE_FIELDS)
+ALLOWED_OUTPUT_FIELDS.update(LINE_BUILD_LEDGER_FIELDS)
 
 
 def is_hermes_bridge_mode(mode: str) -> bool:
@@ -89,6 +95,8 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
     payload["rejected_callbacks"] = []
     payload["subsession_outputs"] = []
     payload["accepted_outputs_only"] = True
+    payload["fact_audit_evidence_summary"] = build_fact_audit_evidence_summary([])
+    payload["line_build_ledger"] = build_line_build_ledger([])
     payload["actor_states"] = payload.get("actor_states") or build_initial_actor_states(
         [
             {
@@ -781,6 +789,11 @@ def _finalize_bridge_payload(
     payload: Dict[str, Any],
 ) -> None:
     outputs = payload.get("subsession_outputs", [])
+    payload["fact_audit_evidence_summary"] = build_fact_audit_evidence_summary(outputs)
+    payload["line_build_ledger"] = build_line_build_ledger(
+        outputs,
+        payload.get("rejected_callbacks", []),
+    )
     payload["actor_contribution_summary"] = build_actor_contribution_summary(
         outputs,
         rejected_callbacks=payload.get("rejected_callbacks", []),
@@ -905,6 +918,13 @@ def _finalize_bridge_retry_limit(
         rejected_callbacks=payload.get("rejected_callbacks", []),
         submitted_callbacks=payload.get("submitted_callbacks", []),
         final_synthesizer="external_runtime_partial_synthesis",
+    )
+    payload["fact_audit_evidence_summary"] = build_fact_audit_evidence_summary(
+        payload.get("subsession_outputs", []),
+    )
+    payload["line_build_ledger"] = build_line_build_ledger(
+        payload.get("subsession_outputs", []),
+        payload.get("rejected_callbacks", []),
     )
     payload["scene_mode_disclosure"] = update_scene_mode_disclosure_for_outputs(
         payload.get("scene_mode_disclosure", {}),
@@ -1041,6 +1061,11 @@ def _scene_bridge_prep_package(
             "model_thinking_recommendation",
         ),
         "risk_flags": _collect_output_values(outputs, "risk_flags"),
+        "fact_audit_evidence_summary": build_fact_audit_evidence_summary(outputs),
+        "line_build_ledger": build_line_build_ledger(
+            outputs,
+            payload.get("rejected_callbacks", []),
+        ),
         "prep_completion_check": {
             "status": "requires_author_or_hermes_review",
             "required_before_draft": [

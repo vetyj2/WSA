@@ -111,6 +111,8 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 
 씬 생성 모드는 강제하지 않고 기록합니다. `--generation-mode auto`는 Hermes/profile/자연어 해석에 맡기고, 명시값은 `fact-audit-synthesis`, `writing-room-line-build`입니다. Run artifact에는 요청 모드, 해석된 모드, 해석 출처, confidence, 액터가 실제 수행한 일, 수행되지 않은 일을 남기며, callback/reject/rollback/fact-audit/co-writer 여부도 `actor_contribution_summary`로 기록합니다.
 
+`fact-audit-synthesis`는 `source_refs`, `fact_lookup_queries`, `checked_tables`, `checked_reports`, `conflicts_found`, `deferred_claims` 같은 evidence가 있을 때만 깊은 fact-audit으로 해석합니다. `writing-room-line-build`는 `line_build_ledger`에 후보 문장/beat, PASS/FAIL/HOLD/RETRY, rollback reason, adopted marker가 남아야 공동 작성으로 보고합니다.
+
 ## 공개 저장소 안전 원칙
 
 이 저장소는 local workspace, SQLite DB, runtime queue, callback file, log, environment file, secret, session handoff note, root-local `local_admin/`, live operation policy JSON을 ignore합니다.
