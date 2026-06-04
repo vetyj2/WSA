@@ -542,6 +542,15 @@ def build_parser() -> argparse.ArgumentParser:
     scene_start.add_argument("--location-scope", help="Optional scene location scope.")
     scene_start.add_argument("--viewpoint", help="Optional viewpoint or POV scope.")
     scene_start.add_argument(
+        "--generation-mode",
+        choices=("auto", "fact-audit-synthesis", "writing-room-line-build"),
+        default="auto",
+        help=(
+            "Scene generation mode disclosure. Default: auto, letting Hermes/profile/natural "
+            "language resolve the final execution mode."
+        ),
+    )
+    scene_start.add_argument(
         "--condition",
         action="append",
         default=[],
@@ -1054,6 +1063,7 @@ def run_scene_start(
     participants: list[str],
     output_format: str,
     prep_review: bool,
+    generation_mode: str,
 ) -> int:
     if not guard_update_unlocked(workspace, "scene.start"):
         return 1
@@ -1087,6 +1097,7 @@ def run_scene_start(
             close_on="complete",
             scene_filter_contract=scene_filter_contract,
             prep_review=prep_review,
+            scene_generation_mode=generation_mode,
         )
     except ValueError as exc:
         print("scene_start: blocked")
@@ -1101,6 +1112,8 @@ def run_scene_start(
                 "run_path": str(result.run_path),
                 "report_id": result.report_id or None,
                 "scene_filter_contract": scene_filter_contract,
+                "scene_mode_disclosure": next_payload.get("scene_mode_disclosure", {}),
+                "actor_contribution_summary": next_payload.get("actor_contribution_summary", {}),
                 "next": next_payload,
             }
         )
@@ -1113,6 +1126,10 @@ def run_scene_start(
     print(f"run_path: {result.run_path}")
     print(f"report_id: {result.report_id or 'pending_hermes_completion'}")
     print(f"next_action: {next_payload.get('next_action')}")
+    mode_disclosure = next_payload.get("scene_mode_disclosure", {})
+    if mode_disclosure:
+        print(f"scene_generation_mode: {mode_disclosure.get('resolved_mode')}")
+        print(f"mode_resolution_source: {mode_disclosure.get('mode_resolution_source')}")
     hook = next_payload.get("hook")
     if hook:
         print(f"next_turn_id: {hook['turn_id']}")
@@ -1990,6 +2007,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.participant,
                 args.format,
                 not args.no_prep_review,
+                args.generation_mode,
             )
         if args.scene_command == "mock":
             return run_scene_mock(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from .orchestrator_workflows import build_workflow_entrypoint_contracts
+from .reporting_contract import build_reporting_artifact_contract
 
 
 ORCHESTRATOR_RUN_SCHEMA = "wsa.orchestrator.run.v1"
@@ -288,6 +289,10 @@ def build_orchestrator_session_contract(
             max_rounds=max_queue_turns,
             max_subsession_calls=max_subsession_calls,
         ),
+        "reporting_artifact_contract": build_reporting_artifact_contract(
+            workflow=workflow,
+            skill=skill_name,
+        ),
         "prompt_coordination": {
             "owner": "orchestrator_manager",
             "hermes_executes_subagent_calls": True,
@@ -483,6 +488,7 @@ def build_hermes_orchestrator_runtime_contract() -> Dict[str, Any]:
             max_rounds=DEFAULT_MAX_QUEUE_TURNS,
             max_subsession_calls=DEFAULT_MAX_SUBSESSION_CALLS,
         ),
+        "reporting_artifact_contract": build_reporting_artifact_contract(),
         "plan_frame_policy": {
             "required_before_start": True,
             "default_guardrail_allowed_when_user_frame_missing": True,

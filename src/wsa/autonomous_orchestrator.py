@@ -43,6 +43,11 @@ from .orchestrator_workflows import (
 from .paths import safe_child_path
 from .reports import ReportMailbox
 from .repositories import EntityRecord, TicketRecord, WorldRepository, new_id
+from .scene_modes import (
+    build_actor_contribution_summary,
+    build_scene_mode_disclosure,
+    update_scene_mode_disclosure_for_outputs,
+)
 from .transport import RuntimeTransport
 from .workspace import WorldRecord, list_worlds, utc_now
 
@@ -407,6 +412,7 @@ class AutonomousOrchestrator:
         close_on: str = "complete",
         scene_filter_contract: Dict[str, Any] | None = None,
         prep_review: bool = True,
+        scene_generation_mode: str | None = None,
     ) -> OrchestratorRunResult:
         if rounds <= 0:
             raise ValueError("rounds must be positive")
@@ -430,6 +436,11 @@ class AutonomousOrchestrator:
         workflow_profile = build_workflow_profile(workflow_requested, skill_name)
         if workflow == "scene_generation" and scene_filter_contract is None:
             scene_filter_contract = build_scene_filter_contract()
+        scene_mode_disclosure = build_scene_mode_disclosure(
+            workflow,
+            skill_name,
+            scene_generation_mode,
+        )
         participant_plan = self._plan_participants(
             participants,
             topic,
@@ -560,6 +571,8 @@ class AutonomousOrchestrator:
             "canon_policy": canon_policy,
             "approval": approval,
             "close_on": close_on,
+            "scene_mode_disclosure": scene_mode_disclosure,
+            "actor_contribution_summary": build_actor_contribution_summary([]),
             "participants": participant_plan,
             "termination_conditions": [
                 "planned_rounds_complete",
@@ -721,6 +734,8 @@ class AutonomousOrchestrator:
                 "concurrency_policy": concurrency_policy,
                 "queue_limits": plan["queue_limits"],
                 "scene_filter_contract": scene_filter_contract,
+                "scene_mode_disclosure": scene_mode_disclosure,
+                "actor_contribution_summary": build_actor_contribution_summary([]),
                 "prep_review_policy": prep_review_policy,
                 "prep_report": prep_report,
                 "lifecycle": lifecycle,
@@ -864,6 +879,15 @@ class AutonomousOrchestrator:
             budget_exhausted,
             budget_exhausted_reasons,
         )
+        actor_contribution_summary = build_actor_contribution_summary(
+            subsession_outputs,
+            final_synthesizer="wsa_local_simulated_synthesis",
+            actor_authorship_evidence=False,
+        )
+        scene_mode_disclosure = update_scene_mode_disclosure_for_outputs(
+            scene_mode_disclosure,
+            actor_contribution_summary,
+        )
         approval_package = self._approval_package(synthesis, diagnosis)
         lifecycle.append({"state": "awaiting_author_review", "at": utc_now()})
         for session_id in subsession_session_ids:
@@ -907,6 +931,8 @@ class AutonomousOrchestrator:
             "concurrency_policy": concurrency_policy,
             "queue_limits": plan["queue_limits"],
             "scene_filter_contract": scene_filter_contract,
+            "scene_mode_disclosure": scene_mode_disclosure,
+            "actor_contribution_summary": actor_contribution_summary,
             "prep_review_policy": prep_review_policy,
             "prep_report": prep_report,
             "lifecycle": lifecycle,

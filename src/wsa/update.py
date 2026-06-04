@@ -36,6 +36,7 @@ ACTIVE_TASK_STATUSES = {"queued", "running", "waiting_approval", "blocked"}
 ACTIVE_JOB_STATUSES = {"active", "running", "queued", "enabled", "scheduled"}
 PROTECTED_PATHS = [
     "control.sqlite",
+    "artifacts/",
     "worlds/",
     "reports/",
     "user_profile/",

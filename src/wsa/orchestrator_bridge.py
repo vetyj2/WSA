@@ -17,7 +17,12 @@ from .orchestrator_turns import (
 )
 from .paths import safe_child_path
 from .repositories import ControlRepository, WorldRepository
+from .reporting_contract import build_reporting_artifact_contract
 from .reports import ReportMailbox
+from .scene_modes import (
+    build_actor_contribution_summary,
+    update_scene_mode_disclosure_for_outputs,
+)
 from .workspace import WorldRecord, list_worlds, utc_now
 
 
@@ -110,6 +115,11 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
         "requires_author_decision": True,
     }
     payload["runtime_bridge_contract"] = _runtime_bridge_contract(payload)
+    payload["reporting_artifact_contract"] = build_reporting_artifact_contract(
+        workflow=payload.get("workflow"),
+        skill=payload.get("skill"),
+    )
+    payload["actor_contribution_summary"] = build_actor_contribution_summary([])
     payload["turn_records"] = [
         build_orchestrator_turn_record(
             payload["run_id"],
@@ -193,6 +203,9 @@ class OrchestratorBridge:
             "actor_states": payload.get("actor_states", {}),
             "execution_provenance": payload.get("execution_provenance", {}),
             "runtime_bridge_contract": payload.get("runtime_bridge_contract", {}),
+            "reporting_artifact_contract": payload.get("reporting_artifact_contract", {}),
+            "scene_mode_disclosure": payload.get("scene_mode_disclosure", {}),
+            "actor_contribution_summary": payload.get("actor_contribution_summary", {}),
             "progress_report_policy": payload.get("progress_report_policy", {}),
             "queue_limits": payload.get("queue_limits", {}),
             "hermes_bridge": payload.get("hermes_bridge", {}),
@@ -634,6 +647,10 @@ def _runtime_bridge_contract(payload: Dict[str, Any]) -> Dict[str, Any]:
             "later_prompts_include_prior_actor_state": True,
             "round_is_reporting_unit_only": True,
         },
+        "reporting_artifact_contract": build_reporting_artifact_contract(
+            workflow=payload.get("workflow"),
+            skill=payload.get("skill"),
+        ),
         "workflow": payload.get("workflow"),
         "skill": payload.get("skill"),
     }
@@ -764,6 +781,16 @@ def _finalize_bridge_payload(
     payload: Dict[str, Any],
 ) -> None:
     outputs = payload.get("subsession_outputs", [])
+    payload["actor_contribution_summary"] = build_actor_contribution_summary(
+        outputs,
+        rejected_callbacks=payload.get("rejected_callbacks", []),
+        submitted_callbacks=payload.get("submitted_callbacks", []),
+        final_synthesizer="external_runtime_orchestrator_synthesis",
+    )
+    payload["scene_mode_disclosure"] = update_scene_mode_disclosure_for_outputs(
+        payload.get("scene_mode_disclosure", {}),
+        payload["actor_contribution_summary"],
+    )
     payload["status"] = "awaiting_author_review"
     payload["execution_status"] = "completed_by_hermes"
     payload["next_action"] = "author_review"
@@ -873,6 +900,16 @@ def _finalize_bridge_retry_limit(
     turn_id: str,
     gate: Dict[str, Any],
 ) -> None:
+    payload["actor_contribution_summary"] = build_actor_contribution_summary(
+        payload.get("subsession_outputs", []),
+        rejected_callbacks=payload.get("rejected_callbacks", []),
+        submitted_callbacks=payload.get("submitted_callbacks", []),
+        final_synthesizer="external_runtime_partial_synthesis",
+    )
+    payload["scene_mode_disclosure"] = update_scene_mode_disclosure_for_outputs(
+        payload.get("scene_mode_disclosure", {}),
+        payload["actor_contribution_summary"],
+    )
     payload["status"] = "awaiting_author_review"
     payload["execution_status"] = "callback_retry_limit_reached"
     payload["next_action"] = "author_review"

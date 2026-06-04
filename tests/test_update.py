@@ -74,6 +74,7 @@ class UpdatePreflightTests(TestCase):
                 "hermes/adapter_config/hermes_commands.local.json",
                 payload["protected_paths"],
             )
+            self.assertIn("artifacts/", payload["protected_paths"])
 
     def test_preflight_blocks_pending_runtime_files_and_active_task_state(self) -> None:
         with TemporaryDirectory() as tmp:

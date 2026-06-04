@@ -105,6 +105,12 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 
 사용자별 Hermes shortcut은 공식 명령어로 계속 흡수하지 않고 `workspace/hermes/adapter_config/hermes_commands.local.json` overlay로 둡니다. WSA는 `hermes commands --write-local-template`, `--validate-local-overlay`, `--merged`로 충돌 진단과 병합 미리보기를 제공하며, update preflight는 `/wsa_`/`/filltherest` 충돌이나 mutating command metadata 부족을 Hermes가 사용자에게 보고하도록 노출합니다.
 
+밋업/씬 보고는 `wsa.reporting.artifact_contract.v1` 권장 규격을 따릅니다. 기본 원칙은 날짜별 session log를 source of truth로 두고, 필요할 때 `human_session_minutes`(회의록), `draft_output`(원고초안/결론), `round_orchestration_report`(라운드별 오케스트레이션 보고서)를 TXT/HTML로 export하는 것입니다. 자동 생성/전송 여부는 사용자 Hermes profile 또는 local overlay가 결정합니다.
+
+하네스 사용 중 파생되는 산출물은 가능하면 workspace의 정해진 artifact/report/runtime 디렉터리 안에 둡니다. 런타임 정책상 외부 경로에 만들어야 하는 파일은 `artifact_source_map.json`으로 생성 원천, run/session, 경로, cleanup hint를 남겨 설치/마이그레이션/언인스톨 때 추적 가능하게 해야 합니다.
+
+씬 생성 모드는 강제하지 않고 기록합니다. `--generation-mode auto`는 Hermes/profile/자연어 해석에 맡기고, 명시값은 `fact-audit-synthesis`, `writing-room-line-build`입니다. Run artifact에는 요청 모드, 해석된 모드, 해석 출처, confidence, 액터가 실제 수행한 일, 수행되지 않은 일을 남기며, callback/reject/rollback/fact-audit/co-writer 여부도 `actor_contribution_summary`로 기록합니다.
+
 ## 공개 저장소 안전 원칙
 
 이 저장소는 local workspace, SQLite DB, runtime queue, callback file, log, environment file, secret, session handoff note, root-local `local_admin/`, live operation policy JSON을 ignore합니다.

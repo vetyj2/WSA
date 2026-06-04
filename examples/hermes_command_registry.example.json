@@ -1056,6 +1056,129 @@
           "infinite_loop_guard": true,
           "termination_on_max_queue_turns": true
         },
+        "reporting_artifact_contract": {
+          "actor_contribution_accounting": {
+            "recommended_counts": [
+              "callback_total",
+              "callback_accepted",
+              "callback_rejected",
+              "rollback_event_count",
+              "sql_or_fact_lookup_performed",
+              "actor_authored_sentence_count",
+              "adopted_actor_proposal_count",
+              "final_synthesizer"
+            ],
+            "recommended_labels": [
+              "observer",
+              "constraint_panel",
+              "sql_auditor",
+              "co_writer",
+              "validator",
+              "rollback_trigger"
+            ]
+          },
+          "delivery_owner": "user_hermes_runtime",
+          "mode_disclosure_required": [
+            "requested_mode",
+            "resolved_mode",
+            "mode_resolution_source",
+            "mode_confidence",
+            "what_actors_actually_did",
+            "what_was_not_performed"
+          ],
+          "owner": "user_runtime",
+          "privacy_policy": {
+            "do_not_commit_session_logs_to_public_template_repo": true,
+            "runtime_should_make_deletion_easy": true,
+            "session_logs_may_contain_private_world_or_user_data": true
+          },
+          "recommended_exports": [
+            {
+              "artifact_type": "human_session_minutes",
+              "audience": "author_operator",
+              "default_auto_generate": false,
+              "formats": [
+                "txt",
+                "html"
+              ],
+              "label": "회의록",
+              "purpose": "Human-readable real session log for meetup or scene-generation work. Shows what actors/runtime steps actually did.",
+              "source": "date_scoped_session_log"
+            },
+            {
+              "artifact_type": "draft_output",
+              "audience": "author_operator",
+              "default_auto_generate": false,
+              "formats": [
+                "txt",
+                "html"
+              ],
+              "label": "원고초안",
+              "purpose": "Meetup conclusion, scene draft, or other authored result produced from the session. It must not imply canon approval by itself.",
+              "source": "accepted_session_outputs_or_synthesis"
+            },
+            {
+              "artifact_type": "round_orchestration_report",
+              "audience": "operator_or_debugger",
+              "default_auto_generate": false,
+              "formats": [
+                "txt",
+                "html"
+              ],
+              "label": "라운드별 오케스트레이션 보고서",
+              "purpose": "Round/checkpoint-level orchestration trace: scheduling, actor roles, quality gates, rejected outputs, rollback triggers, and stop reasons.",
+              "source": "turn_records_and_floor_state"
+            }
+          ],
+          "runtime_customization": {
+            "allowed_custom_outputs": true,
+            "automatic_export_policy": "user_or_hermes_profile_custom",
+            "default_delivery": "none_until_runtime_requests_export",
+            "wsa_does_not_send_chat_or_store_runtime_delivery_preferences": true
+          },
+          "schema": "wsa.reporting.artifact_contract.v1",
+          "skill": null,
+          "storage_policy": {
+            "delete_policy": {
+              "delete_exports_with_session_log_when_runtime_policy_allows": true,
+              "keep_world_db_and_canon_separate": true,
+              "source_map_drives_external_cleanup": true,
+              "user_can_delete_session_log_directory": true
+            },
+            "export_on_demand": true,
+            "exports_are_derivable_from_session_log": true,
+            "managed_artifact_roots": [
+              "worlds/{world_id}/artifacts/",
+              "worlds/{world_id}/meetings/",
+              "worlds/{world_id}/orchestrator_runs/",
+              "worlds/{world_id}/scenes/",
+              "reports/",
+              "hermes/reports_outbox/"
+            ],
+            "out_of_contract_artifact_policy": {
+              "allowed_only_when_runtime_or_user_requires_external_path": true,
+              "install_uninstall_goal": "Every external artifact must be traceable back to the WSA session so operators can remove, archive, or migrate it without searching manually.",
+              "required_fields": [
+                "artifact_id",
+                "artifact_type",
+                "originating_command_or_run_id",
+                "absolute_or_runtime_path",
+                "managed_by",
+                "cleanup_hint",
+                "safe_to_delete_with_session"
+              ],
+              "source_map_filename": "artifact_source_map.json",
+              "source_map_required": true,
+              "source_map_schema": "wsa.reporting.artifact_manifest.v1"
+            },
+            "primary_storage": "date_scoped_session_log",
+            "session_log_is_source_of_truth": true,
+            "session_log_root_template": "worlds/{world_id}/artifacts/session_logs/{YYYY-MM-DD}/{session_id}/",
+            "store_every_export_by_default": false
+          },
+          "workflow": null,
+          "wsa_role": "declare_recommended_artifact_shapes_and_session_log_storage_policy"
+        },
         "runtime_bridge_contract": {
           "compatible_runtime_families": [
             "hermes",
@@ -1175,6 +1298,12 @@
           "required": false
         },
         {
+          "default": "auto",
+          "description": "Scene mode: auto, fact-audit-synthesis, or writing-room-line-build. Default: auto.",
+          "name": "generation_mode",
+          "required": false
+        },
+        {
           "description": "Optional scene selection condition. May be repeated.",
           "name": "condition",
           "repeatable": true,
@@ -1205,6 +1334,7 @@
           "time_scope",
           "location_scope",
           "viewpoint",
+          "generation_mode",
           "condition",
           "participant",
           "run_id"
@@ -1242,6 +1372,8 @@
           "{location_scope}",
           "--viewpoint",
           "{viewpoint}",
+          "--generation-mode",
+          "{generation_mode:auto}",
           "--condition",
           "{condition}",
           "--participant",
@@ -1284,6 +1416,7 @@
         "boundary": "prep_package_before_scene_draft_or_canon_mutation",
         "condition": "{condition}",
         "frame_plan": "{frame_plan}",
+        "generation_mode": "{generation_mode:auto}",
         "location_scope": "{location_scope}",
         "participant": "{participant}",
         "question": "{question:Prepare scene facts, actor assignments, role isolation, model/thinking guidance, and approval choices.}",
@@ -1429,6 +1562,129 @@
           "default_max_subsession_calls": 48,
           "infinite_loop_guard": true,
           "termination_on_max_queue_turns": true
+        },
+        "reporting_artifact_contract": {
+          "actor_contribution_accounting": {
+            "recommended_counts": [
+              "callback_total",
+              "callback_accepted",
+              "callback_rejected",
+              "rollback_event_count",
+              "sql_or_fact_lookup_performed",
+              "actor_authored_sentence_count",
+              "adopted_actor_proposal_count",
+              "final_synthesizer"
+            ],
+            "recommended_labels": [
+              "observer",
+              "constraint_panel",
+              "sql_auditor",
+              "co_writer",
+              "validator",
+              "rollback_trigger"
+            ]
+          },
+          "delivery_owner": "user_hermes_runtime",
+          "mode_disclosure_required": [
+            "requested_mode",
+            "resolved_mode",
+            "mode_resolution_source",
+            "mode_confidence",
+            "what_actors_actually_did",
+            "what_was_not_performed"
+          ],
+          "owner": "user_runtime",
+          "privacy_policy": {
+            "do_not_commit_session_logs_to_public_template_repo": true,
+            "runtime_should_make_deletion_easy": true,
+            "session_logs_may_contain_private_world_or_user_data": true
+          },
+          "recommended_exports": [
+            {
+              "artifact_type": "human_session_minutes",
+              "audience": "author_operator",
+              "default_auto_generate": false,
+              "formats": [
+                "txt",
+                "html"
+              ],
+              "label": "회의록",
+              "purpose": "Human-readable real session log for meetup or scene-generation work. Shows what actors/runtime steps actually did.",
+              "source": "date_scoped_session_log"
+            },
+            {
+              "artifact_type": "draft_output",
+              "audience": "author_operator",
+              "default_auto_generate": false,
+              "formats": [
+                "txt",
+                "html"
+              ],
+              "label": "원고초안",
+              "purpose": "Meetup conclusion, scene draft, or other authored result produced from the session. It must not imply canon approval by itself.",
+              "source": "accepted_session_outputs_or_synthesis"
+            },
+            {
+              "artifact_type": "round_orchestration_report",
+              "audience": "operator_or_debugger",
+              "default_auto_generate": false,
+              "formats": [
+                "txt",
+                "html"
+              ],
+              "label": "라운드별 오케스트레이션 보고서",
+              "purpose": "Round/checkpoint-level orchestration trace: scheduling, actor roles, quality gates, rejected outputs, rollback triggers, and stop reasons.",
+              "source": "turn_records_and_floor_state"
+            }
+          ],
+          "runtime_customization": {
+            "allowed_custom_outputs": true,
+            "automatic_export_policy": "user_or_hermes_profile_custom",
+            "default_delivery": "none_until_runtime_requests_export",
+            "wsa_does_not_send_chat_or_store_runtime_delivery_preferences": true
+          },
+          "schema": "wsa.reporting.artifact_contract.v1",
+          "skill": null,
+          "storage_policy": {
+            "delete_policy": {
+              "delete_exports_with_session_log_when_runtime_policy_allows": true,
+              "keep_world_db_and_canon_separate": true,
+              "source_map_drives_external_cleanup": true,
+              "user_can_delete_session_log_directory": true
+            },
+            "export_on_demand": true,
+            "exports_are_derivable_from_session_log": true,
+            "managed_artifact_roots": [
+              "worlds/{world_id}/artifacts/",
+              "worlds/{world_id}/meetings/",
+              "worlds/{world_id}/orchestrator_runs/",
+              "worlds/{world_id}/scenes/",
+              "reports/",
+              "hermes/reports_outbox/"
+            ],
+            "out_of_contract_artifact_policy": {
+              "allowed_only_when_runtime_or_user_requires_external_path": true,
+              "install_uninstall_goal": "Every external artifact must be traceable back to the WSA session so operators can remove, archive, or migrate it without searching manually.",
+              "required_fields": [
+                "artifact_id",
+                "artifact_type",
+                "originating_command_or_run_id",
+                "absolute_or_runtime_path",
+                "managed_by",
+                "cleanup_hint",
+                "safe_to_delete_with_session"
+              ],
+              "source_map_filename": "artifact_source_map.json",
+              "source_map_required": true,
+              "source_map_schema": "wsa.reporting.artifact_manifest.v1"
+            },
+            "primary_storage": "date_scoped_session_log",
+            "session_log_is_source_of_truth": true,
+            "session_log_root_template": "worlds/{world_id}/artifacts/session_logs/{YYYY-MM-DD}/{session_id}/",
+            "store_every_export_by_default": false
+          },
+          "workflow": null,
+          "wsa_role": "declare_recommended_artifact_shapes_and_session_log_storage_policy"
         },
         "runtime_bridge_contract": {
           "compatible_runtime_families": [
@@ -2370,6 +2626,129 @@
     "wsa_role": "declare_intents_and_cli_templates_only"
   },
   "purpose": "Public-safe shortcut command manifest for Hermes chat adapters.",
+  "reporting_artifact_policy": {
+    "actor_contribution_accounting": {
+      "recommended_counts": [
+        "callback_total",
+        "callback_accepted",
+        "callback_rejected",
+        "rollback_event_count",
+        "sql_or_fact_lookup_performed",
+        "actor_authored_sentence_count",
+        "adopted_actor_proposal_count",
+        "final_synthesizer"
+      ],
+      "recommended_labels": [
+        "observer",
+        "constraint_panel",
+        "sql_auditor",
+        "co_writer",
+        "validator",
+        "rollback_trigger"
+      ]
+    },
+    "delivery_owner": "user_hermes_runtime",
+    "mode_disclosure_required": [
+      "requested_mode",
+      "resolved_mode",
+      "mode_resolution_source",
+      "mode_confidence",
+      "what_actors_actually_did",
+      "what_was_not_performed"
+    ],
+    "owner": "user_runtime",
+    "privacy_policy": {
+      "do_not_commit_session_logs_to_public_template_repo": true,
+      "runtime_should_make_deletion_easy": true,
+      "session_logs_may_contain_private_world_or_user_data": true
+    },
+    "recommended_exports": [
+      {
+        "artifact_type": "human_session_minutes",
+        "audience": "author_operator",
+        "default_auto_generate": false,
+        "formats": [
+          "txt",
+          "html"
+        ],
+        "label": "회의록",
+        "purpose": "Human-readable real session log for meetup or scene-generation work. Shows what actors/runtime steps actually did.",
+        "source": "date_scoped_session_log"
+      },
+      {
+        "artifact_type": "draft_output",
+        "audience": "author_operator",
+        "default_auto_generate": false,
+        "formats": [
+          "txt",
+          "html"
+        ],
+        "label": "원고초안",
+        "purpose": "Meetup conclusion, scene draft, or other authored result produced from the session. It must not imply canon approval by itself.",
+        "source": "accepted_session_outputs_or_synthesis"
+      },
+      {
+        "artifact_type": "round_orchestration_report",
+        "audience": "operator_or_debugger",
+        "default_auto_generate": false,
+        "formats": [
+          "txt",
+          "html"
+        ],
+        "label": "라운드별 오케스트레이션 보고서",
+        "purpose": "Round/checkpoint-level orchestration trace: scheduling, actor roles, quality gates, rejected outputs, rollback triggers, and stop reasons.",
+        "source": "turn_records_and_floor_state"
+      }
+    ],
+    "runtime_customization": {
+      "allowed_custom_outputs": true,
+      "automatic_export_policy": "user_or_hermes_profile_custom",
+      "default_delivery": "none_until_runtime_requests_export",
+      "wsa_does_not_send_chat_or_store_runtime_delivery_preferences": true
+    },
+    "schema": "wsa.reporting.artifact_contract.v1",
+    "skill": null,
+    "storage_policy": {
+      "delete_policy": {
+        "delete_exports_with_session_log_when_runtime_policy_allows": true,
+        "keep_world_db_and_canon_separate": true,
+        "source_map_drives_external_cleanup": true,
+        "user_can_delete_session_log_directory": true
+      },
+      "export_on_demand": true,
+      "exports_are_derivable_from_session_log": true,
+      "managed_artifact_roots": [
+        "worlds/{world_id}/artifacts/",
+        "worlds/{world_id}/meetings/",
+        "worlds/{world_id}/orchestrator_runs/",
+        "worlds/{world_id}/scenes/",
+        "reports/",
+        "hermes/reports_outbox/"
+      ],
+      "out_of_contract_artifact_policy": {
+        "allowed_only_when_runtime_or_user_requires_external_path": true,
+        "install_uninstall_goal": "Every external artifact must be traceable back to the WSA session so operators can remove, archive, or migrate it without searching manually.",
+        "required_fields": [
+          "artifact_id",
+          "artifact_type",
+          "originating_command_or_run_id",
+          "absolute_or_runtime_path",
+          "managed_by",
+          "cleanup_hint",
+          "safe_to_delete_with_session"
+        ],
+        "source_map_filename": "artifact_source_map.json",
+        "source_map_required": true,
+        "source_map_schema": "wsa.reporting.artifact_manifest.v1"
+      },
+      "primary_storage": "date_scoped_session_log",
+      "session_log_is_source_of_truth": true,
+      "session_log_root_template": "worlds/{world_id}/artifacts/session_logs/{YYYY-MM-DD}/{session_id}/",
+      "store_every_export_by_default": false
+    },
+    "workflow": null,
+    "wsa_role": "declare_recommended_artifact_shapes_and_session_log_storage_policy"
+  },
   "runtime_portability": {
     "command_wrapper": "wsa",
     "cwd_policy": "workspace_root_recommended",

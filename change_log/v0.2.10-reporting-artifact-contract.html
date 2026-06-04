@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.10 Reporting Artifact Contract</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #697386;
+      --line: #d9dee7;
+      --ok: #15803d;
+      --blue: #2563eb;
+      --warn: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 48px; }
+    header, .stack { display: grid; gap: 12px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 16px; }
+    p { margin: 0; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; color: #253041; padding: 2px 5px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+    .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 14px; }
+    .step { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfe; min-height: 104px; }
+    .step strong { display: block; margin-bottom: 6px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.ok { color: var(--ok); border-color: #9bd4aa; background: #f0fbf3; }
+    .badge.blue { color: var(--blue); border-color: #aac6ff; background: #f1f6ff; }
+    .badge.warn { color: var(--warn); border-color: #f1c27d; background: #fff8ed; }
+    ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="stack">
+    <header>
+      <p><a href="index.html">Patch dashboards</a></p>
+      <h1>v0.2.10 Reporting Artifact Contract</h1>
+      <p>Adds a shared reporting contract for Meetup and Scene runs: date-scoped session logs are the source of truth, while minutes, draft output, and round reports are optional exports controlled by the user's runtime profile.</p>
+      <div class="badge-row">
+        <span class="badge ok">version v0.2.10</span>
+        <span class="badge blue">session log first</span>
+        <span class="badge blue">TXT/HTML exports</span>
+        <span class="badge">Hermes-customizable</span>
+        <span class="badge warn">no forced delivery</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>Patch Intent</h2>
+      <p>Users and Hermes runtimes can choose which reports to auto-generate, but WSA now exposes a consistent contract so outputs are labeled and reconstructable. The patch does not make WSA deliver chat messages or store every report format by default.</p>
+      <div class="flow">
+        <div class="step"><strong>1. Session Log</strong><span>Date-scoped run log is the source of truth.</span></div>
+        <div class="step"><strong>2. Minutes</strong><span>Human-readable meeting or scene-session record.</span></div>
+        <div class="step"><strong>3. Draft Output</strong><span>Meetup conclusion or scene manuscript draft.</span></div>
+        <div class="step"><strong>4. Round Report</strong><span>Scheduler, quality gate, rejection, rollback, and stop reason trace.</span></div>
+        <div class="step"><strong>5. On Demand</strong><span>Runtime/profile decides whether and when to export TXT/HTML.</span></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Code Added</h2>
+        <ul>
+          <li><code>reporting_contract.py</code> with <code>wsa.reporting.artifact_contract.v1</code>.</li>
+          <li>Runtime registry exposes <code>reporting_artifact_policy</code>.</li>
+          <li>Orchestrator session contracts and bridge <code>next</code> payloads include reporting guidance.</li>
+          <li>Meeting transcripts include the same reporting contract.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Artifacts</h2>
+        <ul>
+          <li><code>human_session_minutes</code>: meeting/scene real-session log for humans.</li>
+          <li><code>draft_output</code>: manuscript draft or meetup conclusion.</li>
+          <li><code>round_orchestration_report</code>: round/checkpoint operational trace.</li>
+          <li>All recommended exports support TXT and HTML.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Boundaries</h2>
+        <ul>
+          <li>WSA does not force automatic export.</li>
+          <li>WSA does not own chat delivery preferences.</li>
+          <li>Session logs may contain private world data and must not be committed to the public template repo.</li>
+          <li>Deleting or archiving session logs remains a runtime/operator policy decision.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Artifact Isolation</h2>
+        <ul>
+          <li>Derived outputs should stay under managed workspace roots such as <code>worlds/&lt;world_id&gt;/artifacts/</code>, reports, scenes, meetings, or Hermes outbox paths.</li>
+          <li>Out-of-contract files require an <code>artifact_source_map.json</code> manifest.</li>
+          <li>The source map records origin run/session, artifact type, path, manager, cleanup hint, and whether it is safe to delete with the session.</li>
+          <li>The goal is easy install, migration, archive, and uninstall without manual artifact hunting.</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

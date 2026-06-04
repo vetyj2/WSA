@@ -116,6 +116,18 @@ Pass `--no-prep-review` only when the user's Hermes runtime already performed eq
 
 Scene start is proposal-only. It prepares actor packets, hidden/visible fact filters, role isolation notes, model/thinking recommendations, risk flags, and a `scene_prep_package`. It does not draft script prose, create canon facts, or mutate the world without later author approval.
 
+Scene generation mode is disclosed rather than forced. `--generation-mode auto` lets the user's Hermes runtime, profile, or natural-language interpretation choose the practical mode; explicit values are `fact-audit-synthesis` and `writing-room-line-build`. Run artifacts record `requested_mode`, `resolved_mode`, `mode_resolution_source`, `mode_confidence`, what actors actually did, and what was not performed. Actor contribution accounting also records callback counts, rejected/rollback events, fact-audit evidence, actor-authored sentence counts, adopted actor proposals, final synthesizer, and actor function labels such as `observer`, `constraint_panel`, `sql_auditor`, `co_writer`, `validator`, and `rollback_trigger`.
+
+Scene and meetup reporting should follow the shared `wsa.reporting.artifact_contract.v1` contract. WSA recommends keeping one date-scoped session log as the source of truth, then exporting human-facing artifacts on demand rather than storing every possible format by default:
+
+- `human_session_minutes`: readable meetup or scene-generation session minutes in TXT/HTML.
+- `draft_output`: meetup conclusion, scene draft, or manuscript-style output in TXT/HTML.
+- `round_orchestration_report`: round/checkpoint orchestration report in TXT/HTML for scheduling, quality gates, rejected outputs, rollback triggers, and stop reasons.
+
+Automatic export and delivery remain user/Hermes profile choices. The contract exists so Hermes can consistently generate, skip, delete, or re-export artifacts without WSA owning chat delivery or runtime preferences.
+
+Artifacts produced while using the harness should stay inside the managed workspace architecture whenever possible: world `artifacts/`, `meetings/`, `orchestrator_runs/`, `scenes/`, report mailboxes, or `hermes/reports_outbox/`. If a runtime must create files outside those roots, it should write an `artifact_source_map.json` manifest using the reporting contract's source-map fields. That manifest should record the origin run/session, artifact type, path, manager, cleanup hint, and whether the file is safe to delete with the session. This keeps install, migration, archive, and uninstall operations tractable.
+
 Scene filters are connected to a sparse temporal graph foundation. A world can define its own dynamic dimensions such as `combat_power`, `current_location`, `political_influence`, or any other label the author and Hermes agree to use. Existing entities are not required to have every dimension. Missing dimensions or missing values are reported as scene-prep gaps instead of crashing the run.
 
 The thin graph layer is additive and world-local:

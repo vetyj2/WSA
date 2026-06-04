@@ -170,6 +170,8 @@ class CliTests(TestCase):
                         "central station",
                         "--viewpoint",
                         "newcomer",
+                        "--generation-mode",
+                        "auto",
                         "--condition",
                         "combat_power >= 500",
                         "--condition",
@@ -210,6 +212,24 @@ class CliTests(TestCase):
             self.assertEqual(payload["next"]["skill"], "scene_start")
             self.assertEqual(payload["next"]["next_action"], "review_prep_report")
             self.assertIsNone(payload["next"]["hook"])
+            self.assertEqual(
+                payload["scene_mode_disclosure"]["resolved_mode"],
+                "fact_audit_synthesis",
+            )
+            self.assertEqual(
+                payload["scene_mode_disclosure"]["mode_resolution_source"],
+                "fallback_until_hermes_or_profile_reports_mode",
+            )
+            self.assertEqual(payload["actor_contribution_summary"]["callback_total"], 0)
+            reporting = payload["next"]["reporting_artifact_contract"]
+            self.assertEqual(reporting["schema"], "wsa.reporting.artifact_contract.v1")
+            self.assertEqual(reporting["workflow"], "scene_generation")
+            self.assertEqual(reporting["skill"], "scene_start")
+            self.assertEqual(
+                reporting["recommended_exports"][1]["artifact_type"],
+                "draft_output",
+            )
+            self.assertFalse(reporting["recommended_exports"][1]["default_auto_generate"])
             self.assertEqual(
                 payload["next"]["prep_report"]["selected_context_bundles"]["scene_selector"][
                     "matched_entity_ids"

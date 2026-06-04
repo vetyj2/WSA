@@ -413,6 +413,7 @@ class AutonomousOrchestratorTests(TestCase):
                 skill="scene_start",
                 scene_filter_contract=scene_filter,
                 prep_review=False,
+                scene_generation_mode="writing-room-line-build",
             )
             bridge = OrchestratorBridge(workspace)
             next_payload = bridge.next(result.run_id)
@@ -447,6 +448,21 @@ class AutonomousOrchestratorTests(TestCase):
                 package["side_effect_status"],
                 "proposal_only_no_scene_draft_no_canon_mutation",
             )
+            self.assertEqual(
+                run_payload["scene_mode_disclosure"]["resolved_mode"],
+                "writing_room_line_build",
+            )
+            self.assertEqual(
+                run_payload["scene_mode_disclosure"]["what_actors_actually_did"],
+                "line_build_callbacks_reported",
+            )
+            summary = run_payload["actor_contribution_summary"]
+            self.assertEqual(summary["callback_total"], 1)
+            self.assertEqual(summary["callback_accepted"], 1)
+            self.assertEqual(summary["actor_authored_sentence_count"], 1)
+            labels = summary["actor_function_labels"][0]["function_labels"]
+            self.assertIn("co_writer", labels)
+            self.assertIn("sql_auditor", labels)
 
     def test_scene_bridge_rejects_missing_scene_expected_fields(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -502,6 +518,18 @@ class AutonomousOrchestratorTests(TestCase):
 
             self.assertEqual(payload["workflow"], "scene_generation")
             self.assertEqual(payload["workflow_requested"], "scene_start")
+            self.assertEqual(
+                payload["scene_mode_disclosure"]["resolved_mode"],
+                "fact_audit_synthesis",
+            )
+            self.assertIn(
+                "writing_room_line_build_not_confirmed",
+                payload["scene_mode_disclosure"]["what_was_not_performed"],
+            )
+            self.assertEqual(
+                payload["actor_contribution_summary"]["interpretation"],
+                "fact_audit_or_constraint_synthesis_run",
+            )
             self.assertEqual(payload["workflow_profile"]["workflow"], "scene_generation")
             self.assertIn("actor_session_policy", payload["workflow_profile"])
             self.assertEqual(payload["floor_state"]["workflow"], "scene_generation")

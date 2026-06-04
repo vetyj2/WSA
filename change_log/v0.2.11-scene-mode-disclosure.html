@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.11 Scene Mode Disclosure</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #697386;
+      --line: #d9dee7;
+      --ok: #15803d;
+      --blue: #2563eb;
+      --warn: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 48px; }
+    header, .stack { display: grid; gap: 12px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: 22px; }
+    p { margin: 0; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; color: #253041; padding: 2px 5px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+    .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 14px; }
+    .step { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfe; min-height: 104px; }
+    .step strong { display: block; margin-bottom: 6px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.ok { color: var(--ok); border-color: #9bd4aa; background: #f0fbf3; }
+    .badge.blue { color: var(--blue); border-color: #aac6ff; background: #f1f6ff; }
+    .badge.warn { color: var(--warn); border-color: #f1c27d; background: #fff8ed; }
+    ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="stack">
+    <header>
+      <p><a href="index.html">Patch dashboards</a></p>
+      <h1>v0.2.11 Scene Mode Disclosure</h1>
+      <p>Adds explicit scene mode disclosure and actor contribution accounting so WSA reports do not imply a writing-room line-build session when the run only produced fact-audit, constraint, or synthesis outputs.</p>
+      <div class="badge-row">
+        <span class="badge ok">version v0.2.11</span>
+        <span class="badge blue">mode disclosure</span>
+        <span class="badge blue">actor accounting</span>
+        <span class="badge">scene start</span>
+        <span class="badge warn">no false consensus</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>Patch Intent</h2>
+      <p>Users may prefer fact-audit synthesis or writing-room line-build. WSA now records what was requested, how the mode was resolved, and what actors actually contributed. The patch does not complete full line-build execution; it makes the current and future execution modes auditable.</p>
+      <div class="flow">
+        <div class="step"><strong>1. User/Hermes Input</strong><span>Mode can be explicit, profile-based, inferred, or fallback.</span></div>
+        <div class="step"><strong>2. Mode Disclosure</strong><span>Run artifact records requested and resolved mode.</span></div>
+        <div class="step"><strong>3. Actor Accounting</strong><span>Callbacks, rejects, rollbacks, fact-audit signals, co-writer evidence, and synthesizer are counted.</span></div>
+        <div class="step"><strong>4. Honest Report</strong><span>Reports distinguish synthesis/guardrail runs from true line-build consensus.</span></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Modes</h2>
+        <ul>
+          <li><code>auto</code>: Hermes/profile/natural-language resolution, WSA fallback is conservative fact-audit synthesis.</li>
+          <li><code>fact-audit-synthesis</code>: actors verify constraints and a synthesizer writes or packages the draft.</li>
+          <li><code>writing-room-line-build</code>: actors propose, validate, reject, retry, and accept beats or lines into a ledger.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Accounting</h2>
+        <ul>
+          <li>Callback accepted/rejected counts.</li>
+          <li>Rollback/retry event count from rejected callbacks.</li>
+          <li>Fact-audit evidence from source refs, fact fields, dependencies, and conflicts.</li>
+          <li>Actor-authored sentence and adopted proposal counts.</li>
+          <li>Function labels: observer, constraint panel, SQL auditor, co-writer, validator, rollback trigger.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Boundaries</h2>
+        <ul>
+          <li>WSA still does not execute Hermes actor sessions directly.</li>
+          <li>Writing-room mode is declared and accounted for, not fully implemented as a native line ledger yet.</li>
+          <li>Final reports should say what actors actually did and what was not performed.</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

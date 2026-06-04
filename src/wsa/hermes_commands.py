@@ -13,6 +13,7 @@ from .orchestrator_contract import (
     DEFAULT_TERMINATION_POLICY,
     build_hermes_orchestrator_runtime_contract,
 )
+from .reporting_contract import build_reporting_artifact_contract
 
 
 HERMES_COMMAND_REGISTRY_SCHEMA = "wsa.hermes.command_registry.v1"
@@ -113,6 +114,7 @@ def build_hermes_command_registry() -> Dict[str, Any]:
                 "show update-preflight overlay findings before and after source updates."
             ),
         },
+        "reporting_artifact_policy": build_reporting_artifact_contract(),
         "discretion_policy": {
             "customizable": True,
             "scale": discretion_scale_contract(),
@@ -1185,6 +1187,12 @@ def _default_commands() -> List[Dict[str, Any]]:
                 _arg("location_scope", False, "Optional scene location scope."),
                 _arg("viewpoint", False, "Optional viewpoint or POV scope."),
                 _arg(
+                    "generation_mode",
+                    False,
+                    "Scene mode: auto, fact-audit-synthesis, or writing-room-line-build. Default: auto.",
+                    default="auto",
+                ),
+                _arg(
                     "condition",
                     False,
                     "Optional scene selection condition. May be repeated.",
@@ -1228,6 +1236,8 @@ def _default_commands() -> List[Dict[str, Any]]:
                     "{location_scope}",
                     "--viewpoint",
                     "{viewpoint}",
+                    "--generation-mode",
+                    "{generation_mode:auto}",
                     "--condition",
                     "{condition}",
                     "--participant",
@@ -1256,6 +1266,7 @@ def _default_commands() -> List[Dict[str, Any]]:
                 "time_scope": "{time_scope}",
                 "location_scope": "{location_scope}",
                 "viewpoint": "{viewpoint}",
+                "generation_mode": "{generation_mode:auto}",
                 "condition": "{condition}",
                 "participant": "{participant}",
                 "boundary": "prep_package_before_scene_draft_or_canon_mutation",

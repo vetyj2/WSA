@@ -40,6 +40,11 @@ class MeetingTests(TestCase):
             self.assertTrue((result.meeting_dir / ".wsa_completed").exists())
             self.assertEqual(report.purpose, "meeting")
             self.assertEqual(transcript["apply_policy"]["world_mutation"], "proposal_only")
+            reporting = transcript["reporting_artifact_contract"]
+            self.assertEqual(reporting["schema"], "wsa.reporting.artifact_contract.v1")
+            self.assertEqual(reporting["workflow"], "meeting")
+            self.assertTrue(reporting["storage_policy"]["export_on_demand"])
+            self.assertFalse(reporting["recommended_exports"][0]["default_auto_generate"])
             self.assertEqual(transcript["synthesis"]["world_mutations"], [])
             self.assertEqual(len(result.participant_session_ids), 2)
             self.assertEqual([item.message_type for item in manager_outbox], ["meeting_summary"])

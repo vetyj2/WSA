@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List
 
 from .ids import slugify
 from .paths import safe_child_path
+from .reporting_contract import build_reporting_artifact_contract
 from .reports import ReportMailbox
 from .repositories import EntityRecord, TicketRecord, WorldRepository, new_id
 from .transport import RuntimeTransport
@@ -154,6 +155,10 @@ class MeetingOrchestrator:
             "question": question,
             "apply_policy": agenda["apply_policy"],
             "decision_options": agenda["decision_options"],
+            "reporting_artifact_contract": build_reporting_artifact_contract(
+                workflow="meeting",
+                skill="meeting",
+            ),
             "manager_session_id": manager_session_id,
             "participants": [
                 {

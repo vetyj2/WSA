@@ -104,6 +104,46 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.11-scene-mode-disclosure.html">v0.2.11 Scene Mode Disclosure</a></h2>
+          <p>Adds scene mode disclosure and actor contribution accounting so Scene Start reports distinguish fact-audit synthesis from writing-room line-build work.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">scene mode</span>
+          <span class="badge accent">actor accounting</span>
+          <span class="badge">fact audit</span>
+          <span class="badge">line-build evidence</span>
+          <span class="badge warn">honest reporting</span>
+        </div>
+        <ul>
+          <li><code>scene start --generation-mode</code> accepts <code>auto</code>, <code>fact-audit-synthesis</code>, and <code>writing-room-line-build</code>.</li>
+          <li>Run artifacts record requested/resolved mode, resolution source, confidence, what actors did, and what was not performed.</li>
+          <li>Actor contribution summaries count callbacks, rejections, rollback triggers, fact-audit evidence, co-writer evidence, and synthesizer identity.</li>
+          <li>The patch does not claim native line-build completion; it makes current and future modes auditable.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.10-reporting-artifact-contract.html">v0.2.10 Reporting Artifact Contract</a></h2>
+          <p>Adds a shared reporting contract for Meetup and Scene: date-scoped session logs remain the source of truth, while minutes, draft output, and round reports are optional TXT/HTML exports.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">reporting contract</span>
+          <span class="badge accent">session logs</span>
+          <span class="badge">minutes</span>
+          <span class="badge">draft output</span>
+          <span class="badge warn">on-demand export</span>
+        </div>
+        <ul>
+          <li><code>wsa.reporting.artifact_contract.v1</code> defines recommended report shapes without forcing runtime delivery.</li>
+          <li>Hermes can export <code>human_session_minutes</code>, <code>draft_output</code>, and <code>round_orchestration_report</code> from a date-scoped session log.</li>
+          <li>Bridge <code>next</code> payloads, orchestrator contracts, command registry, and meeting transcripts expose the same policy.</li>
+          <li>Automatic report generation stays under user/Hermes profile customization.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.9-local-overlay-safety.html">v0.2.9 Local Overlay Safety</a></h2>
           <p>Adds local Hermes command overlay validation, merged registry preview, side-effect metadata warnings, and update preflight recommendations without expanding the official compact command surface.</p>
         </div>

@@ -101,6 +101,25 @@ class HermesCommandSyntaxTests(TestCase):
         self.assertEqual(registry["cli_template_policy"]["optional_unset_policy"], "omit_flag_and_value_or_omit_input_json_key")
         self.assertEqual(registry["runtime_portability"]["cwd_policy"], "workspace_root_recommended")
         self.assertEqual(registry["runtime_portability"]["workspace_env"], "WSA_WORKSPACE")
+        reporting = registry["reporting_artifact_policy"]
+        self.assertEqual(reporting["schema"], "wsa.reporting.artifact_contract.v1")
+        self.assertFalse(reporting["storage_policy"]["store_every_export_by_default"])
+        self.assertTrue(reporting["storage_policy"]["session_log_is_source_of_truth"])
+        self.assertIn(
+            "worlds/{world_id}/artifacts/",
+            reporting["storage_policy"]["managed_artifact_roots"],
+        )
+        self.assertTrue(
+            reporting["storage_policy"]["out_of_contract_artifact_policy"]["source_map_required"]
+        )
+        self.assertEqual(
+            [item["artifact_type"] for item in reporting["recommended_exports"]],
+            [
+                "human_session_minutes",
+                "draft_output",
+                "round_orchestration_report",
+            ],
+        )
 
     def test_canonical_commands_are_telegram_menu_safe_and_aliases_do_not_cross_collide(self) -> None:
         registry = build_hermes_command_registry()
