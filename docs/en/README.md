@@ -77,7 +77,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-131 tests OK
+140 tests OK
 ```
 
 ## Quick Smoke Run
@@ -129,6 +129,14 @@ Scene and meetup reporting should follow the shared `wsa.reporting.artifact_cont
 - `human_session_minutes`: readable meetup or scene-generation session minutes in TXT/HTML.
 - `draft_output`: meetup conclusion, scene draft, or manuscript-style output in TXT/HTML.
 - `round_orchestration_report`: round/checkpoint orchestration report in TXT/HTML for scheduling, quality gates, rejected outputs, rollback triggers, and stop reasons.
+
+Use `wsa report export <world_id> --run-id <run_id> --artifact-type human_session_minutes --format txt` to preview an export. Add `--write` to store the export and its `artifact_source_map.json` manifest under the managed world artifact zone.
+
+Use `wsa artifact diagnose` to run read-only diagnostics over `artifact_source_map.json` manifests and export files that are missing source maps.
+
+Use `wsa artifact uninstall-plan` before uninstall or cleanup to preview preserve/archive/delete-after-archive boundaries. `--write` stores only a dry-run plan JSON and does not delete files.
+
+Use `wsa artifact maintenance-scan` to summarize report/log/callback/archive volume and recommended cleanup actions read-only. `--write` stores only a scan JSON.
 
 Automatic export and delivery remain user/Hermes profile choices. The contract exists so Hermes can consistently generate, skip, delete, or re-export artifacts without WSA owning chat delivery or runtime preferences.
 

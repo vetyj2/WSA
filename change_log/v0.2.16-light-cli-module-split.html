@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.16 Light CLI Module Split</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #4f46e5;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; padding: 2px 5px; color: #253041; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.16 Light CLI Module Split</h1>
+      <p>Separates report/review cleanup and artifact-map CLI handlers from the main parser module without changing command behavior.</p>
+      <div class="badges">
+        <span class="badge accent">module split</span>
+        <span class="badge accent">behavior preserved</span>
+        <span class="badge">report handlers</span>
+        <span class="badge">artifact handlers</span>
+        <span class="badge warn">no new runtime</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>What Changed</h2>
+        <p>The parser stays in <code>src/wsa/cli.py</code>, but operational handlers now have clearer landing zones.</p>
+        <ul>
+          <li><code>src/wsa/cli_reports.py</code> owns report list, triage, rejection, and callback archive handlers.</li>
+          <li><code>src/wsa/cli_artifacts.py</code> owns the artifact architecture map handler.</li>
+          <li>The public commands and output shapes are intentionally unchanged.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Why It Matters</h2>
+        <p>The next features touch exports, diagnostics, uninstall, and maintenance. Giving those areas module boundaries now keeps later patches smaller and easier to audit.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Command Surface</h2>
+        <p>No new top-level command is added. The compact Startup, Meetup, Scene, Patrol, Doctor, and Database model stays intact.</p>
+      </article>
+
+      <article class="panel wide">
+        <h2>Patch Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>1. Keep Parser</strong>
+            <span><code>cli.py</code> remains the central command parser and dispatcher.</span>
+          </div>
+          <div class="step">
+            <strong>2. Split Handlers</strong>
+            <span>Report and artifact handlers move behind named modules.</span>
+          </div>
+          <div class="step">
+            <strong>3. Preserve Output</strong>
+            <span>Existing CLI tests continue to verify behavior.</span>
+          </div>
+          <div class="step">
+            <strong>4. Prepare Growth</strong>
+            <span>Export, source-map, uninstall, and maintenance patches get cleaner landing zones.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Boundary</h2>
+        <p>This is maintainability work only. It does not make WSA execute Hermes, mutate canon, or change report cleanup semantics.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

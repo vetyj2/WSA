@@ -225,6 +225,20 @@ def _managed_artifact_zones() -> List[Dict[str, Any]]:
             "Runtime-delivery-ready reports that WSA still treats as local artifacts.",
             "archive_after_delivery_policy",
         ),
+        _zone(
+            "uninstall_plans",
+            "manager/uninstall_plans/",
+            "managed_artifact",
+            "Dry-run uninstall plans written for operator review.",
+            "preserve_until_operator_discards",
+        ),
+        _zone(
+            "maintenance_plans",
+            "manager/maintenance_plans/",
+            "managed_artifact",
+            "Storage hygiene scans and cleanup planning artifacts.",
+            "preserve_until_operator_discards",
+        ),
     ]
 
 

@@ -7,13 +7,21 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
-from .artifact_map import (
-    artifact_architecture_map_path,
-    build_artifact_architecture_map,
-    format_artifact_architecture_map,
-    write_artifact_architecture_map,
-)
+from .artifact_map import artifact_architecture_map_path
+from .artifact_diagnostics import diagnose_artifact_source_maps
 from .autonomous_orchestrator import AutonomousOrchestrator, resolve_scene_filter_contract
+from .cli_artifacts import (
+    run_artifact_diagnose,
+    run_artifact_maintenance_scan,
+    run_artifact_map,
+    run_artifact_uninstall_plan,
+)
+from .cli_reports import (
+    run_report_archive_callbacks,
+    run_report_list,
+    run_report_reject_pending,
+    run_report_triage,
+)
 from .orchestrator_bridge import OrchestratorBridge
 from .orchestrator_contract import (
     DEFAULT_CONTEXT_POLICY,
@@ -49,12 +57,11 @@ from .manager import WorldManager
 from .meeting import MeetingOrchestrator
 from .orchestrator import SceneOrchestrator
 from .repositories import WorldRepository
-from .review_cleanup import (
-    archive_callback_residue,
-    format_cleanup_audit,
-    format_review_triage,
-    reject_pending_review,
-    triage_review_queue,
+from .report_exports import (
+    REPORT_EXPORT_ARTIFACT_TYPES,
+    build_report_export,
+    format_report_export_result,
+    write_report_export,
 )
 from .startup import (
     QUESTION_STATUSES,
@@ -533,6 +540,29 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         help="Output format.",
     )
+    report_export = report_subparsers.add_parser(
+        "export",
+        help="Render an on-demand TXT/HTML report artifact from an orchestrator run.",
+    )
+    report_export.add_argument("world_id", help="World ID.")
+    report_export.add_argument("--run-id", required=True, help="Orchestrator run ID.")
+    report_export.add_argument(
+        "--artifact-type",
+        required=True,
+        choices=sorted(REPORT_EXPORT_ARTIFACT_TYPES),
+        help="Recommended report artifact type to render.",
+    )
+    report_export.add_argument(
+        "--format",
+        choices=("txt", "html"),
+        default="txt",
+        help="Artifact format.",
+    )
+    report_export.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the artifact under worlds/<world_id>/artifacts/session_logs/.",
+    )
 
     ticket_parser = subparsers.add_parser("ticket", help="Inspect or apply tickets.")
     ticket_subparsers = ticket_parser.add_subparsers(dest="ticket_command")
@@ -555,6 +585,52 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the generated map to manager/artifact_map/artifact_architecture_map.json.",
     )
     artifact_map.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    artifact_diagnose = artifact_subparsers.add_parser(
+        "diagnose",
+        help="Read-only source-map diagnostics for managed report exports.",
+    )
+    artifact_diagnose.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    artifact_uninstall_plan = artifact_subparsers.add_parser(
+        "uninstall-plan",
+        help="Dry-run uninstall ownership and cleanup boundary plan.",
+    )
+    artifact_uninstall_plan.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the dry-run plan under manager/uninstall_plans/.",
+    )
+    artifact_uninstall_plan.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    artifact_maintenance_scan = artifact_subparsers.add_parser(
+        "maintenance-scan",
+        help="Dry-run storage hygiene scan for logs, reports, callbacks, and archives.",
+    )
+    artifact_maintenance_scan.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the scan JSON under manager/maintenance_plans/.",
+    )
+    artifact_maintenance_scan.add_argument(
+        "--top",
+        type=int,
+        default=10,
+        help="Maximum largest roots to include in text/json summaries.",
+    )
+    artifact_maintenance_scan.add_argument(
         "--format",
         choices=("text", "json"),
         default="text",
@@ -885,6 +961,9 @@ def run_doctor(workspace: Path) -> int:
             return 1
         print(f"control_schema_version: {version if version is not None else 'unknown'}")
         print(f"world_count: {world_count}")
+    artifact_diagnostic = diagnose_artifact_source_maps(workspace)
+    print(f"artifact_source_map_status: {artifact_diagnostic['status']}")
+    print(f"artifact_orphan_exports: {artifact_diagnostic['counts']['orphan_exports']}")
     print("schema_status: ok")
     return 0
 
@@ -1519,82 +1598,6 @@ def run_orchestrator_close(workspace: Path, run_id: str, reason: str | None) -> 
     return 0
 
 
-def run_report_list(workspace: Path, world_id: str, status: str | None) -> int:
-    world = get_world(workspace, world_id)
-    repo = WorldRepository(world.world_id, world.path)
-    reports = repo.list_reports(status=status)
-    if not reports:
-        print("reports: none")
-        return 0
-    for report in reports:
-        print(
-            "\t".join(
-                [
-                    report.report_id,
-                    report.status,
-                    report.risk,
-                    report.purpose,
-                    report.title,
-                    report.artifact_ref or "",
-                ]
-            )
-        )
-    return 0
-
-
-def run_report_triage(workspace: Path, world_id: str, output_format: str) -> int:
-    world = get_world(workspace, world_id)
-    payload = triage_review_queue(workspace, world)
-    if output_format == "json":
-        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        for line in format_review_triage(payload):
-            print(line)
-    return 0
-
-
-def run_report_reject_pending(
-    workspace: Path,
-    world_id: str,
-    reason: str,
-    archive_callbacks: bool,
-    output_format: str,
-) -> int:
-    if not guard_update_unlocked(workspace, "report.reject_pending"):
-        return 1
-    world = get_world(workspace, world_id)
-    payload = reject_pending_review(
-        workspace,
-        world,
-        reason=reason,
-        archive_callbacks=archive_callbacks,
-    )
-    if output_format == "json":
-        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        for line in format_cleanup_audit(payload):
-            print(line)
-    return 0
-
-
-def run_report_archive_callbacks(
-    workspace: Path,
-    world_id: str,
-    reason: str,
-    output_format: str,
-) -> int:
-    if not guard_update_unlocked(workspace, "report.archive_callbacks"):
-        return 1
-    world = get_world(workspace, world_id)
-    payload = archive_callback_residue(workspace, world, reason=reason)
-    if output_format == "json":
-        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        for line in format_cleanup_audit(payload):
-            print(line)
-    return 0
-
-
 def run_ticket_list(workspace: Path, world_id: str, status: str | None) -> int:
     world = get_world(workspace, world_id)
     repo = WorldRepository(world.world_id, world.path)
@@ -1617,6 +1620,35 @@ def run_ticket_list(workspace: Path, world_id: str, status: str | None) -> int:
     return 0
 
 
+def run_report_export(
+    workspace: Path,
+    world_id: str,
+    run_id: str,
+    artifact_type: str,
+    export_format: str,
+    write: bool,
+) -> int:
+    if write and not guard_update_unlocked(workspace, "report.export.write"):
+        return 1
+    world = get_world(workspace, world_id)
+    try:
+        payload = (
+            write_report_export(world, run_id, artifact_type, export_format)
+            if write
+            else build_report_export(world, run_id, artifact_type, export_format)
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print("report_export: blocked")
+        print(f"detail: {exc}")
+        return 1
+    if write:
+        for line in format_report_export_result(payload):
+            print(line)
+    else:
+        print(payload["content"], end="")
+    return 0
+
+
 def run_ticket_approve(workspace: Path, world_id: str, ticket_id: str) -> int:
     if not guard_update_unlocked(workspace, "ticket.approve"):
         return 1
@@ -1627,23 +1659,6 @@ def run_ticket_approve(workspace: Path, world_id: str, ticket_id: str) -> int:
     print(f"applied_count: {len(applied)}")
     for item in applied:
         print(f"applied: {item}")
-    return 0
-
-
-def run_artifact_map(workspace: Path, write: bool, output_format: str) -> int:
-    stored_path = artifact_architecture_map_path(workspace)
-    payload = build_artifact_architecture_map(workspace)
-    output_path = stored_path if stored_path.exists() else None
-    if write:
-        if not guard_update_unlocked(workspace, "artifact.map.write"):
-            return 1
-        output_path = write_artifact_architecture_map(workspace)
-        payload = build_artifact_architecture_map(workspace)
-    if output_format == "json":
-        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        for line in format_artifact_architecture_map(payload, stored_path=output_path):
-            print(line)
     return 0
 
 
@@ -2188,6 +2203,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.reason,
                 args.format,
             )
+        if args.report_command == "export":
+            return run_report_export(
+                config.workspace,
+                args.world_id,
+                args.run_id,
+                args.artifact_type,
+                args.format,
+                args.write,
+            )
         parser.parse_args(["report", "--help"])
     if args.command == "ticket":
         if args.ticket_command == "list":
@@ -2198,6 +2222,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "artifact":
         if args.artifact_command == "map":
             return run_artifact_map(config.workspace, args.write, args.format)
+        if args.artifact_command == "diagnose":
+            return run_artifact_diagnose(config.workspace, args.format)
+        if args.artifact_command == "uninstall-plan":
+            return run_artifact_uninstall_plan(config.workspace, args.write, args.format)
+        if args.artifact_command == "maintenance-scan":
+            return run_artifact_maintenance_scan(
+                config.workspace,
+                args.write,
+                args.format,
+                args.top,
+            )
         parser.parse_args(["artifact", "--help"])
     if args.command == "hermes":
         if args.hermes_command == "init-example":

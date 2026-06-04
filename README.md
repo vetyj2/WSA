@@ -73,7 +73,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 현재 기대 결과:
 
 ```text
-131 tests OK
+140 tests OK
 ```
 
 새 workspace smoke:
@@ -108,6 +108,14 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 사용자별 Hermes shortcut은 공식 명령어로 계속 흡수하지 않고 `workspace/hermes/adapter_config/hermes_commands.local.json` overlay로 둡니다. WSA는 `hermes commands --write-local-template`, `--validate-local-overlay`, `--merged`로 충돌 진단과 병합 미리보기를 제공하며, update preflight는 `/wsa_`/`/filltherest` 충돌이나 mutating command metadata 부족을 Hermes가 사용자에게 보고하도록 노출합니다.
 
 밋업/씬 보고는 `wsa.reporting.artifact_contract.v1` 권장 규격을 따릅니다. 기본 원칙은 날짜별 session log를 source of truth로 두고, 필요할 때 `human_session_minutes`(회의록), `draft_output`(원고초안/결론), `round_orchestration_report`(라운드별 오케스트레이션 보고서)를 TXT/HTML로 export하는 것입니다. 자동 생성/전송 여부는 사용자 Hermes profile 또는 local overlay가 결정합니다.
+
+`wsa report export <world_id> --run-id <run_id> --artifact-type human_session_minutes --format txt`로 preview할 수 있고, `--write`를 붙이면 world artifact zone 아래에 export와 `artifact_source_map.json` manifest를 씁니다.
+
+`wsa artifact diagnose`는 workspace 안의 `artifact_source_map.json` manifest와 source-map 없이 남은 export 파일을 read-only로 점검합니다.
+
+`wsa artifact uninstall-plan`은 uninstall 전에 보존 대상, archive 후보, source-map 검토가 필요한 항목을 dry-run으로 보여줍니다. `--write`는 계획 JSON만 저장하며 파일 삭제는 수행하지 않습니다.
+
+`wsa artifact maintenance-scan`은 report/log/callback/archive 볼륨을 read-only로 요약하고 cleanup 전 권장 조치를 제안합니다. `--write`는 scan JSON만 저장합니다.
 
 하네스 사용 중 파생되는 산출물은 가능하면 workspace의 정해진 artifact/report/runtime 디렉터리 안에 둡니다. 런타임 정책상 외부 경로에 만들어야 하는 파일은 `artifact_source_map.json`으로 생성 원천, run/session, 경로, cleanup hint를 남겨 설치/마이그레이션/언인스톨 때 추적 가능하게 해야 합니다.
 

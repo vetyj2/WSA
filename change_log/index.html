@@ -104,6 +104,106 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.20-maintenance-storage-hygiene-scan.html">v0.2.20 Maintenance Storage Hygiene Scan</a></h2>
+          <p>Adds a read-only storage scan for reports, session logs, Hermes queues/callbacks, archives, scenes, meetings, and orchestrator runs.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">maintenance scan</span>
+          <span class="badge accent">storage hygiene</span>
+          <span class="badge">callbacks</span>
+          <span class="badge">archives</span>
+          <span class="badge warn">no cleanup execution</span>
+        </div>
+        <ul>
+          <li><code>wsa artifact maintenance-scan</code> summarizes managed artifact volume.</li>
+          <li><code>--write</code> stores a scan JSON under <code>manager/maintenance_plans/</code>.</li>
+          <li>Pending task/callback queues and orphan exports become recommended actions.</li>
+          <li>The scan performs no archive/delete action by itself.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.19-uninstall-dry-run-lifecycle.html">v0.2.19 Uninstall Dry-Run Lifecycle</a></h2>
+          <p>Adds a dry-run uninstall ownership plan that separates source-of-truth preservation, archive candidates, delete-after-archive candidates, and source-map review blockers.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">uninstall plan</span>
+          <span class="badge accent">dry-run</span>
+          <span class="badge">preserve boundary</span>
+          <span class="badge">archive first</span>
+          <span class="badge warn">no deletion</span>
+        </div>
+        <ul>
+          <li><code>wsa artifact uninstall-plan</code> previews ownership and cleanup boundaries.</li>
+          <li><code>--write</code> stores a JSON plan under <code>manager/uninstall_plans/</code>.</li>
+          <li>World DBs, startup profiles, and local Hermes overlays are preserve-by-default.</li>
+          <li>Source-map warnings block trust in destructive cleanup until reviewed.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.18-artifact-source-map-diagnostics.html">v0.2.18 Artifact Source-Map Diagnostics</a></h2>
+          <p>Adds read-only diagnostics for report export source maps, orphan exports, invalid manifests, and stale manifest references.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">source-map diagnostics</span>
+          <span class="badge accent">read-only</span>
+          <span class="badge">orphan exports</span>
+          <span class="badge">doctor summary</span>
+          <span class="badge warn">warn before cleanup</span>
+        </div>
+        <ul>
+          <li><code>wsa artifact diagnose</code> checks source-map manifests and managed export files.</li>
+          <li><code>wsa doctor</code> now summarizes artifact source-map status and orphan export count.</li>
+          <li>Invalid JSON/schema blocks trust in cleanup diagnostics; orphan exports warn but are not deleted.</li>
+          <li>This prepares uninstall and maintenance work without introducing destructive actions.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.17-report-export-generation.html">v0.2.17 Report Export Generation</a></h2>
+          <p>Adds on-demand TXT/HTML report exports from orchestrator run logs for human minutes, draft output, and round orchestration reports.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">report export</span>
+          <span class="badge accent">TXT/HTML</span>
+          <span class="badge">session log policy</span>
+          <span class="badge">source map</span>
+          <span class="badge warn">on-demand</span>
+        </div>
+        <ul>
+          <li><code>wsa report export</code> previews an export by default.</li>
+          <li><code>--write</code> stores the artifact under <code>worlds/{world_id}/artifacts/session_logs/</code>.</li>
+          <li>Written exports include an <code>artifact_source_map.json</code> manifest.</li>
+          <li>Exports remain derived proposal artifacts and do not mutate canon.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.2.16-light-cli-module-split.html">v0.2.16 Light CLI Module Split</a></h2>
+          <p>Moves report/review cleanup handlers and artifact-map handlers out of the large CLI module while preserving command behavior and the compact command surface.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">module split</span>
+          <span class="badge accent">behavior preserved</span>
+          <span class="badge">report handlers</span>
+          <span class="badge">artifact handlers</span>
+          <span class="badge warn">no new runtime</span>
+        </div>
+        <ul>
+          <li><code>src/wsa/cli_reports.py</code> now owns report list, review triage, pending rejection, and callback archive CLI handlers.</li>
+          <li><code>src/wsa/cli_artifacts.py</code> now owns the artifact architecture map CLI handler.</li>
+          <li><code>src/wsa/cli.py</code> remains the command parser and routing surface.</li>
+          <li>No new user-visible top-level command is introduced.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.15-artifact-architecture-map.html">v0.2.15 Artifact Architecture Map</a></h2>
           <p>Adds a compact workspace map that distinguishes source-of-truth zones, managed artifact zones, runtime residue, and external artifact boundaries before export/uninstall tooling grows.</p>
         </div>

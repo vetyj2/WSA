@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.17 Report Export Generation</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #4f46e5;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; padding: 2px 5px; color: #253041; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.17 Report Export Generation</h1>
+      <p>Generates on-demand TXT/HTML artifacts from orchestrator run logs while keeping source logs and world databases separate.</p>
+      <div class="badges">
+        <span class="badge accent">report export</span>
+        <span class="badge accent">TXT/HTML</span>
+        <span class="badge">source map</span>
+        <span class="badge">session log zone</span>
+        <span class="badge warn">on-demand</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>What Changed</h2>
+        <p><code>wsa report export</code> can render the three recommended report artifact shapes from an orchestrator run.</p>
+        <ul>
+          <li><code>human_session_minutes</code></li>
+          <li><code>draft_output</code></li>
+          <li><code>round_orchestration_report</code></li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Write Policy</h2>
+        <p>Preview is read-only. <code>--write</code> stores the export under <code>worlds/{world_id}/artifacts/session_logs/</code> with an <code>artifact_source_map.json</code> manifest.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Runtime Boundary</h2>
+        <p>Exports are derived artifacts. They do not send chat, approve canon, mutate facts, or claim real Hermes execution beyond the source run metadata.</p>
+      </article>
+
+      <article class="panel wide">
+        <h2>Operational Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>1. Run</strong>
+            <span>Meetup or Scene creates an orchestrator run JSON.</span>
+          </div>
+          <div class="step">
+            <strong>2. Export</strong>
+            <span>Operator requests a specific report shape and format.</span>
+          </div>
+          <div class="step">
+            <strong>3. Trace</strong>
+            <span>Written exports point back to the run JSON through a manifest.</span>
+          </div>
+          <div class="step">
+            <strong>4. Deliver</strong>
+            <span>Hermes or another runtime decides whether to send or attach the artifact.</span>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

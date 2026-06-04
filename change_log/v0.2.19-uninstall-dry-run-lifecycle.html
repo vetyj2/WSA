@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.19 Uninstall Dry-Run Lifecycle</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #4f46e5;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; padding: 2px 5px; color: #253041; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.19 Uninstall Dry-Run Lifecycle</h1>
+      <p>Adds an uninstall ownership plan that shows what to preserve, archive, and review before any cleanup is considered.</p>
+      <div class="badges">
+        <span class="badge accent">uninstall plan</span>
+        <span class="badge accent">dry-run</span>
+        <span class="badge">preserve boundary</span>
+        <span class="badge">archive first</span>
+        <span class="badge warn">no deletion</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>What Changed</h2>
+        <p><code>wsa artifact uninstall-plan</code> previews uninstall ownership boundaries without deleting or moving files.</p>
+        <ul>
+          <li>Preserve-by-default: control DB, world DBs, startup profiles, local Hermes overlay.</li>
+          <li>Archive candidates: reports, task/callback archives, session logs, run JSON, scenes, meetings.</li>
+          <li>Delete-after-archive candidates: runtime residue and derived exports only after review.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Write Mode</h2>
+        <p><code>--write</code> stores a plan JSON under <code>manager/uninstall_plans/</code>. It does not execute the plan.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Source-Map Gate</h2>
+        <p>Invalid source maps or source-map-less exports become review blockers before any destructive cleanup can be trusted.</p>
+      </article>
+
+      <article class="panel wide">
+        <h2>Operational Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>1. Diagnose</strong>
+            <span>Run doctor and artifact diagnostics first.</span>
+          </div>
+          <div class="step">
+            <strong>2. Plan</strong>
+            <span>Generate or write a dry-run uninstall plan.</span>
+          </div>
+          <div class="step">
+            <strong>3. Backup</strong>
+            <span>Create an operator backup outside the workspace.</span>
+          </div>
+          <div class="step">
+            <strong>4. Decide</strong>
+            <span>User/runtime chooses archive, migrate, ignore, or later delete actions.</span>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
