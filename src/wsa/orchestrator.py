@@ -142,7 +142,7 @@ class SceneOrchestrator:
 
         committed_payload = {
             "accepted_proposals": [proposal.payload for proposal in proposals[:1]],
-            "summary": "Mock scene committed its first accepted actor proposal.",
+            "summary": "Mock scene applied its first accepted actor proposal.",
         }
         event_id = self.repo.add_scene_event(
             scene.scene_id,

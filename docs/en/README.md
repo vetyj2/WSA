@@ -24,6 +24,7 @@ The public template should stay world-neutral. Author preferences, naming tastes
 - Non-mutating meeting mode for representative diagnosis and proposal gathering
 - Manual-trigger autonomous orchestrator lifecycle for meetup/subsession review packages
 - Runtime bridge hooks with actor_state and floor_state continuity
+- Review queue triage and proposal/callback cleanup audit workflow
 - Template readiness checks for copied runtime instances
 
 ## Architecture Snapshot
@@ -37,7 +38,7 @@ WSA is a public-safe local harness template. It owns workspace state, task/callb
 | Diagnostics and updates | `manager.py`, `update.py`, `hermes_doctor.py` | Doctor checks, update preflight, runtime checks |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Task packets, callback collection, command registry |
 | Orchestration | `autonomous_orchestrator.py`, `orchestrator_*`, `orchestrator_bridge.py` | Meetup/scene runs, hook packets, callback turns |
-| Review workflows | `meeting.py`, `startup.py`, `reports.py`, `tickets.py` | Proposal gathering, interviews, reports, approval tickets |
+| Review workflows | `meeting.py`, `startup.py`, `reports.py`, `review_cleanup.py`, `tickets.py` | Proposal gathering, interviews, reports, review cleanup, approval tickets |
 
 For a fuller module map, see [ARCHITECTURE.md](ARCHITECTURE.md). For the runtime trust boundary, see [RUNTIME_BOUNDARIES.md](RUNTIME_BOUNDARIES.md).
 
@@ -75,7 +76,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-119 tests OK
+127 tests OK
 ```
 
 ## Quick Smoke Run
@@ -153,6 +154,19 @@ PYTHONPATH=src python3 -m wsa report list <world_id>
 PYTHONPATH=src python3 -m wsa manager diagnose
 ```
 
+When a live workspace has accumulated pending proposal reports, review-bound orchestrator runs, or callback residue, keep cleanup under the `report` lifecycle instead of deleting files manually:
+
+```bash
+PYTHONPATH=src python3 -m wsa report triage <world_id>
+PYTHONPATH=src python3 -m wsa report reject-pending <world_id> \
+  --reason "author rejected pending proposals" \
+  --archive-callbacks
+PYTHONPATH=src python3 -m wsa report archive-callbacks <world_id> \
+  --reason "completed callback residue"
+```
+
+`report triage` is read-only. `reject-pending` changes only pending proposal reports and author-review orchestrator runs, then writes an audit JSON under `reports/archived/`. Callback cleanup moves JSON files to `hermes/callback_archive/`; it does not raw-delete them. Approved reports, canon facts, tickets, startup profile data, and DB schema are excluded from this cleanup path.
+
 Start a worldbuilding interview without exhausting the author. `startup` is the open-ended author-facing mode: it gives minimal framing, at most three choices per question, and expects longer free-text answers where the author wants control.
 
 ```bash
@@ -175,7 +189,7 @@ Interview questions use four-digit IDs and lettered choices so Hermes can keep c
 
 Startup ambiguity separates startup-blocking ambiguity from deeper optional lore. A startup ambiguity score of `0%` means the required opening-world questions are answered or author-approved enough to start early scenes; it does not mean the entire fictional universe is complete.
 
-Authors may also choose high-autonomy or fully autonomous random world generation as a creative constraint. WSA does not forbid `100%` autonomy; it recommends that the user's Hermes runtime and the author agree on natural-language checkpoints such as "until 100 characters exist" or "until three regions have factions, conflicts, and opening hooks." Generated material should still be reported as candidates and committed to canon only through the user's chosen review policy.
+Authors may also choose high-autonomy or fully autonomous random world generation as a creative constraint. WSA does not forbid `100%` autonomy; it recommends that the user's Hermes runtime and the author agree on natural-language checkpoints such as "until 100 characters exist" or "until three regions have factions, conflicts, and opening hooks." Generated material should still be reported as candidates and canonized only through the user's chosen review policy.
 
 The default discretion scale is customizable by the user's Hermes runtime:
 
@@ -199,7 +213,7 @@ Hermes runtimes can also expose `/fill-the-rest` or `/filltherest` for anytime l
 /filltherest-start world=<world_id> destination="until the trade district has factions, conflicts, and scene hooks" cron_schedule="daily"
 ```
 
-Run a non-mutating meeting before committing world changes:
+Run a non-mutating meeting before applying world-state changes:
 
 ```bash
 PYTHONPATH=src python3 -m wsa meeting run <world_id> \

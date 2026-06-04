@@ -43,6 +43,13 @@ from .manager import WorldManager
 from .meeting import MeetingOrchestrator
 from .orchestrator import SceneOrchestrator
 from .repositories import WorldRepository
+from .review_cleanup import (
+    archive_callback_residue,
+    format_cleanup_audit,
+    format_review_triage,
+    reject_pending_review,
+    triage_review_queue,
+)
 from .startup import (
     QUESTION_STATUSES,
     StartupProfileManager,
@@ -472,6 +479,54 @@ def build_parser() -> argparse.ArgumentParser:
     report_list = report_subparsers.add_parser("list", help="List reports for a world.")
     report_list.add_argument("world_id", help="World ID.")
     report_list.add_argument("--status", help="Optional report status filter.")
+    report_triage = report_subparsers.add_parser(
+        "triage",
+        help="Read-only triage of pending reports, reviewable runs, and callback residue.",
+    )
+    report_triage.add_argument("world_id", help="World ID.")
+    report_triage.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    report_reject_pending = report_subparsers.add_parser(
+        "reject-pending",
+        help="Reject pending proposal reports/runs after explicit author intent.",
+    )
+    report_reject_pending.add_argument("world_id", help="World ID.")
+    report_reject_pending.add_argument(
+        "--reason",
+        default="bulk reject pending review by author request",
+        help="Reason recorded in the cleanup audit.",
+    )
+    report_reject_pending.add_argument(
+        "--archive-callbacks",
+        action="store_true",
+        help="Also move Hermes callback residue JSON files into callback_archive.",
+    )
+    report_reject_pending.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    report_archive_callbacks = report_subparsers.add_parser(
+        "archive-callbacks",
+        help="Archive callback residue without changing reports or runs.",
+    )
+    report_archive_callbacks.add_argument("world_id", help="World ID.")
+    report_archive_callbacks.add_argument(
+        "--reason",
+        default="archive completed or discarded callback residue",
+        help="Reason recorded in the cleanup audit.",
+    )
+    report_archive_callbacks.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
 
     ticket_parser = subparsers.add_parser("ticket", help="Inspect or apply tickets.")
     ticket_subparsers = ticket_parser.add_subparsers(dest="ticket_command")
@@ -1462,6 +1517,59 @@ def run_report_list(workspace: Path, world_id: str, status: str | None) -> int:
     return 0
 
 
+def run_report_triage(workspace: Path, world_id: str, output_format: str) -> int:
+    world = get_world(workspace, world_id)
+    payload = triage_review_queue(workspace, world)
+    if output_format == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_review_triage(payload):
+            print(line)
+    return 0
+
+
+def run_report_reject_pending(
+    workspace: Path,
+    world_id: str,
+    reason: str,
+    archive_callbacks: bool,
+    output_format: str,
+) -> int:
+    if not guard_update_unlocked(workspace, "report.reject_pending"):
+        return 1
+    world = get_world(workspace, world_id)
+    payload = reject_pending_review(
+        workspace,
+        world,
+        reason=reason,
+        archive_callbacks=archive_callbacks,
+    )
+    if output_format == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_cleanup_audit(payload):
+            print(line)
+    return 0
+
+
+def run_report_archive_callbacks(
+    workspace: Path,
+    world_id: str,
+    reason: str,
+    output_format: str,
+) -> int:
+    if not guard_update_unlocked(workspace, "report.archive_callbacks"):
+        return 1
+    world = get_world(workspace, world_id)
+    payload = archive_callback_residue(workspace, world, reason=reason)
+    if output_format == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_cleanup_audit(payload):
+            print(line)
+    return 0
+
+
 def run_ticket_list(workspace: Path, world_id: str, status: str | None) -> int:
     world = get_world(workspace, world_id)
     repo = WorldRepository(world.world_id, world.path)
@@ -2021,6 +2129,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "report":
         if args.report_command == "list":
             return run_report_list(config.workspace, args.world_id, args.status)
+        if args.report_command == "triage":
+            return run_report_triage(config.workspace, args.world_id, args.format)
+        if args.report_command == "reject-pending":
+            return run_report_reject_pending(
+                config.workspace,
+                args.world_id,
+                args.reason,
+                args.archive_callbacks,
+                args.format,
+            )
+        if args.report_command == "archive-callbacks":
+            return run_report_archive_callbacks(
+                config.workspace,
+                args.world_id,
+                args.reason,
+                args.format,
+            )
         parser.parse_args(["report", "--help"])
     if args.command == "ticket":
         if args.ticket_command == "list":

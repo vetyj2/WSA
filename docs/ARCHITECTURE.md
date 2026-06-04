@@ -26,7 +26,9 @@ World-Scene-Actors/
 │   ├── meeting.py                 # Static proposal-only meetup path
 │   ├── startup.py                 # Startup / Easy Startup interview contract
 │   ├── actors.py / runtime.py     # Actor와 runtime abstraction
-│   └── reports.py / tickets.py    # Review artifact와 approval ticket
+│   ├── reports.py / review_cleanup.py
+│   │                              # Review artifact, queue triage, cleanup audit
+│   └── tickets.py                 # Approval ticket
 ├── tests/                         # CLI, storage, Hermes contract tests
 ├── examples/                      # Public-safe Hermes JSON / CLI examples
 ├── change_log/                    # Versioned HTML review dashboards
@@ -43,11 +45,13 @@ World-Scene-Actors/
 | --- | --- | --- |
 | Command surface | `cli.py` | User/Hermes-facing command를 parsing하고 좁은 모듈로 위임합니다. |
 | Workspace / template | `workspace.py`, `template.py` | Workspace directory, schema support, template readiness를 확인합니다. |
-| Persistence | `repositories.py`, `reports.py`, `tickets.py` | SQLite world state, report, ticket, fact, scene, diagnostic, graph data를 관리합니다. |
+| Persistence | `repositories.py`, `reports.py`, `review_cleanup.py`, `tickets.py` | SQLite world state, report, review cleanup audit, ticket, fact, scene, diagnostic, graph data를 관리합니다. |
 | Diagnostics / update | `manager.py`, `update.py`, `hermes_doctor.py` | Health check와 safe update logic을 generation workflow와 분리합니다. |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Task packet 생성, callback shape/route validation, public registry example을 담당합니다. |
 | Orchestration | `autonomous_orchestrator.py`, `orchestrator_bridge.py`, `orchestrator_*` | Run state, actor_state, floor_state, hook packet, compressed continuity, quality gate, approval package를 기록합니다. |
 | Proposal workflows | `meeting.py`, `startup.py` | Canon이 아닌 meeting/interview material을 만들고 report/ticket flow로 넘깁니다. |
+
+`review_cleanup.py`는 live 사용 중 쌓인 pending proposal report, author-review orchestrator run, Hermes callback residue를 안전하게 정리하는 lifecycle을 담당합니다. 승인된 report, canon fact, ticket, startup profile, DB schema는 cleanup 대상에서 제외하고, 변경은 `reports/archived/review-cleanup-*.json` audit artifact로 남깁니다.
 
 ## Runtime Shape
 

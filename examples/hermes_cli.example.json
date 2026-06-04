@@ -56,7 +56,7 @@
             "draft institutions, locations, customs, and scene hooks"
           ],
           "agent_must_not": [
-            "commit generated material to canon without review"
+            "canonize generated material without review"
           ],
           "cron_allowed": false,
           "label": "balanced_fill",
@@ -83,7 +83,7 @@
           "agent_must_not": [
             "start without a destination checkpoint",
             "continue after the checkpoint is met",
-            "commit generated material to canon without approval"
+            "canonize generated material without approval"
           ],
           "completion_policy": "stop_cron_then_report_quality_and_request_approval",
           "cron_allowed": true,

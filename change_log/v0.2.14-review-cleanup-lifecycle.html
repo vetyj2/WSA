@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.14 Review Cleanup Lifecycle</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #4f46e5;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; padding: 2px 5px; color: #253041; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.14 Review Cleanup Lifecycle</h1>
+      <p>Pending proposal reports, author-review runs, and Hermes callback residue now have a bounded triage and cleanup path with audit artifacts.</p>
+      <div class="badges">
+        <span class="badge accent">review queue</span>
+        <span class="badge accent">cleanup audit</span>
+        <span class="badge">callback archive</span>
+        <span class="badge">Database surface</span>
+        <span class="badge warn">no canon mutation</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>What Changed</h2>
+        <p>The existing <code>report</code> command family gained lifecycle tools for live workspace hygiene.</p>
+        <ul>
+          <li><code>wsa report triage WORLD_ID</code> is read-only.</li>
+          <li><code>wsa report reject-pending WORLD_ID</code> rejects pending proposal reports and review-bound runs.</li>
+          <li><code>wsa report archive-callbacks WORLD_ID</code> moves callback residue into managed archive storage.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Safety Boundary</h2>
+        <p>The cleanup path is intentionally narrow. It handles proposal lifecycle residue, not world-state rollback.</p>
+        <ul>
+          <li>Approved reports are excluded.</li>
+          <li>Canon facts and tickets are not modified.</li>
+          <li>Startup profile and DB schema are not changed.</li>
+          <li>Callback JSON is moved, not deleted.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Hermes Surface</h2>
+        <p>The compact menu stays intact. Review cleanup belongs under Database/Review rather than becoming a new top-level product command.</p>
+        <ul>
+          <li><code>/wsa_review_queue</code> maps to read-only triage.</li>
+          <li><code>/wsa_review_cleanup</code> requires author approval.</li>
+          <li>Local custom aliases still belong in the user overlay.</li>
+        </ul>
+      </article>
+
+      <article class="panel wide">
+        <h2>Operational Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>1. Triage</strong>
+            <span>Count pending reports, reviewable runs, approved exclusions, and callback residue.</span>
+          </div>
+          <div class="step">
+            <strong>2. Author Intent</strong>
+            <span>Hermes briefs the user before mutating proposal state or moving residue files.</span>
+          </div>
+          <div class="step">
+            <strong>3. Cleanup</strong>
+            <span>Pending reports and review-bound runs move to rejected; callbacks move to archive.</span>
+          </div>
+          <div class="step">
+            <strong>4. Audit</strong>
+            <span><code>reports/archived/review-cleanup-*.json</code> records what changed and what was excluded.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Why It Matters</h2>
+        <p>Live Hermes sessions can leave proposal and callback residue after experimentation. This patch prevents manual file surgery and keeps update/preflight cleanup explicit.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

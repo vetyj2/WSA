@@ -104,6 +104,26 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.14-review-cleanup-lifecycle.html">v0.2.14 Review Cleanup Lifecycle</a></h2>
+          <p>Adds bounded review queue triage and cleanup commands for pending proposal reports, author-review orchestrator runs, and Hermes callback residue.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">review queue</span>
+          <span class="badge accent">cleanup audit</span>
+          <span class="badge">callback archive</span>
+          <span class="badge">Database surface</span>
+          <span class="badge warn">no canon mutation</span>
+        </div>
+        <ul>
+          <li><code>wsa report triage</code> gives a read-only pending report/run/callback residue summary.</li>
+          <li><code>wsa report reject-pending</code> rejects pending proposal artifacts and writes a cleanup audit JSON.</li>
+          <li><code>wsa report archive-callbacks</code> moves callback residue into <code>hermes/callback_archive/</code> instead of deleting it.</li>
+          <li>Approved reports, canon facts, tickets, startup profile data, and DB schema are explicitly excluded.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.13-mode-aware-hooks.html">v0.2.13 Mode-Aware Hooks</a></h2>
           <p>Adds workflow- and scene-mode-specific turn contracts to hook packets so external runtimes receive narrower instructions for Meetup, fact-audit Scene, and writing-room line-build Scene work.</p>
         </div>

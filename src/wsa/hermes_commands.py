@@ -157,7 +157,7 @@ def _canonical_menu_surface() -> Dict[str, Any]:
                 ],
                 "intent": "non_canon_worldbuilding_discussion_and_candidate_generation",
                 "notes": [
-                    "Meetup is a working belief or intermediate orchestration surface; it does not directly commit canon.",
+                    "Meetup is a working belief or intermediate orchestration surface; it does not directly canonize generated material.",
                 ],
             },
             {
@@ -191,12 +191,20 @@ def _canonical_menu_surface() -> Dict[str, Any]:
             {
                 "label": "Database",
                 "primary_command": None,
-                "modes": ["query", "reports", "tickets", "facts", "export", "migration"],
-                "current_routes": ["/wsa_worlds", "/wsa_reports", "/wsa_tickets", "/wsa_approve_ticket"],
+                "modes": ["query", "reports", "review_queue", "tickets", "facts", "export", "migration"],
+                "current_routes": [
+                    "/wsa_worlds",
+                    "/wsa_reports",
+                    "/wsa_review_queue",
+                    "/wsa_review_cleanup",
+                    "/wsa_tickets",
+                    "/wsa_approve_ticket",
+                ],
                 "intent": "world_data_inspection_review_and_structural_management",
                 "status": "route_group_no_single_command_yet",
                 "notes": [
                     "Database is separate from Doctor: Doctor diagnoses health; Database inspects and manages world data.",
+                    "Review cleanup stays under Database/Review instead of becoming a new top-level surface.",
                 ],
             },
         ],
@@ -1515,6 +1523,50 @@ def _default_commands() -> List[Dict[str, Any]]:
                 _arg("status", False, "Optional report status filter."),
             ],
             [["wsa", "report", "list", "{world_id}", "--status", "{status}"]],
+        ),
+        _command(
+            "/wsa_review_queue",
+            ["/wsa-review-queue", "/wsa_report_triage"],
+            "Triage pending proposal reports, reviewable runs, and callback residue.",
+            "triage_review_queue",
+            "review",
+            "read_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+            ],
+            [["wsa", "report", "triage", "{world_id}"]],
+            [
+                "Read-only command. Use this before any bulk rejection or callback archive action.",
+                "Approved reports, canon facts, tickets, and world DB schema are excluded from cleanup.",
+            ],
+        ),
+        _command(
+            "/wsa_review_cleanup",
+            ["/wsa-review-cleanup", "/wsa_reject_pending"],
+            "Reject pending proposal reports/runs and archive callback residue after author approval.",
+            "reject_pending_review_queue",
+            "review",
+            "requires_approval",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("reason", True, "Author-facing reason to store in the cleanup audit."),
+            ],
+            [
+                [
+                    "wsa",
+                    "report",
+                    "reject-pending",
+                    "{world_id}",
+                    "--reason",
+                    "{reason}",
+                    "--archive-callbacks",
+                ]
+            ],
+            [
+                "Requires explicit author approval because it changes proposal/report/run state.",
+                "This rejects pending proposal artifacts only; it must not delete approved canon facts or tickets.",
+                "The command writes an audit JSON under reports/archived and moves callback residue, not raw-deletes it.",
+            ],
         ),
         _command(
             "/wsa_tickets",

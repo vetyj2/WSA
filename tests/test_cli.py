@@ -11,6 +11,7 @@ from unittest.mock import patch
 from wsa.cli import main
 from wsa.hermes_adapter import HERMES_CALLBACK_SCHEMA
 from wsa.repositories import WorldRepository
+from wsa.reports import ReportMailbox
 from wsa.startup import StartupProfileManager
 from wsa.workspace import (
     SCHEMA_VERSION,
@@ -805,6 +806,58 @@ class CliTests(TestCase):
             self.assertEqual(report_code, 0)
             self.assertIn("Scene result PR", ticket_stdout.getvalue())
             self.assertIn("Final scene report", report_stdout.getvalue())
+
+    def test_report_review_cleanup_cli_triages_and_rejects_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Review Cleanup World")
+            repo = WorldRepository(world.world_id, world.path)
+            mailbox = ReportMailbox(workspace)
+            report = mailbox.create_world_report(
+                repo,
+                title="Pending CLI Proposal",
+                purpose="meeting",
+                status="pending_review",
+            )
+            callback_path = workspace / "hermes" / "callbacks" / "callback.json"
+            callback_path.write_text('{"status": "accepted"}\n', encoding="utf-8")
+
+            triage_stdout = StringIO()
+            with patch("sys.stdout", triage_stdout):
+                triage_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "report",
+                        "triage",
+                        world.world_id,
+                    ]
+                )
+
+            cleanup_stdout = StringIO()
+            with patch("sys.stdout", cleanup_stdout):
+                cleanup_code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "report",
+                        "reject-pending",
+                        world.world_id,
+                        "--reason",
+                        "author cleanup",
+                        "--archive-callbacks",
+                        "--format",
+                        "json",
+                    ]
+                )
+            payload = json.loads(cleanup_stdout.getvalue())
+
+            self.assertEqual(triage_code, 0)
+            self.assertEqual(cleanup_code, 0)
+            self.assertIn("pending_reports: 1", triage_stdout.getvalue())
+            self.assertEqual(repo.get_report(report.report_id).status, "rejected")
+            self.assertEqual(payload["callback_archive"]["archived_count"], 1)
+            self.assertFalse(callback_path.exists())
 
     def test_ticket_approve_cli_applies_mock_scene_ticket(self) -> None:
         with TemporaryDirectory() as tmp:

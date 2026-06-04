@@ -21,6 +21,7 @@ WSA는 공개 저장소로 공유할 수 있는 템플릿을 목표로 합니다
 - Static meeting mode와 autonomous orchestrator scaffold
 - Hermes task/callback 파일 계약
 - Runtime bridge hook, actor_state, floor_state continuity 계약
+- Review queue triage와 proposal/callback cleanup audit 계약
 - Hermes shortcut command registry 예시
 - Template readiness, doctor, update preflight
 
@@ -33,7 +34,7 @@ WSA는 공개 저장소로 공유할 수 있는 템플릿을 목표로 합니다
 | Diagnostics / update | `manager.py`, `update.py`, `hermes_doctor.py` | Doctor checks, update preflight, runtime checks |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Task packets, callback collection, command registry |
 | Orchestration | `autonomous_orchestrator.py`, `orchestrator_*`, `orchestrator_bridge.py` | Meetup/scene runs, hook packets, callback turns |
-| Review workflow | `meeting.py`, `startup.py`, `reports.py`, `tickets.py` | Proposal gathering, interviews, reports, approval tickets |
+| Review workflow | `meeting.py`, `startup.py`, `reports.py`, `review_cleanup.py`, `tickets.py` | Proposal gathering, interviews, reports, review cleanup, approval tickets |
 
 자세한 구조는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 보세요. 권장 사용 방향은 [docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md), WSA/Hermes 권한 경계는 [docs/RUNTIME_BOUNDARIES.md](docs/RUNTIME_BOUNDARIES.md)에 정리되어 있습니다.
 
@@ -71,7 +72,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 현재 기대 결과:
 
 ```text
-119 tests OK
+127 tests OK
 ```
 
 새 workspace smoke:
@@ -114,6 +115,14 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 `fact-audit-synthesis`는 `source_refs`, `fact_lookup_queries`, `checked_tables`, `checked_reports`, `conflicts_found`, `deferred_claims` 같은 evidence가 있을 때만 깊은 fact-audit으로 해석합니다. `writing-room-line-build`는 `line_build_ledger`에 후보 문장/beat, PASS/FAIL/HOLD/RETRY, rollback reason, adopted marker가 남아야 공동 작성으로 보고합니다.
 
 Hook packet은 workflow와 scene mode에 맞는 `mode_aware_turn_contract`를 포함합니다. Meetup은 얕은 동의 대신 제약/반박/의존성을 요구하고, fact-audit scene turn은 근거와 보류 claim을 요구하며, line-build scene turn은 1-3개 후보 문장/beat와 검증 결정을 요구합니다.
+
+승인대기 proposal과 callback residue는 `report` 하위 lifecycle로 정리합니다. `report triage`는 읽기 전용으로 pending report, reviewable orchestrator run, callback residue를 요약합니다. `report reject-pending`은 명시적 author intent가 있을 때 `inbox`/`pending_review` report와 `awaiting_author_review` run만 rejected로 전환하고 감사 JSON을 `reports/archived/`에 남깁니다. `--archive-callbacks`를 붙이면 callback JSON은 삭제하지 않고 `hermes/callback_archive/`로 이동합니다. 승인된 report, canon fact, ticket, DB schema는 건드리지 않습니다.
+
+```bash
+PYTHONPATH=src python3 -m wsa report triage <world_id>
+PYTHONPATH=src python3 -m wsa report reject-pending <world_id> --reason "author rejected pending proposals" --archive-callbacks
+PYTHONPATH=src python3 -m wsa report archive-callbacks <world_id> --reason "completed callback residue"
+```
 
 ## 공개 저장소 안전 원칙
 

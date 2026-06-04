@@ -29,7 +29,7 @@ DISCRETION_LEVEL_DETAILS: Dict[int, Dict[str, Any]] = {
         "label": "balanced_fill",
         "summary": "Hermes may prefill ordinary supporting details and report assumptions.",
         "agent_may": ["draft institutions, locations, customs, and scene hooks"],
-        "agent_must_not": ["commit generated material to canon without review"],
+        "agent_must_not": ["canonize generated material without review"],
         "cron_allowed": False,
     },
     4: {
@@ -50,7 +50,7 @@ DISCRETION_LEVEL_DETAILS: Dict[int, Dict[str, Any]] = {
         "agent_must_not": [
             "start without a destination checkpoint",
             "continue after the checkpoint is met",
-            "commit generated material to canon without approval",
+            "canonize generated material without approval",
         ],
         "cron_allowed": True,
         "requires_destination_checkpoint": True,

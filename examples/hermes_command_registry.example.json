@@ -43,7 +43,7 @@
           "decision_meeting"
         ],
         "notes": [
-          "Meetup is a working belief or intermediate orchestration surface; it does not directly commit canon."
+          "Meetup is a working belief or intermediate orchestration surface; it does not directly canonize generated material."
         ],
         "primary_command": "/wsa_orchestrator"
       },
@@ -103,6 +103,8 @@
         "current_routes": [
           "/wsa_worlds",
           "/wsa_reports",
+          "/wsa_review_queue",
+          "/wsa_review_cleanup",
           "/wsa_tickets",
           "/wsa_approve_ticket"
         ],
@@ -111,13 +113,15 @@
         "modes": [
           "query",
           "reports",
+          "review_queue",
           "tickets",
           "facts",
           "export",
           "migration"
         ],
         "notes": [
-          "Database is separate from Doctor: Doctor diagnoses health; Database inspects and manages world data."
+          "Database is separate from Doctor: Doctor diagnoses health; Database inspects and manages world data.",
+          "Review cleanup stays under Database/Review instead of becoming a new top-level surface."
         ],
         "primary_command": null,
         "status": "route_group_no_single_command_yet"
@@ -2458,6 +2462,105 @@
     },
     {
       "aliases": [
+        "/wsa-review-queue",
+        "/wsa_report_triage"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        }
+      ],
+      "category": "review",
+      "cli_template_policy": {
+        "execution": "run_single",
+        "optional_arguments": [],
+        "optional_placeholder_rule": "If an optional placeholder is unresolved or empty, omit that argv token; if the previous argv token is the option flag for that placeholder, omit the flag too.",
+        "repeatable_arguments": [],
+        "repeatable_placeholder_rule": "For repeatable placeholders, emit one flag/value pair per value rather than joining."
+      },
+      "cli_templates": [
+        [
+          "wsa",
+          "report",
+          "triage",
+          "{world_id}"
+        ]
+      ],
+      "command": "/wsa_review_queue",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": false
+      },
+      "intent": "triage_review_queue",
+      "notes": [
+        "Read-only command. Use this before any bulk rejection or callback archive action.",
+        "Approved reports, canon facts, tickets, and world DB schema are excluded from cleanup."
+      ],
+      "safety": "read_only",
+      "title": "Triage pending proposal reports, reviewable runs, and callback residue."
+    },
+    {
+      "aliases": [
+        "/wsa-review-cleanup",
+        "/wsa_reject_pending"
+      ],
+      "arguments": [
+        {
+          "description": "World ID or active world selected by Hermes.",
+          "name": "world_id",
+          "required": true
+        },
+        {
+          "description": "Author-facing reason to store in the cleanup audit.",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "category": "review",
+      "cli_template_policy": {
+        "execution": "run_single",
+        "optional_arguments": [],
+        "optional_placeholder_rule": "If an optional placeholder is unresolved or empty, omit that argv token; if the previous argv token is the option flag for that placeholder, omit the flag too.",
+        "repeatable_arguments": [],
+        "repeatable_placeholder_rule": "For repeatable placeholders, emit one flag/value pair per value rather than joining."
+      },
+      "cli_templates": [
+        [
+          "wsa",
+          "report",
+          "reject-pending",
+          "{world_id}",
+          "--reason",
+          "{reason}",
+          "--archive-callbacks"
+        ]
+      ],
+      "command": "/wsa_review_cleanup",
+      "delivery": {
+        "default": "chat_summary",
+        "full_artifact": "local_report_or_file_attachment"
+      },
+      "execution_policy": {
+        "owner": "user_hermes_runtime",
+        "requires_user_confirmation": true
+      },
+      "intent": "reject_pending_review_queue",
+      "notes": [
+        "Requires explicit author approval because it changes proposal/report/run state.",
+        "This rejects pending proposal artifacts only; it must not delete approved canon facts or tickets.",
+        "The command writes an audit JSON under reports/archived and moves callback residue, not raw-deletes it."
+      ],
+      "safety": "requires_approval",
+      "title": "Reject pending proposal reports/runs and archive callback residue after author approval."
+    },
+    {
+      "aliases": [
         "/wsa-tickets",
         "/wsa_ticket_list"
       ],
@@ -2650,7 +2753,7 @@
           "draft institutions, locations, customs, and scene hooks"
         ],
         "agent_must_not": [
-          "commit generated material to canon without review"
+          "canonize generated material without review"
         ],
         "cron_allowed": false,
         "label": "balanced_fill",
@@ -2677,7 +2780,7 @@
         "agent_must_not": [
           "start without a destination checkpoint",
           "continue after the checkpoint is met",
-          "commit generated material to canon without approval"
+          "canonize generated material without approval"
         ],
         "completion_policy": "stop_cron_then_report_quality_and_request_approval",
         "cron_allowed": true,

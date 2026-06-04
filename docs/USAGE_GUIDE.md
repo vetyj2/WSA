@@ -65,6 +65,21 @@ Round는 중간보고 단위입니다. 실제 비용과 루프 제한은 actor t
 
 WSA callback quality gate는 missing fields, unlabeled uncertainty, canon mutation attempt뿐 아니라 empty agreement, repeated prior position 같은 low-value turn warning도 기록합니다. 경고가 있으면 Hermes는 좁은 retry, deepening question, manager/canon verification pause 중 하나를 선택하는 것이 좋습니다.
 
+## Review Queue 정리
+
+실사용 중에는 pending report, author-review run, callback residue가 쌓일 수 있습니다. 수동 파일 삭제 대신 `report` 하위 lifecycle을 사용하세요.
+
+```bash
+wsa --workspace <live-workspace> report triage <world_id>
+wsa --workspace <live-workspace> report reject-pending <world_id> \
+  --reason "author rejected pending proposals" \
+  --archive-callbacks
+wsa --workspace <live-workspace> report archive-callbacks <world_id> \
+  --reason "completed callback residue"
+```
+
+`triage`는 읽기 전용입니다. `reject-pending`은 명시적 author intent가 있을 때만 사용하고, `inbox`/`pending_review` report와 `awaiting_author_review` orchestrator run만 rejected로 전환합니다. callback residue는 삭제하지 않고 `hermes/callback_archive/`로 이동합니다. 승인된 report, canon fact, ticket, startup profile, DB schema는 이 cleanup 경로에서 제외됩니다. 실행 결과는 `reports/archived/review-cleanup-*.json` 감사 artifact로 남습니다.
+
 ## Canon 적용 원칙
 
 WSA의 meeting, startup, scene prep, orchestrator output은 기본적으로 proposal입니다. 바로 canon fact나 world state가 되지 않습니다.
