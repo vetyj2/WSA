@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
+from .artifact_map import (
+    artifact_architecture_map_path,
+    build_artifact_architecture_map,
+    format_artifact_architecture_map,
+    write_artifact_architecture_map,
+)
 from .autonomous_orchestrator import AutonomousOrchestrator, resolve_scene_filter_contract
 from .orchestrator_bridge import OrchestratorBridge
 from .orchestrator_contract import (
@@ -537,6 +543,24 @@ def build_parser() -> argparse.ArgumentParser:
     ticket_approve.add_argument("world_id", help="World ID.")
     ticket_approve.add_argument("ticket_id", help="Ticket ID.")
 
+    artifact_parser = subparsers.add_parser("artifact", help="Inspect artifact architecture.")
+    artifact_subparsers = artifact_parser.add_subparsers(dest="artifact_command")
+    artifact_map = artifact_subparsers.add_parser(
+        "map",
+        help="Print or write the workspace artifact architecture map.",
+    )
+    artifact_map.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the generated map to manager/artifact_map/artifact_architecture_map.json.",
+    )
+    artifact_map.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+
     scene_parser = subparsers.add_parser("scene", help="Run scene orchestration utilities.")
     scene_subparsers = scene_parser.add_subparsers(dest="scene_command")
     scene_start = scene_subparsers.add_parser(
@@ -843,6 +867,7 @@ def run_doctor(workspace: Path) -> int:
     print(f"workspace_exists: {workspace.exists()}")
     db_path = control_db_path(workspace)
     print(f"control_db_exists: {db_path.exists()}")
+    print(f"artifact_map_exists: {artifact_architecture_map_path(workspace).exists()}")
     if db_path.exists():
         try:
             with sqlite_connection(db_path, schema_name="control") as conn:
@@ -1605,6 +1630,23 @@ def run_ticket_approve(workspace: Path, world_id: str, ticket_id: str) -> int:
     return 0
 
 
+def run_artifact_map(workspace: Path, write: bool, output_format: str) -> int:
+    stored_path = artifact_architecture_map_path(workspace)
+    payload = build_artifact_architecture_map(workspace)
+    output_path = stored_path if stored_path.exists() else None
+    if write:
+        if not guard_update_unlocked(workspace, "artifact.map.write"):
+            return 1
+        output_path = write_artifact_architecture_map(workspace)
+        payload = build_artifact_architecture_map(workspace)
+    if output_format == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_artifact_architecture_map(payload, stored_path=output_path):
+            print(line)
+    return 0
+
+
 def run_hermes_init_example(
     workspace: Path,
     adapter_name: str,
@@ -2153,6 +2195,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.ticket_command == "approve":
             return run_ticket_approve(config.workspace, args.world_id, args.ticket_id)
         parser.parse_args(["ticket", "--help"])
+    if args.command == "artifact":
+        if args.artifact_command == "map":
+            return run_artifact_map(config.workspace, args.write, args.format)
+        parser.parse_args(["artifact", "--help"])
     if args.command == "hermes":
         if args.hermes_command == "init-example":
             return run_hermes_init_example(

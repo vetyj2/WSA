@@ -1203,6 +1203,7 @@
           "schema": "wsa.reporting.artifact_contract.v1",
           "skill": null,
           "storage_policy": {
+            "artifact_architecture_map": "manager/artifact_map/artifact_architecture_map.json",
             "delete_policy": {
               "delete_exports_with_session_log_when_runtime_policy_allows": true,
               "keep_world_db_and_canon_separate": true,
@@ -1770,6 +1771,7 @@
           "schema": "wsa.reporting.artifact_contract.v1",
           "skill": null,
           "storage_policy": {
+            "artifact_architecture_map": "manager/artifact_map/artifact_architecture_map.json",
             "delete_policy": {
               "delete_exports_with_session_log_when_runtime_policy_allows": true,
               "keep_world_db_and_canon_separate": true,
@@ -2992,6 +2994,7 @@
     "schema": "wsa.reporting.artifact_contract.v1",
     "skill": null,
     "storage_policy": {
+      "artifact_architecture_map": "manager/artifact_map/artifact_architecture_map.json",
       "delete_policy": {
         "delete_exports_with_session_log_when_runtime_policy_allows": true,
         "keep_world_db_and_canon_separate": true,

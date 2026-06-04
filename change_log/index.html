@@ -104,6 +104,26 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.15-artifact-architecture-map.html">v0.2.15 Artifact Architecture Map</a></h2>
+          <p>Adds a compact workspace map that distinguishes source-of-truth zones, managed artifact zones, runtime residue, and external artifact boundaries before export/uninstall tooling grows.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">artifact map</span>
+          <span class="badge accent">source boundary</span>
+          <span class="badge">uninstall prep</span>
+          <span class="badge">maintenance prep</span>
+          <span class="badge warn">dry-run default</span>
+        </div>
+        <ul>
+          <li><code>wsa artifact map</code> prints the source/artifact boundary map.</li>
+          <li><code>wsa artifact map --write</code> stores it under <code>manager/artifact_map/</code>.</li>
+          <li>Template readiness and manager diagnostics can validate or create the map.</li>
+          <li>External artifacts remain source-map required and warn-only by default.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.14-review-cleanup-lifecycle.html">v0.2.14 Review Cleanup Lifecycle</a></h2>
           <p>Adds bounded review queue triage and cleanup commands for pending proposal reports, author-review orchestrator runs, and Hermes callback residue.</p>
         </div>

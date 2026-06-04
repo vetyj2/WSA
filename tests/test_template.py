@@ -27,6 +27,14 @@ class TemplateTests(TestCase):
                     / "hermes_commands.example.json"
                 ).exists()
             )
+            self.assertTrue(
+                (
+                    workspace
+                    / "manager"
+                    / "artifact_map"
+                    / "artifact_architecture_map.json"
+                ).exists()
+            )
 
     def test_template_check_rejects_live_adapter_config(self) -> None:
         with TemporaryDirectory() as tmp:

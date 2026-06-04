@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, List
 
+from .artifact_map import (
+    ARTIFACT_ARCHITECTURE_MAP_SCHEMA,
+    artifact_architecture_map_path,
+    validate_artifact_architecture_map,
+    write_artifact_architecture_map,
+)
 from .hermes_adapter import HermesCliTemplateAdapter
 from .hermes_commands import (
     HERMES_COMMAND_REGISTRY_FILENAME,
@@ -48,9 +54,11 @@ class TemplateChecker:
             write_hermes_command_registry(
                 adapter.adapter_config_dir() / HERMES_COMMAND_REGISTRY_FILENAME
             )
+            write_artifact_architecture_map(self.workspace)
 
         checks = [
             self._workspace_initialized_check(),
+            self._artifact_architecture_map_check(),
             self._hermes_dirs_check(),
             self._example_config_check(),
             self._command_registry_check(),
@@ -68,6 +76,17 @@ class TemplateChecker:
         if db_path.exists():
             return TemplateCheck("workspace_initialized", "ok", str(db_path))
         return TemplateCheck("workspace_initialized", "fail", "control.sqlite is missing")
+
+    def _artifact_architecture_map_check(self) -> TemplateCheck:
+        path = artifact_architecture_map_path(self.workspace)
+        findings = validate_artifact_architecture_map(self.workspace)
+        if findings:
+            return TemplateCheck(
+                "artifact_architecture_map",
+                "fail",
+                "; ".join(findings),
+            )
+        return TemplateCheck("artifact_architecture_map", "ok", f"{path}:{ARTIFACT_ARCHITECTURE_MAP_SCHEMA}")
 
     def _hermes_dirs_check(self) -> TemplateCheck:
         missing = [

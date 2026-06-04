@@ -2,6 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
+from wsa.artifact_map import write_artifact_architecture_map
 from wsa.manager import WorldManager
 from wsa.orchestrator import SceneOrchestrator
 from wsa.repositories import WorldRepository
@@ -64,8 +65,9 @@ class WorldManagerTests(TestCase):
     def test_diagnostics_empty_report_cleanup_requires_fix(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
+            write_artifact_architecture_map(workspace)
             empty_report = workspace / "reports" / "inbox" / "empty.html"
-            empty_report.parent.mkdir(parents=True)
+            empty_report.parent.mkdir(parents=True, exist_ok=True)
             empty_report.write_text("", encoding="utf-8")
 
             findings = WorldManager(workspace).run_diagnostics()
@@ -80,6 +82,26 @@ class WorldManagerTests(TestCase):
                 [item.finding_type for item in fixed_findings],
                 ["empty_report_cleanup"],
             )
+
+    def test_diagnostics_can_create_missing_artifact_map(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Artifact Map Diagnostic World")
+            map_path = workspace / "manager" / "artifact_map" / "artifact_architecture_map.json"
+
+            findings = WorldManager(workspace).run_diagnostics()
+            fixed = WorldManager(workspace).run_diagnostics(fix=True)
+
+            self.assertIn(
+                "artifact_architecture_map_missing_or_invalid",
+                {item.finding_type for item in findings},
+            )
+            self.assertIn(
+                "artifact_architecture_map_created",
+                {item.finding_type for item in fixed},
+            )
+            self.assertTrue(map_path.exists())
+            self.assertIn(world.world_id, map_path.read_text(encoding="utf-8"))
 
     def test_diagnostics_find_dynamic_dimension_missing_values(self) -> None:
         with TemporaryDirectory() as tmp:

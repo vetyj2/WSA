@@ -35,6 +35,7 @@ CONTROL_DIRS = (
     "manager/diagnostics",
     "manager/automation_policy",
     "manager/runtime_sessions",
+    "manager/artifact_map",
     "worlds",
 )
 

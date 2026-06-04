@@ -23,6 +23,7 @@ def build_reporting_artifact_contract(
         "wsa_role": "declare_recommended_artifact_shapes_and_session_log_storage_policy",
         "storage_policy": {
             "primary_storage": "date_scoped_session_log",
+            "artifact_architecture_map": "manager/artifact_map/artifact_architecture_map.json",
             "managed_artifact_roots": [
                 "worlds/{world_id}/artifacts/",
                 "worlds/{world_id}/meetings/",

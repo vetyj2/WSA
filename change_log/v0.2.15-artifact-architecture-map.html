@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.15 Artifact Architecture Map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #4f46e5;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; padding: 2px 5px; color: #253041; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.15 Artifact Architecture Map</h1>
+      <p>Adds a compact directory-base map that separates source-of-truth zones, managed artifact zones, runtime residue, and external artifact boundaries.</p>
+      <div class="badges">
+        <span class="badge accent">artifact map</span>
+        <span class="badge accent">source boundary</span>
+        <span class="badge">uninstall prep</span>
+        <span class="badge">maintenance prep</span>
+        <span class="badge warn">dry-run default</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>What Changed</h2>
+        <p>WSA can now print or write <code>manager/artifact_map/artifact_architecture_map.json</code>.</p>
+        <ul>
+          <li><code>wsa artifact map</code> prints the generated map.</li>
+          <li><code>wsa artifact map --write</code> stores the map in the workspace.</li>
+          <li>Template readiness can create and validate the map.</li>
+          <li>Manager diagnostics can create a missing map with <code>--fix</code>.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Source Zones</h2>
+        <p>The map makes source-of-truth roots explicit before export or cleanup tooling grows.</p>
+        <ul>
+          <li><code>control.sqlite</code></li>
+          <li><code>worlds/{world_id}/world.sqlite</code></li>
+          <li>Startup profiles</li>
+          <li>Orchestrator run JSON</li>
+          <li>Date-scoped session logs</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Artifact Zones</h2>
+        <p>Derived outputs are bounded to managed roots where future maintenance can reason about them.</p>
+        <ul>
+          <li>Report mailboxes</li>
+          <li>World artifacts</li>
+          <li>Meeting and scene folders</li>
+          <li>Hermes reports outbox</li>
+          <li>Task/callback archives and quarantine</li>
+        </ul>
+      </article>
+
+      <article class="panel wide">
+        <h2>Operational Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>1. Map</strong>
+            <span>Generate the workspace source/artifact boundary map.</span>
+          </div>
+          <div class="step">
+            <strong>2. Diagnose</strong>
+            <span>Doctor and manager checks can tell whether the map exists.</span>
+          </div>
+          <div class="step">
+            <strong>3. Export</strong>
+            <span>Future report exports can point back to source logs and managed roots.</span>
+          </div>
+          <div class="step">
+            <strong>4. Maintain</strong>
+            <span>Future uninstall/prune plans can stay dry-run and source-map driven.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Boundary</h2>
+        <p>This patch does not delete files, move worlds, or generate report exports. It only defines the map that later export, uninstall, and maintenance features should use.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

@@ -25,6 +25,7 @@ The public template should stay world-neutral. Author preferences, naming tastes
 - Manual-trigger autonomous orchestrator lifecycle for meetup/subsession review packages
 - Runtime bridge hooks with actor_state and floor_state continuity
 - Review queue triage and proposal/callback cleanup audit workflow
+- Artifact architecture map for source/export/uninstall boundaries
 - Template readiness checks for copied runtime instances
 
 ## Architecture Snapshot
@@ -35,7 +36,7 @@ WSA is a public-safe local harness template. It owns workspace state, task/callb
 | --- | --- | --- |
 | CLI and workspace | `cli.py`, `workspace.py`, `template.py` | Commands, workspace layout, template readiness |
 | Persistence | `repositories.py` | SQLite world data, reports, tickets, temporal graph |
-| Diagnostics and updates | `manager.py`, `update.py`, `hermes_doctor.py` | Doctor checks, update preflight, runtime checks |
+| Diagnostics and updates | `manager.py`, `update.py`, `hermes_doctor.py`, `artifact_map.py` | Doctor checks, update preflight, runtime checks, artifact boundary map |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Task packets, callback collection, command registry |
 | Orchestration | `autonomous_orchestrator.py`, `orchestrator_*`, `orchestrator_bridge.py` | Meetup/scene runs, hook packets, callback turns |
 | Review workflows | `meeting.py`, `startup.py`, `reports.py`, `review_cleanup.py`, `tickets.py` | Proposal gathering, interviews, reports, review cleanup, approval tickets |
@@ -76,7 +77,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-127 tests OK
+131 tests OK
 ```
 
 ## Quick Smoke Run
@@ -132,6 +133,13 @@ Scene and meetup reporting should follow the shared `wsa.reporting.artifact_cont
 Automatic export and delivery remain user/Hermes profile choices. The contract exists so Hermes can consistently generate, skip, delete, or re-export artifacts without WSA owning chat delivery or runtime preferences.
 
 Artifacts produced while using the harness should stay inside the managed workspace architecture whenever possible: world `artifacts/`, `meetings/`, `orchestrator_runs/`, `scenes/`, report mailboxes, or `hermes/reports_outbox/`. If a runtime must create files outside those roots, it should write an `artifact_source_map.json` manifest using the reporting contract's source-map fields. That manifest should record the origin run/session, artifact type, path, manager, cleanup hint, and whether the file is safe to delete with the session. This keeps install, migration, archive, and uninstall operations tractable.
+
+The workspace can also store a compact artifact architecture map at `manager/artifact_map/artifact_architecture_map.json`. This file is not another data lake; it is the bounded directory map that distinguishes source-of-truth zones such as `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profiles, orchestrator run logs, and session logs from managed artifact zones such as report mailboxes, world artifacts, scene/meeting folders, and Hermes archive/outbox paths. The default policy is dry-run, archive-before-delete, and warn-only for unknown external artifacts.
+
+```bash
+PYTHONPATH=src python3 -m wsa artifact map
+PYTHONPATH=src python3 -m wsa artifact map --write --format json
+```
 
 Scene filters are connected to a sparse temporal graph foundation. A world can define its own dynamic dimensions such as `combat_power`, `current_location`, `political_influence`, or any other label the author and Hermes agree to use. Existing entities are not required to have every dimension. Missing dimensions or missing values are reported as scene-prep gaps instead of crashing the run.
 

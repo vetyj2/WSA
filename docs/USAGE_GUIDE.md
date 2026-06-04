@@ -80,6 +80,17 @@ wsa --workspace <live-workspace> report archive-callbacks <world_id> \
 
 `triage`는 읽기 전용입니다. `reject-pending`은 명시적 author intent가 있을 때만 사용하고, `inbox`/`pending_review` report와 `awaiting_author_review` orchestrator run만 rejected로 전환합니다. callback residue는 삭제하지 않고 `hermes/callback_archive/`로 이동합니다. 승인된 report, canon fact, ticket, startup profile, DB schema는 이 cleanup 경로에서 제외됩니다. 실행 결과는 `reports/archived/review-cleanup-*.json` 감사 artifact로 남습니다.
 
+## Artifact Architecture Map
+
+Export, uninstall, maintenance 기능을 붙이기 전에 workspace의 원본과 파생 artifact 구역을 먼저 한정합니다.
+
+```bash
+wsa --workspace <live-workspace> artifact map
+wsa --workspace <live-workspace> artifact map --write
+```
+
+맵은 `manager/artifact_map/artifact_architecture_map.json`에 저장됩니다. source-of-truth는 `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profile, orchestrator run log, session log입니다. Managed artifact zone은 report mailbox, world artifacts, meetings, scenes, Hermes reports outbox/archive입니다. 외부 경로 artifact는 `artifact_source_map.json`이 없으면 자동 삭제하지 않고 unknown external artifact로 보고하는 방향이 기본입니다.
+
 ## Canon 적용 원칙
 
 WSA의 meeting, startup, scene prep, orchestrator output은 기본적으로 proposal입니다. 바로 canon fact나 world state가 되지 않습니다.

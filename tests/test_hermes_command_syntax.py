@@ -105,6 +105,10 @@ class HermesCommandSyntaxTests(TestCase):
         self.assertEqual(reporting["schema"], "wsa.reporting.artifact_contract.v1")
         self.assertFalse(reporting["storage_policy"]["store_every_export_by_default"])
         self.assertTrue(reporting["storage_policy"]["session_log_is_source_of_truth"])
+        self.assertEqual(
+            reporting["storage_policy"]["artifact_architecture_map"],
+            "manager/artifact_map/artifact_architecture_map.json",
+        )
         self.assertIn(
             "worlds/{world_id}/artifacts/",
             reporting["storage_policy"]["managed_artifact_roots"],

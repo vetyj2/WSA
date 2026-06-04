@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
+from wsa.artifact_map import write_artifact_architecture_map
 from wsa.cli import main
 from wsa.hermes_adapter import HERMES_CALLBACK_SCHEMA
 from wsa.repositories import WorldRepository
@@ -268,6 +269,7 @@ class CliTests(TestCase):
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             create_world(workspace, "CLI Manager World")
+            write_artifact_architecture_map(workspace)
             stdout = StringIO()
             with patch("sys.stdout", stdout):
                 code = main(["--workspace", str(workspace), "manager", "diagnose"])
@@ -858,6 +860,39 @@ class CliTests(TestCase):
             self.assertEqual(repo.get_report(report.report_id).status, "rejected")
             self.assertEqual(payload["callback_archive"]["archived_count"], 1)
             self.assertFalse(callback_path.exists())
+
+    def test_artifact_map_cli_writes_directory_boundary_map(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Artifact Map World")
+
+            stdout = StringIO()
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "artifact",
+                        "map",
+                        "--write",
+                        "--format",
+                        "json",
+                    ]
+                )
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["schema"], "wsa.artifact_architecture_map.v1")
+            self.assertEqual(payload["directory_base"], "manager/artifact_map/")
+            self.assertEqual(payload["concrete_worlds"][0]["world_id"], world.world_id)
+            self.assertTrue(
+                (
+                    workspace
+                    / "manager"
+                    / "artifact_map"
+                    / "artifact_architecture_map.json"
+                ).exists()
+            )
 
     def test_ticket_approve_cli_applies_mock_scene_ticket(self) -> None:
         with TemporaryDirectory() as tmp:

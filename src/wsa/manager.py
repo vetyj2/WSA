@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
+from .artifact_map import (
+    artifact_architecture_map_path,
+    validate_artifact_architecture_map,
+    write_artifact_architecture_map,
+)
 from .reports import list_empty_mailbox_files, remove_empty_mailbox_files
 from .repositories import WorldRepository
 from .workspace import WorldRecord, list_worlds
@@ -26,6 +31,29 @@ class WorldManager:
 
     def run_diagnostics(self, fix: bool = False) -> List[DiagnosticFinding]:
         findings: List[DiagnosticFinding] = []
+        artifact_map_findings = validate_artifact_architecture_map(self.workspace)
+        if artifact_map_findings:
+            path = artifact_architecture_map_path(self.workspace)
+            if fix:
+                written = write_artifact_architecture_map(self.workspace)
+                findings.append(
+                    DiagnosticFinding(
+                        world_id="*",
+                        finding_type="artifact_architecture_map_created",
+                        path=str(written),
+                        detail="created artifact architecture map",
+                    )
+                )
+            else:
+                findings.append(
+                    DiagnosticFinding(
+                        world_id="*",
+                        finding_type="artifact_architecture_map_missing_or_invalid",
+                        path=str(path),
+                        detail="; ".join(artifact_map_findings),
+                    )
+                )
+
         empty_reports = list_empty_mailbox_files(self.workspace)
         if empty_reports:
             if fix:
