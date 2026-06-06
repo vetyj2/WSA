@@ -14,6 +14,7 @@ from .cli_artifacts import (
     run_artifact_diagnose,
     run_artifact_maintenance_scan,
     run_artifact_map,
+    run_artifact_uninstall_discover,
     run_artifact_uninstall_plan,
 )
 from .cli_reports import (
@@ -610,6 +611,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the dry-run plan under manager/uninstall_plans/.",
     )
     artifact_uninstall_plan.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    artifact_uninstall_discover = artifact_subparsers.add_parser(
+        "uninstall-discover",
+        help="Read-only discovery of WSA-adjacent paths under explicit scan roots.",
+    )
+    artifact_uninstall_discover.add_argument(
+        "--scan-root",
+        action="append",
+        default=[],
+        help="Root directory to scan for WSA-adjacent files or directories. Repeatable.",
+    )
+    artifact_uninstall_discover.add_argument(
+        "--exclude-root",
+        action="append",
+        default=[],
+        help="Root directory to preserve and exclude from candidate traversal. Repeatable.",
+    )
+    artifact_uninstall_discover.add_argument(
+        "--max-depth",
+        type=int,
+        default=4,
+        help="Maximum directory depth to inspect under each scan root.",
+    )
+    artifact_uninstall_discover.add_argument(
+        "--max-candidates",
+        type=int,
+        default=500,
+        help="Maximum candidate records to return.",
+    )
+    artifact_uninstall_discover.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the discovery manifest under manager/uninstall_plans/.",
+    )
+    artifact_uninstall_discover.add_argument(
         "--format",
         choices=("text", "json"),
         default="text",
@@ -2226,6 +2266,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_artifact_diagnose(config.workspace, args.format)
         if args.artifact_command == "uninstall-plan":
             return run_artifact_uninstall_plan(config.workspace, args.write, args.format)
+        if args.artifact_command == "uninstall-discover":
+            return run_artifact_uninstall_discover(
+                config.workspace,
+                args.scan_root,
+                args.exclude_root,
+                args.max_depth,
+                args.max_candidates,
+                args.write,
+                args.format,
+            )
         if args.artifact_command == "maintenance-scan":
             return run_artifact_maintenance_scan(
                 config.workspace,

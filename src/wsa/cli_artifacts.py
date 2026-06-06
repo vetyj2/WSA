@@ -20,8 +20,11 @@ from .maintenance import (
 )
 from .update import UpdateLockError, assert_update_unlocked
 from .uninstall import (
+    build_uninstall_discovery_manifest,
     build_uninstall_dry_run_plan,
+    format_uninstall_discovery_manifest,
     format_uninstall_dry_run_plan,
+    write_uninstall_discovery_manifest,
     write_uninstall_dry_run_plan,
 )
 
@@ -76,6 +79,48 @@ def run_artifact_uninstall_plan(workspace: Path, write: bool, output_format: str
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         for line in format_uninstall_dry_run_plan(payload):
+            print(line)
+    return 0
+
+
+def run_artifact_uninstall_discover(
+    workspace: Path,
+    scan_roots: list[str],
+    exclude_roots: list[str],
+    max_depth: int,
+    max_candidates: int,
+    write: bool,
+    output_format: str,
+) -> int:
+    if not scan_roots:
+        print("uninstall_discovery: blocked")
+        print("detail: at least one --scan-root is required")
+        return 1
+    scan_paths = [Path(item) for item in scan_roots]
+    exclude_paths = [Path(item) for item in exclude_roots]
+    if write and not _guard_update_unlocked(workspace, "artifact.uninstall_discover.write"):
+        return 1
+    payload = (
+        write_uninstall_discovery_manifest(
+            workspace,
+            scan_paths,
+            exclude_roots=exclude_paths,
+            max_depth=max_depth,
+            max_candidates=max_candidates,
+        )
+        if write
+        else build_uninstall_discovery_manifest(
+            workspace,
+            scan_paths,
+            exclude_roots=exclude_paths,
+            max_depth=max_depth,
+            max_candidates=max_candidates,
+        )
+    )
+    if output_format == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_uninstall_discovery_manifest(payload):
             print(line)
     return 0
 

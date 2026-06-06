@@ -77,7 +77,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-140 tests OK
+142 tests OK
 ```
 
 ## Quick Smoke Run
@@ -134,7 +134,11 @@ Use `wsa report export <world_id> --run-id <run_id> --artifact-type human_sessio
 
 Use `wsa artifact diagnose` to run read-only diagnostics over `artifact_source_map.json` manifests and export files that are missing source maps.
 
+Use `wsa artifact uninstall-discover --scan-root <path>` to find WSA-adjacent candidates under explicit external scan roots and classify source checkouts, workspaces, external artifacts, backup-preserve roots, and runtime-owned overlays. `--exclude-root` preserves external backup roots and excludes them from traversal. `--write` stores only a discovery manifest and does not delete files.
+
 Use `wsa artifact uninstall-plan` before uninstall or cleanup to preview preserve/archive/delete-after-archive boundaries. `--write` stores only a dry-run plan JSON and does not delete files.
+
+After any future uninstall apply, run Hermes doctor or equivalent runtime diagnostics to detect stale shortcuts, local overlays, callback routes, and runtime-owned WSA memory that still point to removed WSA paths.
 
 Use `wsa artifact maintenance-scan` to summarize report/log/callback/archive volume and recommended cleanup actions read-only. `--write` stores only a scan JSON.
 

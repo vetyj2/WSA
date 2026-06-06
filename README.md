@@ -73,7 +73,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 현재 기대 결과:
 
 ```text
-140 tests OK
+142 tests OK
 ```
 
 새 workspace smoke:
@@ -113,7 +113,11 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 
 `wsa artifact diagnose`는 workspace 안의 `artifact_source_map.json` manifest와 source-map 없이 남은 export 파일을 read-only로 점검합니다.
 
+`wsa artifact uninstall-discover --scan-root <path>`는 명시한 외부 scan root 아래에서 WSA 인접 후보를 read-only로 찾고 source checkout, workspace, external artifact, backup preserve, runtime-owned overlay 등으로 분류합니다. `--exclude-root`는 외부백업처럼 보존할 경로를 traversal과 삭제 후보에서 제외합니다. `--write`는 discovery manifest만 저장하며 삭제하지 않습니다.
+
 `wsa artifact uninstall-plan`은 uninstall 전에 보존 대상, archive 후보, source-map 검토가 필요한 항목을 dry-run으로 보여줍니다. `--write`는 계획 JSON만 저장하며 파일 삭제는 수행하지 않습니다.
+
+향후 실제 uninstall apply 이후에는 Hermes doctor 또는 동등한 runtime diagnostics를 실행해 삭제된 WSA 경로를 가리키는 shortcut, local overlay, callback route, runtime-owned WSA memory가 남아 있는지 확인해야 합니다.
 
 `wsa artifact maintenance-scan`은 report/log/callback/archive 볼륨을 read-only로 요약하고 cleanup 전 권장 조치를 제안합니다. `--write`는 scan JSON만 저장합니다.
 

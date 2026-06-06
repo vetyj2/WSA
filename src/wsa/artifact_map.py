@@ -55,6 +55,8 @@ def build_artifact_architecture_map(workspace: Path) -> Dict[str, Any]:
         },
         "delete_and_uninstall_policy": {
             "default_mode": "dry_run",
+            "external_discovery_before_delete": True,
+            "discovery_requires_explicit_scan_roots": True,
             "preserve_by_default": [
                 "control.sqlite",
                 "worlds/{world_id}/world.sqlite",

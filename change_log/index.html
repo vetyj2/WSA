@@ -104,6 +104,26 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.21-uninstall-discovery-manifest.html">v0.2.21 Uninstall Discovery Manifest</a></h2>
+          <p>Adds read-only external uninstall discovery for WSA-adjacent paths under explicit scan roots, with evidence-based classification and backup/runtime-owned boundaries.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">uninstall discovery</span>
+          <span class="badge accent">external scan roots</span>
+          <span class="badge">classification</span>
+          <span class="badge">exclude roots</span>
+          <span class="badge warn">no deletion</span>
+        </div>
+        <ul>
+          <li><code>wsa artifact uninstall-discover --scan-root &lt;path&gt;</code> finds source checkouts, workspaces, artifacts, backups, and runtime-owned overlays.</li>
+          <li><code>--exclude-root</code> keeps external backups out of traversal and deletion candidates.</li>
+          <li>Every candidate includes classification, confidence, recommended action, and evidence.</li>
+          <li>The manifest is not an execute-capable delete plan.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.20-maintenance-storage-hygiene-scan.html">v0.2.20 Maintenance Storage Hygiene Scan</a></h2>
           <p>Adds a read-only storage scan for reports, session logs, Hermes queues/callbacks, archives, scenes, meetings, and orchestrator runs.</p>
         </div>

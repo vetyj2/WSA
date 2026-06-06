@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.21 Uninstall Discovery Manifest</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #4f46e5;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; padding: 2px 5px; color: #253041; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.21 Uninstall Discovery Manifest</h1>
+      <p>Adds read-only discovery for WSA-adjacent paths outside the managed workspace architecture before any delete-capable uninstall step exists.</p>
+      <div class="badges">
+        <span class="badge accent">uninstall discovery</span>
+        <span class="badge accent">external scan roots</span>
+        <span class="badge">classification</span>
+        <span class="badge">exclude roots</span>
+        <span class="badge warn">no deletion</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>What Changed</h2>
+        <p><code>wsa artifact uninstall-discover</code> scans explicit roots for WSA-adjacent files and directories.</p>
+        <ul>
+          <li>Source checkout detection</li>
+          <li>Workspace DB detection</li>
+          <li>External artifact and artifact collection detection</li>
+          <li>Backup preserve and runtime-owned review classification</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Safety Boundary</h2>
+        <p>Discovery is not a delete manifest. It records evidence, confidence, and recommended action, then requires user review before any future apply step.</p>
+      </article>
+
+      <article class="panel">
+        <h2>External Backups</h2>
+        <p><code>--exclude-root</code> marks backup roots as preserve-only and prevents traversal into them.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Runtime Follow-Up</h2>
+        <p>After any future uninstall apply, operators should run Hermes doctor or equivalent runtime diagnostics to catch stale shortcuts, overlays, callback routes, and runtime-owned WSA memory.</p>
+      </article>
+
+      <article class="panel wide">
+        <h2>Operational Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>1. Discover</strong>
+            <span>Scan explicit roots and classify candidates with evidence.</span>
+          </div>
+          <div class="step">
+            <strong>2. Review</strong>
+            <span>User/Hermes reviews source, workspace, backup, runtime-owned, and unknown groups.</span>
+          </div>
+          <div class="step">
+            <strong>3. Plan</strong>
+            <span>Only exact approved paths should move into a later uninstall plan.</span>
+          </div>
+          <div class="step">
+            <strong>4. Apply Later</strong>
+            <span>Actual deletion remains a future explicit-approval lifecycle.</span>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
