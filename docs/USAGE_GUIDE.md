@@ -87,9 +87,10 @@ Export, uninstall, maintenance 기능을 붙이기 전에 workspace의 원본과
 ```bash
 wsa --workspace <live-workspace> artifact map
 wsa --workspace <live-workspace> artifact map --write
+wsa --workspace <live-workspace> artifact route draft_output --world-id <world_id> --session-id <session_id>
 ```
 
-맵은 `manager/artifact_map/artifact_architecture_map.json`에 저장됩니다. source-of-truth는 `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profile, orchestrator run log, session log입니다. Managed artifact zone은 report mailbox, world artifacts, meetings, scenes, Hermes reports outbox/archive입니다. 외부 경로 artifact는 `artifact_source_map.json`이 없으면 자동 삭제하지 않고 unknown external artifact로 보고하는 방향이 기본입니다.
+맵은 `manager/artifact_map/artifact_architecture_map.json`에 저장됩니다. source-of-truth는 `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profile, orchestrator run log, session log입니다. Managed artifact zone은 report mailbox, world artifacts, meetings, scenes, Hermes reports outbox/archive입니다. `artifact route`는 파일을 만들기 전에 권장 내부 경로와 분류를 확인하는 read-only helper입니다. 알 수 없는 사용자 커스텀 label은 `custom_wsa_artifact`로 격리하고, 외부 경로 artifact는 `artifact_source_map.json`이 없으면 자동 삭제하지 않고 unknown external artifact로 보고하는 방향이 기본입니다. Hermes 내부나 Docker/VPS runtime storage에 남는 부산물은 가능하면 `wsa/` 디렉터리 또는 `wsa-...` 파일명으로 namespace를 표시해 다른 Hermes 기능과 삭제 범위가 섞이지 않게 합니다.
 
 ## Canon 적용 원칙
 

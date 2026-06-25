@@ -14,6 +14,7 @@ from .cli_artifacts import (
     run_artifact_diagnose,
     run_artifact_maintenance_scan,
     run_artifact_map,
+    run_artifact_route,
     run_artifact_uninstall_discover,
     run_artifact_uninstall_plan,
 )
@@ -596,6 +597,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Read-only source-map diagnostics for managed report exports.",
     )
     artifact_diagnose.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    artifact_route = artifact_subparsers.add_parser(
+        "route",
+        help="Recommend a managed path and classification for a WSA-related artifact.",
+    )
+    artifact_route.add_argument(
+        "artifact_type",
+        help="Artifact type or local label. Unknown labels route as custom WSA artifacts.",
+    )
+    artifact_route.add_argument("--world-id", help="World ID for world-scoped artifacts.")
+    artifact_route.add_argument("--session-id", help="Session ID for date-scoped artifacts.")
+    artifact_route.add_argument("--run-id", help="Orchestrator run ID when relevant.")
+    artifact_route.add_argument("--filename", help="Preferred output filename.")
+    artifact_route.add_argument(
+        "--date",
+        help="Date bucket for session artifacts. Defaults to current UTC date.",
+    )
+    artifact_route.add_argument(
+        "--external-path",
+        help="Runtime path when the artifact must be created outside the WSA workspace.",
+    )
+    artifact_route.add_argument(
         "--format",
         choices=("text", "json"),
         default="text",
@@ -2264,6 +2291,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_artifact_map(config.workspace, args.write, args.format)
         if args.artifact_command == "diagnose":
             return run_artifact_diagnose(config.workspace, args.format)
+        if args.artifact_command == "route":
+            return run_artifact_route(
+                config.workspace,
+                args.artifact_type,
+                args.world_id,
+                args.session_id,
+                args.run_id,
+                args.filename,
+                args.date,
+                args.external_path,
+                args.format,
+            )
         if args.artifact_command == "uninstall-plan":
             return run_artifact_uninstall_plan(config.workspace, args.write, args.format)
         if args.artifact_command == "uninstall-discover":

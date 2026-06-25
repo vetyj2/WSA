@@ -113,6 +113,8 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 
 `wsa artifact diagnose`는 workspace 안의 `artifact_source_map.json` manifest와 source-map 없이 남은 export 파일을 read-only로 점검합니다.
 
+`wsa artifact route <artifact_type>`는 Hermes/runtime이 WSA 관련 파일을 만들기 전에 권장 위치, 분류, 관리주체, cleanup hint를 read-only로 확인하는 생성 전 라우팅 질의입니다. 알 수 없는 개인 label은 에러가 아니라 `custom_wsa_artifact`로 처리하고, 가능하면 `worlds/{world_id}/artifacts/...` 내부 misc/session 경로로 모읍니다. 외부 경로가 필요하면 `external_runtime_artifact`로 분류하고 source-map을 요구합니다.
+
 `wsa artifact uninstall-discover --scan-root <path>`는 명시한 외부 scan root 아래에서 WSA 인접 후보를 read-only로 찾고 source checkout, workspace, external artifact, backup preserve, runtime-owned overlay 등으로 분류합니다. `--exclude-root`는 외부백업처럼 보존할 경로를 traversal과 삭제 후보에서 제외합니다. `--write`는 discovery manifest만 저장하며 삭제하지 않습니다.
 
 `wsa artifact uninstall-plan`은 uninstall 전에 보존 대상, archive 후보, source-map 검토가 필요한 항목을 dry-run으로 보여줍니다. `--write`는 계획 JSON만 저장하며 파일 삭제는 수행하지 않습니다.
@@ -121,13 +123,14 @@ Callback은 기본적으로 `workspace/hermes/callbacks/` 아래 파일만 받�
 
 `wsa artifact maintenance-scan`은 report/log/callback/archive 볼륨을 read-only로 요약하고 cleanup 전 권장 조치를 제안합니다. `--write`는 scan JSON만 저장합니다.
 
-하네스 사용 중 파생되는 산출물은 가능하면 workspace의 정해진 artifact/report/runtime 디렉터리 안에 둡니다. 런타임 정책상 외부 경로에 만들어야 하는 파일은 `artifact_source_map.json`으로 생성 원천, run/session, 경로, cleanup hint를 남겨 설치/마이그레이션/언인스톨 때 추적 가능하게 해야 합니다.
+하네스 사용 중 파생되는 산출물은 가능하면 workspace의 정해진 artifact/report/runtime 디렉터리 안에 둡니다. 런타임 정책상 외부 경로에 만들어야 하는 파일은 `artifact_source_map.json`으로 생성 원천, run/session, 경로, cleanup hint를 남겨 설치/마이그레이션/언인스톨 때 추적 가능하게 해야 합니다. Hermes 안쪽이나 Docker/VPS runtime storage에 WSA 부산물이 생겨야 한다면, 가능하면 `wsa/`, `wsa-artifacts/` 같은 디렉터리나 `wsa-...` 파일명을 사용해 다른 Hermes 기능과 섞이지 않게 합니다. Hermes는 파일 생성 전 `wsa artifact route draft_output --world-id <world_id> --session-id <session_id>`처럼 물어보고, 반환된 경로/분류를 local overlay 정책에 맞춰 사용할 수 있습니다.
 
-Workspace의 원본/파생/외부 artifact 경계는 `manager/artifact_map/artifact_architecture_map.json`에 저장할 수 있습니다. 이 맵은 `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profile, orchestrator run log, session log를 source-of-truth로 분리하고, report mailbox, world artifacts, scene/meeting folders, Hermes archive/outbox를 managed artifact zone으로 한정합니다. 기본 정책은 dry-run, archive-before-delete, unknown external artifact는 보고만 하는 것입니다.
+Workspace의 원본/파생/외부 artifact 경계는 `manager/artifact_map/artifact_architecture_map.json`에 저장할 수 있습니다. 이 맵은 `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profile, orchestrator run log, session log를 source-of-truth로 분리하고, report mailbox, world artifacts, scene/meeting folders, Hermes archive/outbox를 managed artifact zone으로 한정합니다. 또한 생성 전 artifact routing policy를 포함해 개인 커스텀 산출물이 공식 명령어로 흡수되지 않아도 충돌 없이 내부 misc/session 경로로 격리되게 합니다. 기본 정책은 dry-run, archive-before-delete, unknown external artifact는 보고만 하는 것입니다.
 
 ```bash
 PYTHONPATH=src python3 -m wsa artifact map
 PYTHONPATH=src python3 -m wsa artifact map --write --format json
+PYTHONPATH=src python3 -m wsa artifact route draft_output --world-id <world_id> --session-id <session_id>
 ```
 
 씬 생성 모드는 강제하지 않고 기록합니다. `--generation-mode auto`는 Hermes/profile/자연어 해석에 맡기고, 명시값은 `fact-audit-synthesis`, `writing-room-line-build`입니다. Run artifact에는 요청 모드, 해석된 모드, 해석 출처, confidence, 액터가 실제 수행한 일, 수행되지 않은 일을 남기며, callback/reject/rollback/fact-audit/co-writer 여부도 `actor_contribution_summary`로 기록합니다.

@@ -43,7 +43,7 @@ World-Scene-Actors/
 | Command surface | `cli.py` | Parses user and Hermes-facing commands, then delegates to narrow modules. |
 | Workspace and template | `workspace.py`, `template.py` | Creates local workspace directories, checks schema support, and verifies template readiness. |
 | Persistence | `repositories.py`, `reports.py`, `tickets.py` | Owns SQLite-backed world state, reports, tickets, facts, scenes, diagnostics, and graph data. |
-| Diagnostics and updates | `manager.py`, `update.py`, `hermes_doctor.py`, `artifact_map.py` | Keeps health checks, safe-update logic, and artifact boundary maps separate from generation workflows. |
+| Diagnostics and updates | `manager.py`, `update.py`, `hermes_doctor.py`, `artifact_map.py`, `artifact_routing.py` | Keeps health checks, safe-update logic, and artifact boundary/routing maps separate from generation workflows. |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Emits task packets, validates callback shape/routes, and publishes public command-registry examples. |
 | Orchestration | `autonomous_orchestrator.py`, `orchestrator_bridge.py`, `orchestrator_*` | Records run state, actor_state, floor_state, hook packets, compressed continuity, quality gates, and approval packages. |
 | Proposal workflows | `meeting.py`, `startup.py` | Creates non-canon meeting/interview material that later flows through reports or tickets. |
@@ -82,4 +82,4 @@ Tracked examples under `examples/` contain schemas, environment variable names, 
 
 Runtime state belongs in ignored workspace paths such as `workspace/`, `worlds/`, `reports/`, `manager/runtime_sessions/`, `hermes/callbacks/`, `hermes/task_queue/`, `hermes/adapter_config/hermes_commands.local.json`, and local operation policy JSON.
 
-`manager/artifact_map/artifact_architecture_map.json` is the compact directory-base map for this boundary. It separates source-of-truth zones from managed artifacts and says that external artifacts require `artifact_source_map.json` provenance before any uninstall or maintenance plan treats them as cleanup candidates.
+`manager/artifact_map/artifact_architecture_map.json` is the compact directory-base map for this boundary. It separates source-of-truth zones from managed artifacts and says that external artifacts require `artifact_source_map.json` provenance before any uninstall or maintenance plan treats them as cleanup candidates. `artifact_routing.py` provides the read-only pre-write recommendation used by Hermes/runtime to classify WSA-related outputs and keep custom artifacts inside managed world/session paths whenever possible.

@@ -77,7 +77,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Expected for this version:
 
 ```text
-142 tests OK
+149 tests OK
 ```
 
 ## Quick Smoke Run
@@ -134,6 +134,8 @@ Use `wsa report export <world_id> --run-id <run_id> --artifact-type human_sessio
 
 Use `wsa artifact diagnose` to run read-only diagnostics over `artifact_source_map.json` manifests and export files that are missing source maps.
 
+Use `wsa artifact route <artifact_type>` before a Hermes/runtime creates a WSA-related file. It returns the recommended managed path, classification, owner, cleanup hint, and source-map requirement without creating anything. Unknown user-specific labels do not fail; they route as `custom_wsa_artifact` under a world/session misc path. Runtime-required external files route as `external_runtime_artifact` and require source-map metadata.
+
 Use `wsa artifact uninstall-discover --scan-root <path>` to find WSA-adjacent candidates under explicit external scan roots and classify source checkouts, workspaces, external artifacts, backup-preserve roots, and runtime-owned overlays. `--exclude-root` preserves external backup roots and excludes them from traversal. `--write` stores only a discovery manifest and does not delete files.
 
 Use `wsa artifact uninstall-plan` before uninstall or cleanup to preview preserve/archive/delete-after-archive boundaries. `--write` stores only a dry-run plan JSON and does not delete files.
@@ -144,13 +146,14 @@ Use `wsa artifact maintenance-scan` to summarize report/log/callback/archive vol
 
 Automatic export and delivery remain user/Hermes profile choices. The contract exists so Hermes can consistently generate, skip, delete, or re-export artifacts without WSA owning chat delivery or runtime preferences.
 
-Artifacts produced while using the harness should stay inside the managed workspace architecture whenever possible: world `artifacts/`, `meetings/`, `orchestrator_runs/`, `scenes/`, report mailboxes, or `hermes/reports_outbox/`. If a runtime must create files outside those roots, it should write an `artifact_source_map.json` manifest using the reporting contract's source-map fields. That manifest should record the origin run/session, artifact type, path, manager, cleanup hint, and whether the file is safe to delete with the session. This keeps install, migration, archive, and uninstall operations tractable.
+Artifacts produced while using the harness should stay inside the managed workspace architecture whenever possible: world `artifacts/`, `meetings/`, `orchestrator_runs/`, `scenes/`, report mailboxes, or `hermes/reports_outbox/`. If a runtime must create files outside those roots, it should write an `artifact_source_map.json` manifest using the reporting contract's source-map fields. That manifest should record the origin run/session, artifact type, path, manager, cleanup hint, and whether the file is safe to delete with the session. When WSA byproducts must live inside Hermes, Docker, VPS, or other runtime-owned storage, prefer a visible `wsa/`, `wsa-artifacts/`, or `wsa-...` directory/file marker so cleanup does not affect unrelated Hermes features. Hermes can call `wsa artifact route draft_output --world-id <world_id> --session-id <session_id>` before writing to keep custom artifacts inside the managed layout. This keeps install, migration, archive, and uninstall operations tractable.
 
-The workspace can also store a compact artifact architecture map at `manager/artifact_map/artifact_architecture_map.json`. This file is not another data lake; it is the bounded directory map that distinguishes source-of-truth zones such as `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profiles, orchestrator run logs, and session logs from managed artifact zones such as report mailboxes, world artifacts, scene/meeting folders, and Hermes archive/outbox paths. The default policy is dry-run, archive-before-delete, and warn-only for unknown external artifacts.
+The workspace can also store a compact artifact architecture map at `manager/artifact_map/artifact_architecture_map.json`. This file is not another data lake; it is the bounded directory map that distinguishes source-of-truth zones such as `control.sqlite`, `worlds/{world_id}/world.sqlite`, startup profiles, orchestrator run logs, and session logs from managed artifact zones such as report mailboxes, world artifacts, scene/meeting folders, and Hermes archive/outbox paths. It also embeds the creation-time artifact routing policy so user-specific custom outputs can be isolated without becoming official commands. The default policy is dry-run, archive-before-delete, and warn-only for unknown external artifacts.
 
 ```bash
 PYTHONPATH=src python3 -m wsa artifact map
 PYTHONPATH=src python3 -m wsa artifact map --write --format json
+PYTHONPATH=src python3 -m wsa artifact route draft_output --world-id <world_id> --session-id <session_id>
 ```
 
 Scene filters are connected to a sparse temporal graph foundation. A world can define its own dynamic dimensions such as `combat_power`, `current_location`, `political_influence`, or any other label the author and Hermes agree to use. Existing entities are not required to have every dimension. Missing dimensions or missing values are reported as scene-prep gaps instead of crashing the run.

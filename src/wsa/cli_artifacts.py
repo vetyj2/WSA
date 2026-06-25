@@ -9,6 +9,10 @@ from .artifact_map import (
     format_artifact_architecture_map,
     write_artifact_architecture_map,
 )
+from .artifact_routing import (
+    build_artifact_route_recommendation,
+    format_artifact_route_recommendation,
+)
 from .artifact_diagnostics import (
     diagnose_artifact_source_maps,
     format_artifact_source_map_diagnostic,
@@ -63,6 +67,35 @@ def run_artifact_diagnose(workspace: Path, output_format: str) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         for line in format_artifact_source_map_diagnostic(payload):
+            print(line)
+    return 0
+
+
+def run_artifact_route(
+    workspace: Path,
+    artifact_type: str,
+    world_id: str | None,
+    session_id: str | None,
+    run_id: str | None,
+    filename: str | None,
+    date: str | None,
+    external_path: str | None,
+    output_format: str,
+) -> int:
+    payload = build_artifact_route_recommendation(
+        workspace,
+        artifact_type,
+        world_id=world_id,
+        session_id=session_id,
+        run_id=run_id,
+        filename=filename,
+        date=date,
+        external_path=external_path,
+    )
+    if output_format == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for line in format_artifact_route_recommendation(payload):
             print(line)
     return 0
 

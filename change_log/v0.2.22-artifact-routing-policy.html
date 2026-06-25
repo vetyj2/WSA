@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.2.22 Artifact Routing Policy</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-2: #4f46e5;
+      --warn: #a16207;
+      --soft: #eef6f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(30px, 4vw, 48px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .wide { grid-column: 1 / -1; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge.accent { color: var(--accent); background: var(--soft); border-color: #9bd8d2; }
+    .badge.warn { color: var(--warn); background: #fff8e6; border-color: #ead08a; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+    code { background: #eef1f5; border-radius: 5px; padding: 2px 5px; color: #253041; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .step strong { display: block; margin-bottom: 4px; color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.2.22 Artifact Routing Policy</h1>
+      <p>Adds a read-only pre-write routing contract so Hermes can keep WSA-related artifacts inside managed workspace roots instead of scattering files across runtime-specific locations.</p>
+      <div class="badges">
+        <span class="badge accent">artifact route</span>
+        <span class="badge accent">creation-time policy</span>
+        <span class="badge">custom labels</span>
+        <span class="badge">source maps</span>
+        <span class="badge warn">no deletion</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>What Changed</h2>
+        <p><code>wsa artifact route &lt;artifact_type&gt;</code> recommends where a WSA-related artifact should live before a runtime writes it.</p>
+        <ul>
+          <li>Returns classification, path template, cleanup hint, and owner.</li>
+          <li>Routes unknown labels as <code>custom_wsa_artifact</code> rather than failing.</li>
+          <li>Marks external runtime artifacts as source-map-required.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Boundary</h2>
+        <p>This is not an uninstall manifest and not a delete command. It creates no files and performs no cleanup.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Hermes Usage</h2>
+        <p>Hermes can call the route helper before exporting minutes, drafts, runtime delivery files, callbacks, scene artifacts, or custom user outputs. Runtime-owned external files should use a visible <code>wsa/</code> directory or <code>wsa-...</code> filename when possible.</p>
+      </article>
+
+      <article class="panel wide">
+        <h2>Managed Flow</h2>
+        <div class="flow">
+          <div class="step"><strong>1. Intent</strong>Hermes decides it needs a WSA-related artifact.</div>
+          <div class="step"><strong>2. Route</strong><code>wsa artifact route draft_output --world-id W --session-id S</code></div>
+          <div class="step"><strong>3. Write</strong>Runtime writes to the recommended managed path or records source-map metadata for external paths.</div>
+          <div class="step"><strong>4. Maintain</strong>Diagnostics, migration, archive, and uninstall can reason from bounded locations.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Code Impact</h2>
+        <ul>
+          <li>New <code>artifact_routing.py</code> module.</li>
+          <li><code>artifact map</code> now embeds <code>wsa.artifact.routing_policy.v1</code>.</li>
+          <li>CLI adds only one subcommand under existing <code>artifact</code> surface.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Storage Goal</h2>
+        <p>Prefer session/world-scoped directories, keep exports derivable, and make external artifacts visibly WSA-namespaced without letting WSA claim ownership of Hermes memory, skills, or provider files.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

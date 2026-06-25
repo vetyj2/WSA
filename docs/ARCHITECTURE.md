@@ -47,14 +47,14 @@ World-Scene-Actors/
 | Command surface | `cli.py` | User/Hermes-facing command를 parsing하고 좁은 모듈로 위임합니다. |
 | Workspace / template | `workspace.py`, `template.py` | Workspace directory, schema support, template readiness를 확인합니다. |
 | Persistence | `repositories.py`, `reports.py`, `review_cleanup.py`, `tickets.py` | SQLite world state, report, review cleanup audit, ticket, fact, scene, diagnostic, graph data를 관리합니다. |
-| Diagnostics / update | `manager.py`, `update.py`, `hermes_doctor.py`, `artifact_map.py` | Health check, safe update logic, artifact boundary map을 generation workflow와 분리합니다. |
+| Diagnostics / update | `manager.py`, `update.py`, `hermes_doctor.py`, `artifact_map.py`, `artifact_routing.py` | Health check, safe update logic, artifact boundary/routing map을 generation workflow와 분리합니다. |
 | Hermes contract | `hermes_adapter.py`, `hermes_commands.py` | Task packet 생성, callback shape/route validation, public registry example을 담당합니다. |
 | Orchestration | `autonomous_orchestrator.py`, `orchestrator_bridge.py`, `orchestrator_*` | Run state, actor_state, floor_state, hook packet, compressed continuity, quality gate, approval package를 기록합니다. |
 | Proposal workflows | `meeting.py`, `startup.py` | Canon이 아닌 meeting/interview material을 만들고 report/ticket flow로 넘깁니다. |
 
 `review_cleanup.py`는 live 사용 중 쌓인 pending proposal report, author-review orchestrator run, Hermes callback residue를 안전하게 정리하는 lifecycle을 담당합니다. 승인된 report, canon fact, ticket, startup profile, DB schema는 cleanup 대상에서 제외하고, 변경은 `reports/archived/review-cleanup-*.json` audit artifact로 남깁니다.
 
-`artifact_map.py`는 `manager/artifact_map/artifact_architecture_map.json`에 저장되는 작은 directory-base map을 정의합니다. 이 맵은 source-of-truth zone과 managed artifact zone을 분리하고, 외부 artifact는 `artifact_source_map.json` 없이는 자동 삭제하지 않는 경계 정책을 담습니다. 이후 export, uninstall, maintenance 기능은 이 맵을 기준으로 dry-run plan을 만들 수 있어야 합니다.
+`artifact_map.py`는 `manager/artifact_map/artifact_architecture_map.json`에 저장되는 작은 directory-base map을 정의합니다. 이 맵은 source-of-truth zone과 managed artifact zone을 분리하고, 외부 artifact는 `artifact_source_map.json` 없이는 자동 삭제하지 않는 경계 정책을 담습니다. `artifact_routing.py`는 Hermes/runtime이 파일을 만들기 전에 artifact type, world/session/run, filename을 기준으로 권장 내부 경로와 관리주체를 read-only로 계산합니다. 이후 export, uninstall, maintenance 기능은 이 맵을 기준으로 dry-run plan을 만들 수 있어야 합니다.
 
 ## Runtime Shape
 

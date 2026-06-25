@@ -104,6 +104,26 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.2.22-artifact-routing-policy.html">v0.2.22 Artifact Routing Policy</a></h2>
+          <p>Adds read-only pre-write artifact routing so Hermes can classify WSA-related outputs and keep them inside managed world/session paths when possible.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">artifact route</span>
+          <span class="badge accent">creation-time policy</span>
+          <span class="badge">custom labels</span>
+          <span class="badge">source maps</span>
+          <span class="badge warn">no deletion</span>
+        </div>
+        <ul>
+          <li><code>wsa artifact route &lt;artifact_type&gt;</code> returns recommended path, classification, owner, cleanup hint, and source-map requirement.</li>
+          <li>Unknown user/Hermes labels become <code>custom_wsa_artifact</code> instead of official commands or hard failures.</li>
+          <li>External runtime artifacts remain Hermes-owned and source-map-required, with a warning when runtime paths lack a visible <code>wsa</code> namespace marker.</li>
+          <li><code>artifact map</code> now embeds the routing policy for install, migration, archive, and uninstall reasoning.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.21-uninstall-discovery-manifest.html">v0.2.21 Uninstall Discovery Manifest</a></h2>
           <p>Adds read-only external uninstall discovery for WSA-adjacent paths under explicit scan roots, with evidence-based classification and backup/runtime-owned boundaries.</p>
         </div>

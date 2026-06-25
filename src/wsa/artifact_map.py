@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .artifact_routing import build_artifact_routing_policy
 from .paths import safe_child_path
 from .reporting_contract import REPORTING_ARTIFACT_MANIFEST_SCHEMA
 from .workspace import WorldRecord, init_workspace, list_worlds, utc_now
@@ -37,6 +38,7 @@ def build_artifact_architecture_map(workspace: Path) -> Dict[str, Any]:
         "source_of_truth_zones": _source_of_truth_zones(),
         "managed_artifact_zones": _managed_artifact_zones(),
         "runtime_residue_zones": _runtime_residue_zones(),
+        "artifact_routing_policy": build_artifact_routing_policy(),
         "external_artifact_boundary": {
             "automatic_delete": False,
             "source_map_required": True,
@@ -121,6 +123,7 @@ def validate_artifact_architecture_map(workspace: Path) -> List[str]:
         "source_of_truth_zones",
         "managed_artifact_zones",
         "runtime_residue_zones",
+        "artifact_routing_policy",
         "external_artifact_boundary",
     }
     missing = sorted(required - payload.keys())
@@ -137,6 +140,7 @@ def format_artifact_architecture_map(payload: Dict[str, Any], stored_path: Path 
         f"source_of_truth_zones: {len(payload['source_of_truth_zones'])}",
         f"managed_artifact_zones: {len(payload['managed_artifact_zones'])}",
         f"runtime_residue_zones: {len(payload['runtime_residue_zones'])}",
+        f"artifact_route_families: {len(payload['artifact_routing_policy']['artifact_families'])}",
         f"concrete_worlds: {len(payload['concrete_worlds'])}",
         "external_artifacts: source_map_required",
         "default_delete_policy: dry_run",
