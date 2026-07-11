@@ -3,34 +3,26 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .artifact_map import (
+from .artifacts import (
     artifact_architecture_map_path,
     build_artifact_architecture_map,
-    format_artifact_architecture_map,
-    write_artifact_architecture_map,
-)
-from .artifact_routing import (
     build_artifact_route_recommendation,
-    format_artifact_route_recommendation,
-)
-from .artifact_diagnostics import (
-    diagnose_artifact_source_maps,
-    format_artifact_source_map_diagnostic,
-)
-from .maintenance import (
     build_maintenance_scan,
-    format_maintenance_scan,
-    write_maintenance_scan,
-)
-from .update import UpdateLockError, assert_update_unlocked
-from .uninstall import (
     build_uninstall_discovery_manifest,
     build_uninstall_dry_run_plan,
+    diagnose_artifact_source_maps,
+    format_artifact_architecture_map,
+    format_artifact_route_recommendation,
+    format_artifact_source_map_diagnostic,
+    format_maintenance_scan,
     format_uninstall_discovery_manifest,
     format_uninstall_dry_run_plan,
+    write_artifact_architecture_map,
+    write_maintenance_scan,
     write_uninstall_discovery_manifest,
     write_uninstall_dry_run_plan,
 )
+from .update import UpdateLockError, assert_update_unlocked
 
 
 def _guard_update_unlocked(workspace: Path, operation: str) -> bool:

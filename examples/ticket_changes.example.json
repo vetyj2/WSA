@@ -1,0 +1,28 @@
+{
+  "schema": "wsa.ticket.changes.v1",
+  "changes": [
+    {
+      "change_type": "add_entity",
+      "target_type": "entity",
+      "change_ref": "entity:lead",
+      "entity_type": "character",
+      "display_name": "Mina",
+      "status": "active",
+      "payload": {
+        "provenance": "author_reviewed_candidate"
+      }
+    },
+    {
+      "change_type": "add_fact",
+      "target_type": "fact",
+      "subject_change_ref": "entity:lead",
+      "predicate": "has_role",
+      "object_value": "navigator",
+      "authority": "user_explicit",
+      "status": "canon",
+      "payload": {
+        "provenance": "author_reviewed_candidate"
+      }
+    }
+  ]
+}

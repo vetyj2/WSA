@@ -4,6 +4,9 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from wsa.startup import (
+    LEGACY_STARTUP_DIMENSIONS_V1,
+    STARTUP_DEFAULTS_REVISION,
+    STARTUP_QUESTION_PACK_ID,
     StartupProfileManager,
     format_startup_interview,
     format_startup_status,
@@ -30,7 +33,14 @@ class StartupTests(TestCase):
             self.assertEqual(profile["dimensions"][0]["question_id"], "0001")
             self.assertEqual(profile["interview_policy"]["question_id_format"], "four_digit")
             self.assertEqual(profile["discretion_level"], 2)
-            self.assertTrue(profile["generation_policy"]["fully_autonomous_generation_allowed"])
+            self.assertEqual(profile["defaults_revision"], STARTUP_DEFAULTS_REVISION)
+            self.assertEqual(profile["question_pack_id"], STARTUP_QUESTION_PACK_ID)
+            self.assertFalse(profile["generation_policy"]["fully_autonomous_generation_allowed"])
+            self.assertTrue(
+                profile["generation_policy"][
+                    "external_runtime_policy_required_for_autonomous_generation"
+                ]
+            )
             self.assertEqual(
                 profile["generation_policy"]["discretion_scale"]["5"]["label"],
                 "challenge_world_autonomy",
@@ -91,7 +101,7 @@ class StartupTests(TestCase):
             self.assertEqual(status.startup_ambiguity_percent, 90)
             self.assertEqual(profile["active_mode"], "easystartup")
             self.assertEqual(profile["dimensions"][0]["selected_choice"], "f")
-            self.assertIn("court intrigue", profile["dimensions"][0]["answer"])
+            self.assertIn("not sure yet", profile["dimensions"][0]["answer"])
 
     def test_status_can_report_requested_mode_without_mutating_profile(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -180,3 +190,76 @@ class StartupTests(TestCase):
 
             with self.assertRaises(ValueError):
                 manager.set_status("Q001", "approved_by_author")
+
+    def test_blank_question_pack_is_world_neutral(self) -> None:
+        with TemporaryDirectory() as tmp:
+            world = create_world(Path(tmp) / "workspace", "Neutral Startup World")
+            manager = StartupProfileManager(world)
+
+            lines = format_startup_interview(
+                manager.interview(budget=10, mode="easystartup")
+            )
+            rendered = "\n".join(lines).casefold()
+
+            for legacy_phrase in (
+                "court intrigue",
+                "institutional mystery",
+                "far-future orbital",
+                "bloodline contracts",
+                "newly admitted student",
+                "student vanishes",
+            ):
+                self.assertNotIn(legacy_phrase, rendered)
+            self.assertIn("choose the closest creation goal", rendered)
+            self.assertIn("external runtime may suggest candidates", rendered)
+
+    def test_legacy_profile_migration_preserves_answers_and_replaces_unanswered_defaults(self) -> None:
+        with TemporaryDirectory() as tmp:
+            world = create_world(Path(tmp) / "workspace", "Legacy Startup World")
+            manager = StartupProfileManager(world)
+            profile = manager.load_or_create()
+            profile["defaults_revision"] = 1
+            profile["question_pack_id"] = "legacy_v1"
+            for index, legacy in enumerate(LEGACY_STARTUP_DIMENSIONS_V1):
+                profile["dimensions"][index].update(legacy)
+            profile["dimensions"][0].update(
+                {
+                    "answer": "Keep my existing mystery answer.",
+                    "answered_by": "author",
+                    "status": "answered_by_author",
+                    "approved_by_author": True,
+                }
+            )
+            manager.profile_path.write_text(
+                json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            migrated = manager.load_or_create()
+
+            self.assertEqual(migrated["defaults_revision"], STARTUP_DEFAULTS_REVISION)
+            self.assertEqual(migrated["question_pack_id"], "mixed_legacy_preserved_v2")
+            self.assertEqual(migrated["dimensions"][0]["dimension"], "premise_genre_tone")
+            self.assertEqual(
+                migrated["dimensions"][0]["answer"],
+                "Keep my existing mystery answer.",
+            )
+            self.assertTrue(migrated["dimensions"][0]["legacy_preserved"])
+            self.assertEqual(migrated["dimensions"][1]["dimension"], "starting_material")
+            self.assertEqual(migrated["dimensions"][1]["status"], "unasked")
+
+    def test_startup_summary_is_read_only_and_exposes_next_action(self) -> None:
+        with TemporaryDirectory() as tmp:
+            world = create_world(Path(tmp) / "workspace", "Summary Startup World")
+            manager = StartupProfileManager(world)
+            manager.answer("0001", "A world reference for existing notes.")
+
+            summary = manager.summary()
+
+            self.assertEqual(summary["schema"], "wsa.world_startup.summary.v1")
+            self.assertEqual(summary["answers"][0]["dimension"], "creation_goal")
+            self.assertEqual(summary["next_actions"], ["continue_startup_interview"])
+            self.assertEqual(
+                summary["side_effect_status"],
+                "read_only_summary_no_world_mutation",
+            )

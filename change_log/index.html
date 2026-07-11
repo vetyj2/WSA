@@ -104,6 +104,44 @@
     <section class="grid">
       <article class="card release">
         <div>
+          <h2><a href="v0.3.1-sol-refactor.html">v0.3.1 SOL Refactor</a></h2>
+          <p>Completes the guided authoring path, ticket revision lifecycle, deep actor replacement flow, and public-safe release verification.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">ID-free guided flow</span>
+          <span class="badge accent">atomic ticket lineage</span>
+          <span class="badge">deep actor lifecycle</span>
+          <span class="badge">278 tests</span>
+          <span class="badge warn">schema-compatible</span>
+        </div>
+        <ul>
+          <li><code>ticket next → review-next → apply-next</code> avoids manual ID copying when one concrete ticket is eligible.</li>
+          <li>Ticket amend, split, and merge preserve source changes and rollback atomically on failure.</li>
+          <li>Wheel install, strict warnings, Ruff, mypy, public-tree, and fresh-clone smoke checks pass.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
+          <h2><a href="v0.3.0-core-workflow-refactor.html">v0.3.0 Core Workflow Refactor</a></h2>
+          <p>Connects neutral onboarding, concrete proposal application, viewpoint-safe context, revisioned workflows, explicit migration, and public release checks.</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge accent">usable vertical slice</span>
+          <span class="badge accent">schema v2</span>
+          <span class="badge">compact contracts</span>
+          <span class="badge">public CI</span>
+          <span class="badge warn">explicit migration</span>
+        </div>
+        <ul>
+          <li>Run/plan artifacts are 79% smaller in the one-participant bridge benchmark.</li>
+          <li>SQLite RunStore revisions, callback receipts, and projection repair replace directory scans as the primary state path.</li>
+          <li>Fresh-install smoke now exercises proposal → ticket → apply → inspect.</li>
+        </ul>
+      </article>
+
+      <article class="card release">
+        <div>
           <h2><a href="v0.2.22-artifact-routing-policy.html">v0.2.22 Artifact Routing Policy</a></h2>
           <p>Adds read-only pre-write artifact routing so Hermes can classify WSA-related outputs and keep them inside managed world/session paths when possible.</p>
         </div>

@@ -26,7 +26,7 @@ class HermesAdapterTests(TestCase):
         )
         generated = (
             json.dumps(
-                build_hermes_command_registry(),
+                build_hermes_command_registry(compact=True),
                 ensure_ascii=False,
                 indent=2,
                 sort_keys=True,
@@ -56,9 +56,14 @@ class HermesAdapterTests(TestCase):
             self.assertEqual(payload["delivery"]["target"], "origin")
             self.assertEqual(payload["sensitivity"]["level"], "internal")
             self.assertIn("hermes/quarantine", payload["agent_harness"]["write_roots"])
-            self.assertTrue(
+            self.assertFalse(
                 payload["agent_harness"]["autonomy_policy"][
                     "fully_autonomous_generation_allowed"
+                ]
+            )
+            self.assertTrue(
+                payload["agent_harness"]["autonomy_policy"][
+                    "external_runtime_policy_required_for_autonomous_generation"
                 ]
             )
             self.assertTrue(

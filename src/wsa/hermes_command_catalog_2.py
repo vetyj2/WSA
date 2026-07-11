@@ -1,0 +1,346 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from .autonomy import fill_the_rest_contract
+from .hermes_command_builder import _arg, _command
+
+
+def default_commands_chunk_2() -> List[Dict[str, Any]]:
+    return [
+        _command(
+            "/wsa_orchestrator_decide",
+            ["/wsa-orchestrator-decide", "/wsa_meetup_decide", "/wsa-meetup-decide"],
+            "Approve, retry, or hold an orchestrator package.",
+            "decide_autonomous_orchestrator",
+            "orchestrator",
+            "requires_approval",
+            [
+                _arg("run_id", True, "Orchestrator run ID."),
+                _arg("decision", True, "One of approve, retry, or hold."),
+                _arg("option", False, "Approved option ID, such as option-a."),
+            ],
+            [
+                [
+                    "wsa",
+                    "orchestrator",
+                    "decide",
+                    "{run_id}",
+                    "--decision",
+                    "{decision}",
+                    "--option",
+                    "{option}",
+                ]
+            ],
+            [
+                "Approval creates a candidate ticket only; canon mutation remains a later explicit step.",
+            ],
+        ),
+        _command(
+            "/fill_the_rest",
+            ["/fill-the-rest", "/filltherest", "/wsa_fill_the_rest", "/wsa-fill-the-rest"],
+            "Prepare lower-layer fill work until a destination checkpoint.",
+            "fill_remaining_lower_layer_candidates",
+            "operations",
+            "proposal_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg(
+                    "destination",
+                    True,
+                    "Natural-language endpoint, such as 'until every region has factions and hooks'.",
+                ),
+                _arg("scope", False, "Optional area to fill. Can be initial, midstream, or late-stage."),
+                _arg("discretion_level", False, "0-5 discretion level. Level 5 enables cron-capable automation."),
+                _arg("cron_schedule", False, "Optional Hermes-owned cron schedule for level 5."),
+                _arg("quality_bar", False, "Optional quality conditions Hermes must verify before stopping."),
+            ],
+            [
+                [
+                    "wsa",
+                    "hermes",
+                    "task",
+                    "{world_id}",
+                    "--task-type",
+                    "fill_the_rest_plan",
+                    "--title",
+                    "Plan fill-the-rest pass",
+                    "--instruction",
+                    "{destination}",
+                    "--background",
+                ]
+            ],
+            [
+                "Generates lower-layer candidate material only; it does not directly mutate canon.",
+                "Can be used at initial setup, mid-project, or late-project cleanup.",
+                "Compatibility command: Hermes should plan first, then use /filltherest_start after explicit approval for cron work.",
+                "At discretion level 5 Hermes must ask for the destination checkpoint before preparing automation.",
+                "Before completion, Hermes must diagnose whether the generated material actually satisfies the destination and quality bar.",
+                "After completion, Hermes should request user approval before canon conversion.",
+            ],
+            runtime_contract=fill_the_rest_contract(),
+            input_json_template={
+                "destination": "{destination}",
+                "scope": "{scope}",
+                "discretion_level": "{discretion_level:5}",
+                "cron_schedule": "{cron_schedule}",
+                "quality_bar": "{quality_bar}",
+                "quality_gate": "required_before_completion",
+                "completion": "plan_only_no_cron",
+            },
+        ),
+        _command(
+            "/filltherest_plan",
+            ["/filltherest-plan", "/fill-the-rest-plan", "/fillrest-plan", "/wsa_filltherest_plan"],
+            "Plan a lower-layer fill pass without starting cron automation.",
+            "plan_fill_remaining_lower_layer_candidates",
+            "operations",
+            "proposal_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg(
+                    "destination",
+                    True,
+                    "Natural-language endpoint, such as 'until every region has factions and hooks'.",
+                ),
+                _arg("scope", False, "Optional area to fill. Can be initial, midstream, or late-stage."),
+                _arg("discretion_level", False, "0-5 discretion level to evaluate for the plan."),
+                _arg("quality_bar", False, "Optional quality conditions Hermes must verify before stopping."),
+            ],
+            [
+                [
+                    "wsa",
+                    "hermes",
+                    "task",
+                    "{world_id}",
+                    "--task-type",
+                    "fill_the_rest_plan",
+                    "--title",
+                    "Plan fill-the-rest pass",
+                    "--instruction",
+                    "{destination}",
+                    "--background",
+                ]
+            ],
+            [
+                "Read-only from the user's canon perspective: it produces a plan and candidate checklist.",
+                "Hermes should report risks, stop conditions, and whether cron would be justified.",
+            ],
+            runtime_contract=fill_the_rest_contract(),
+            input_json_template={
+                "destination": "{destination}",
+                "scope": "{scope}",
+                "discretion_level": "{discretion_level:5}",
+                "quality_bar": "{quality_bar}",
+                "quality_gate": "required_before_completion",
+                "completion": "plan_only_no_cron",
+            },
+        ),
+        _command(
+            "/filltherest_start",
+            ["/filltherest-start", "/fill-the-rest-start", "/fillrest-start", "/wsa_filltherest_start"],
+            "Start an approved cron-capable fill pass toward a destination checkpoint.",
+            "start_fill_remaining_lower_layer_candidates",
+            "operations",
+            "requires_approval",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg(
+                    "destination",
+                    True,
+                    "Natural-language endpoint, such as 'until every region has factions and hooks'.",
+                ),
+                _arg("scope", False, "Optional area to fill. Can be initial, midstream, or late-stage."),
+                _arg("discretion_level", False, "0-5 discretion level. Level 5 enables cron-capable automation."),
+                _arg("cron_schedule", False, "Hermes-owned cron schedule for level 5."),
+                _arg("quality_bar", False, "Quality conditions Hermes must verify before stopping."),
+            ],
+            [
+                [
+                    "wsa",
+                    "hermes",
+                    "task",
+                    "{world_id}",
+                    "--task-type",
+                    "fill_the_rest_start",
+                    "--title",
+                    "Start fill-the-rest pass",
+                    "--instruction",
+                    "{destination}",
+                    "--session-mode",
+                    "cron",
+                    "--runtime-source",
+                    "cron",
+                    "--background",
+                ]
+            ],
+            [
+                "Requires explicit user approval before Hermes starts cron-capable work.",
+                "When the destination is met, Hermes must stop the cron job and explicitly report that it stopped.",
+                "Before completion, Hermes must diagnose whether the generated material actually satisfies the destination and quality bar.",
+                "After completion, Hermes should request user approval before canon conversion.",
+            ],
+            runtime_contract=fill_the_rest_contract(),
+            input_json_template={
+                "destination": "{destination}",
+                "scope": "{scope}",
+                "discretion_level": "{discretion_level:5}",
+                "cron_schedule": "{cron_schedule}",
+                "quality_bar": "{quality_bar}",
+                "quality_gate": "required_before_completion",
+                "completion": "stop_cron_then_report_and_request_approval",
+            },
+        ),
+        _command(
+            "/wsa_meeting",
+            ["/wsa-meeting", "/wsa_council", "/wsa-council"],
+            "Run a non-mutating representative meeting.",
+            "run_meeting",
+            "meeting",
+            "proposal_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("topic", True, "Meeting topic."),
+                _arg("question", False, "Question for representatives to discuss."),
+                _arg(
+                    "participant",
+                    False,
+                    "Participant/viewpoint. May be repeated by Hermes.",
+                    repeatable=True,
+                ),
+            ],
+            [
+                [
+                    "wsa",
+                    "meeting",
+                    "run",
+                    "{world_id}",
+                    "--topic",
+                    "{topic}",
+                    "--question",
+                    "{question}",
+                    "--participant",
+                    "{participant}",
+                ]
+            ],
+        ),
+        _command(
+            "/wsa_meeting_decide",
+            ["/wsa-meeting-decide", "/wsa_decide_meeting"],
+            "Approve, retry, or hold a meeting report.",
+            "decide_meeting_report",
+            "meeting",
+            "requires_approval",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("report_id", True, "Meeting report ID."),
+                _arg("decision", True, "One of approve, retry, or hold."),
+            ],
+            [["wsa", "meeting", "decide", "{world_id}", "{report_id}", "--decision", "{decision}"]],
+        ),
+        _command(
+            "/wsa_reports",
+            ["/wsa-reports", "/wsa_report_list"],
+            "List reports for review.",
+            "list_reports",
+            "review",
+            "read_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("status", False, "Optional report status filter."),
+            ],
+            [["wsa", "report", "list", "{world_id}", "--status", "{status}"]],
+        ),
+        _command(
+            "/wsa_review_queue",
+            ["/wsa-review-queue", "/wsa_report_triage"],
+            "Triage pending proposal reports, reviewable runs, and callback residue.",
+            "triage_review_queue",
+            "review",
+            "read_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+            ],
+            [["wsa", "report", "triage", "{world_id}"]],
+            [
+                "Read-only command. Use this before any bulk rejection or callback archive action.",
+                "Approved reports, canon facts, tickets, and world DB schema are excluded from cleanup.",
+            ],
+        ),
+        _command(
+            "/wsa_review_cleanup",
+            ["/wsa-review-cleanup", "/wsa_reject_pending"],
+            "Reject pending proposal reports/runs and archive callback residue after author approval.",
+            "reject_pending_review_queue",
+            "review",
+            "requires_approval",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("reason", True, "Author-facing reason to store in the cleanup audit."),
+            ],
+            [
+                [
+                    "wsa",
+                    "report",
+                    "reject-pending",
+                    "{world_id}",
+                    "--reason",
+                    "{reason}",
+                    "--archive-callbacks",
+                ]
+            ],
+            [
+                "Requires explicit author approval because it changes proposal/report/run state.",
+                "This rejects pending proposal artifacts only; it must not delete approved canon facts or tickets.",
+                "The command writes an audit JSON under reports/archived and moves callback residue, not raw-deletes it.",
+            ],
+        ),
+        _command(
+            "/wsa_tickets",
+            ["/wsa-tickets", "/wsa_ticket_list"],
+            "List pending or applied tickets.",
+            "list_tickets",
+            "review",
+            "read_only",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("status", False, "Optional ticket status filter."),
+            ],
+            [["wsa", "ticket", "list", "{world_id}", "--status", "{status}"]],
+        ),
+        _command(
+            "/wsa_approve_ticket",
+            ["/wsa-approve-ticket", "/wsa_apply_ticket"],
+            "Apply a concrete ticket to world state.",
+            "apply_ticket",
+            "review",
+            "world_mutating",
+            [
+                _arg("world_id", True, "World ID or active world selected by Hermes."),
+                _arg("ticket_id", True, "Ticket ID."),
+            ],
+            [["wsa", "ticket", "apply", "{world_id}", "{ticket_id}"]],
+            [
+                "Hermes should obtain explicit user confirmation before executing this command.",
+                "New workflows should run ticket review before this compatibility route applies the ticket.",
+            ],
+        ),
+        _command(
+            "/wsa_snapshot",
+            ["/wsa-snapshot", "/wsa_commit", "/wsa-commit"],
+            "Request a local or remote version-control snapshot through Hermes policy.",
+            "version_control_snapshot",
+            "operations",
+            "requires_approval",
+            [_arg("summary", True, "User-facing snapshot summary.")],
+            [],
+            [
+                "WSA declares the operation request only.",
+                "The user's Hermes runtime decides whether this means none, local commit, remote push, or custom.",
+            ],
+            operation_request={
+                "action": "version_control.snapshot",
+                "allowed_modes": ["none", "local_commit", "remote_push", "custom"],
+            },
+        ),
+    ]

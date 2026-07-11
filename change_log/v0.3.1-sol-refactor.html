@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.3.1 SOL Refactor</title>
+  <style>
+    :root { color-scheme: light; --bg:#f5f7f8; --panel:#fff; --ink:#17202a; --muted:#637083; --line:#d8dee6; --accent:#0f766e; --warn:#9a6700; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(1120px,calc(100% - 32px)); margin:auto; padding:32px 0 48px; }
+    header { display:grid; gap:10px; margin-bottom:22px; }
+    h1,h2 { margin:0; line-height:1.2; } h1 { font-size:clamp(30px,4vw,46px); } h2 { font-size:20px; }
+    p { margin:0; color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:17px; }
+    .wide { grid-column:1/-1; }
+    ul { margin:10px 0 0; padding-left:20px; color:var(--muted); }
+    code { background:#edf1f4; border-radius:4px; padding:2px 5px; }
+    .metric { color:var(--accent); font-size:28px; font-weight:700; }
+    .warning { border-left:4px solid var(--warn); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.3.1 SOL Refactor</h1>
+      <p>사용자가 내부 ID와 JSON을 조립하지 않고 world authoring을 완료하는 경로를 마무리한 schema-compatible patch입니다.</p>
+    </header>
+    <section class="grid">
+      <article class="panel"><h2>Guided Flow</h2><div class="metric">ID-free</div><p><code>next → review-next → apply-next</code>가 단일 적격 ticket을 안전하게 선택합니다.</p></article>
+      <article class="panel"><h2>Ticket Revision</h2><div class="metric">Atomic</div><p>amend, split, merge가 원본 change와 lineage를 보존하고 실패 시 rollback합니다.</p></article>
+      <article class="panel"><h2>Verification</h2><div class="metric">278</div><p>일반·엄격 테스트, Ruff, mypy, build/install, public-tree, fresh-clone smoke를 통과했습니다.</p></article>
+      <article class="panel wide">
+        <h2>World Authoring</h2>
+        <ul>
+          <li>Actor profile, temporal attribute, knowledge attribution, memory packet에 status/interval revision을 지원합니다.</li>
+          <li>기존 기록과 새 기록을 하나의 reviewed replacement ticket으로 연결하고 provenance/lifecycle history를 보존합니다.</li>
+          <li>provider credential, API key, OAuth, SSH, remote execution은 계속 external runtime 경계 밖에 둡니다.</li>
+        </ul>
+      </article>
+      <article class="panel warning wide">
+        <h2>호환 및 후속 부채</h2>
+        <p>Control/world schema v2와 public ticket/callback 계약은 유지됩니다. autonomous/startup/bridge/workspace/hermes adapter의 추가 물리 분리와 full command spec 단일화는 후속 구조 작업입니다.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

@@ -18,7 +18,9 @@ from .hermes_commands import (
 )
 from .paths import safe_child_path
 from .workspace import (
+    CONTROL_SCHEMA_VERSION,
     SCHEMA_VERSION,
+    WORLD_SCHEMA_VERSION,
     SchemaVersionError,
     WorkspacePathError,
     control_db_path,
@@ -100,9 +102,12 @@ def update_lock_path(workspace: Path) -> Path:
 
 
 def assert_update_unlocked(workspace: Path, operation: str) -> None:
-    path = update_lock_path(workspace)
-    if path.exists():
-        raise UpdateLockError(f"{operation} blocked by update lock: {path}")
+    for path in (
+        update_lock_path(workspace),
+        safe_child_path(workspace, "hermes", "maintenance", "migration.lock"),
+    ):
+        if path.exists():
+            raise UpdateLockError(f"{operation} blocked by workspace lock: {path}")
 
 
 def run_update_preflight(
@@ -320,8 +325,12 @@ def _schema_checks(workspace: Path) -> List[UpdateCheck]:
         checks.append(
             UpdateCheck(
                 "control_schema_supported",
-                "ok",
-                f"control schema {control_version if control_version is not None else 'unknown'}; worlds={len(worlds)}",
+                "ok" if control_version == CONTROL_SCHEMA_VERSION else "block",
+                (
+                    f"control schema {control_version if control_version is not None else 'unknown'}; "
+                    f"supported={CONTROL_SCHEMA_VERSION}; worlds={len(worlds)}"
+                    + ("; run wsa migrate --apply" if control_version != CONTROL_SCHEMA_VERSION else "")
+                ),
             )
         )
         for world in worlds:
@@ -330,8 +339,12 @@ def _schema_checks(workspace: Path) -> List[UpdateCheck]:
             checks.append(
                 UpdateCheck(
                     f"world_schema_supported:{world.world_id}",
-                    "ok",
-                    f"world schema {world_version if world_version is not None else 'unknown'}",
+                    "ok" if world_version == WORLD_SCHEMA_VERSION else "block",
+                    (
+                        f"world schema {world_version if world_version is not None else 'unknown'}; "
+                        f"supported={WORLD_SCHEMA_VERSION}"
+                        + ("; run wsa migrate --apply" if world_version != WORLD_SCHEMA_VERSION else "")
+                    ),
                 )
             )
     except (SchemaVersionError, WorkspacePathError, sqlite3.Error) as exc:

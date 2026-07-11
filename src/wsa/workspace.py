@@ -11,7 +11,10 @@ from .ids import new_world_id, slugify
 from .paths import UnsafePathError, safe_child_path
 
 
-SCHEMA_VERSION = 1
+CONTROL_SCHEMA_VERSION = 2
+WORLD_SCHEMA_VERSION = 2
+# Compatibility version used by row-level records and public packets.
+SCHEMA_VERSION = max(CONTROL_SCHEMA_VERSION, WORLD_SCHEMA_VERSION)
 
 CONTROL_DIRS = (
     "user_profile",
@@ -70,6 +73,10 @@ class SchemaVersionError(RuntimeError):
     """Raised when a workspace database is newer than this WSA build supports."""
 
 
+class MigrationRequiredError(RuntimeError):
+    """Raised when an operation requires an explicit store migration first."""
+
+
 class WorkspacePathError(ValueError):
     """Raised when a registered workspace path does not match the safe layout."""
 
@@ -110,9 +117,29 @@ def schema_version(conn: sqlite3.Connection, name: str) -> int | None:
 
 def ensure_supported_schema(conn: sqlite3.Connection, name: str) -> None:
     version = schema_version(conn, name)
-    if version is not None and version > SCHEMA_VERSION:
+    supported = supported_schema_version(name)
+    if version is not None and version > supported:
         raise SchemaVersionError(
-            f"{name} schema version {version} is newer than supported version {SCHEMA_VERSION}"
+            f"{name} schema version {version} is newer than supported version {supported}"
+        )
+
+
+def supported_schema_version(name: str) -> int:
+    if name == "control":
+        return CONTROL_SCHEMA_VERSION
+    if name == "world":
+        return WORLD_SCHEMA_VERSION
+    return SCHEMA_VERSION
+
+
+def ensure_current_schema(conn: sqlite3.Connection, name: str) -> None:
+    ensure_supported_schema(conn, name)
+    version = schema_version(conn, name)
+    supported = supported_schema_version(name)
+    if version != supported:
+        raise MigrationRequiredError(
+            f"{name} schema version {version or 'unknown'} requires explicit migration "
+            f"to version {supported}"
         )
 
 
@@ -306,6 +333,7 @@ def init_control_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    ensure_control_v2_tables(conn)
     conn.execute(
         """
         INSERT INTO schema_info (name, version, updated_at)
@@ -314,9 +342,60 @@ def init_control_schema(conn: sqlite3.Connection) -> None:
             version = excluded.version,
             updated_at = excluded.updated_at
         """,
-        (SCHEMA_VERSION, utc_now()),
+        (CONTROL_SCHEMA_VERSION, utc_now()),
     )
-    conn.commit()
+def ensure_control_v2_tables(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflow_runs (
+            run_id TEXT PRIMARY KEY,
+            world_id TEXT NOT NULL,
+            workflow TEXT NOT NULL,
+            runner_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            run_path TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            projection_status TEXT NOT NULL,
+            projection_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_workflow_runs_world_status
+        ON workflow_runs(world_id, status)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflow_callback_receipts (
+            callback_id TEXT PRIMARY KEY,
+            callback_ref TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            turn_id TEXT NOT NULL,
+            payload_digest TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES workflow_runs(run_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            migration_id TEXT PRIMARY KEY,
+            store_name TEXT NOT NULL,
+            from_version INTEGER NOT NULL,
+            to_version INTEGER NOT NULL,
+            applied_at TEXT NOT NULL,
+            details TEXT NOT NULL
+        )
+        """
+    )
 
 
 def init_world_schema(conn: sqlite3.Connection, world_id: str, display_name: str) -> None:
@@ -697,6 +776,7 @@ def init_world_schema(conn: sqlite3.Connection, world_id: str, display_name: str
             world_id TEXT NOT NULL,
             diagnostic_type TEXT NOT NULL,
             status TEXT NOT NULL,
+            fingerprint TEXT,
             payload TEXT NOT NULL,
             schema_version INTEGER NOT NULL,
             created_at TEXT NOT NULL,
@@ -771,6 +851,7 @@ def init_world_schema(conn: sqlite3.Connection, world_id: str, display_name: str
         ON commit_log(world_id, sequence)
         """
     )
+    ensure_world_v2_tables(conn)
     now = utc_now()
     conn.execute(
         """
@@ -780,7 +861,7 @@ def init_world_schema(conn: sqlite3.Connection, world_id: str, display_name: str
             version = excluded.version,
             updated_at = excluded.updated_at
         """,
-        (SCHEMA_VERSION, now),
+        (WORLD_SCHEMA_VERSION, now),
     )
     conn.execute(
         """
@@ -793,22 +874,71 @@ def init_world_schema(conn: sqlite3.Connection, world_id: str, display_name: str
             schema_version = excluded.schema_version,
             updated_at = excluded.updated_at
         """,
-        (world_id, display_name, SCHEMA_VERSION, now, now),
+        (world_id, display_name, WORLD_SCHEMA_VERSION, now, now),
     )
-    conn.commit()
+def ensure_world_v2_tables(conn: sqlite3.Connection) -> None:
+    diagnostic_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(diagnostic_logs)").fetchall()
+    }
+    if diagnostic_columns and "fingerprint" not in diagnostic_columns:
+        conn.execute("ALTER TABLE diagnostic_logs ADD COLUMN fingerprint TEXT")
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_diagnostic_logs_fingerprint
+        ON diagnostic_logs(world_id, fingerprint)
+        WHERE fingerprint IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_commit_log_world_sequence_unique
+        ON commit_log(world_id, sequence)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ticket_applications (
+            ticket_id TEXT PRIMARY KEY,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            result_payload TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(ticket_id) REFERENCES tickets(ticket_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            migration_id TEXT PRIMARY KEY,
+            store_name TEXT NOT NULL,
+            from_version INTEGER NOT NULL,
+            to_version INTEGER NOT NULL,
+            applied_at TEXT NOT NULL,
+            details TEXT NOT NULL
+        )
+        """
+    )
 
 
 def init_workspace(workspace: Path) -> Path:
     workspace.mkdir(parents=True, exist_ok=True)
     ensure_dirs(workspace, CONTROL_DIRS)
     db_path = control_db_path(workspace)
-    with sqlite_connection(db_path, schema_name="control") as conn:
-        init_control_schema(conn)
+    if db_path.exists():
+        with sqlite_connection(db_path, schema_name="control"):
+            pass
+    else:
+        with sqlite_connection(db_path) as conn:
+            init_control_schema(conn)
     return db_path
 
 
 def create_world(workspace: Path, display_name: str) -> WorldRecord:
     init_workspace(workspace)
+    with sqlite_connection(control_db_path(workspace), schema_name="control") as conn:
+        ensure_current_schema(conn, "control")
     world_id = new_world_id(display_name)
     slug = slugify(display_name)
     world_path = world_root_path(workspace, world_id)
@@ -833,7 +963,7 @@ def create_world(workspace: Path, display_name: str) -> WorldRecord:
                 slug,
                 str(registered_world_path(world_id)),
                 "active",
-                SCHEMA_VERSION,
+                WORLD_SCHEMA_VERSION,
                 now,
                 now,
             ),
@@ -846,7 +976,7 @@ def create_world(workspace: Path, display_name: str) -> WorldRecord:
         slug=slug,
         path=world_path,
         status="active",
-        schema_version=SCHEMA_VERSION,
+        schema_version=WORLD_SCHEMA_VERSION,
     )
 
 

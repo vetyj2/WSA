@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .hermes_adapter import HERMES_CALLBACK_SCHEMA
+from .hermes_adapter import (
+    HERMES_CALLBACK_SCHEMA,
+    HERMES_TASK_SCHEMA,
+    ORCHESTRATOR_BRIDGE_TASK_INPUT_SCHEMA,
+    callback_route_digest,
+    validate_orchestrator_dispatch_receipt,
+)
 from .orchestrator_turns import (
     build_actor_turn_record,
     build_initial_actor_states,
@@ -12,6 +18,7 @@ from .orchestrator_turns import (
     build_orchestrator_turn_record,
     build_round_prompt_packet,
     build_scheduler_decision,
+    choose_participant_contexts,
     update_actor_states,
     update_floor_state,
 )
@@ -27,7 +34,9 @@ from .scene_modes import (
     LINE_BUILD_LEDGER_FIELDS,
     update_scene_mode_disclosure_for_outputs,
 )
-from .workspace import WorldRecord, list_worlds, utc_now
+from .run_store import RunStore
+from .workflow_engine import ExternalCallbackRunner, WorkflowEngine
+from .workspace import WorldRecord, get_world, list_worlds, utc_now
 
 
 ORCHESTRATOR_NEXT_SCHEMA = "wsa.orchestrator.next.v1"
@@ -38,6 +47,8 @@ MAX_TEXT_CHARS = 4000
 MAX_LIST_ITEMS = 16
 MAX_DICT_ITEMS = 24
 MAX_CALLBACK_REJECTIONS_PER_TURN = 3
+RETRY_CONTEXT_SCHEMA = "wsa.orchestrator.retry_context.v1"
+LEGACY_CALLBACK_COMPATIBILITY_POLICY_ID = "orchestrator_bridge_v1_unbound_callback"
 ALLOWED_OUTPUT_FIELDS = {
     "actor_assignment",
     "answer",
@@ -156,6 +167,13 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
             "callback_dir": "hermes/callbacks",
             "external_callback_paths": False,
             "execution_owner": "external_agent_runtime",
+            "generated_task_binding": "dispatch_receipt_required",
+            "legacy_callback_compatibility": {
+                "enabled": True,
+                "policy_id": LEGACY_CALLBACK_COMPATIBILITY_POLICY_ID,
+                "scope": "unbound_v1_callbacks_only",
+                "only_when_no_dispatch_exists_for_pending_turn": True,
+            },
         },
         "runtime_capability_manifest": _default_runtime_capability_manifest(),
         "scheduler_policy": {
@@ -163,6 +181,13 @@ def initialize_bridge_payload(payload: Dict[str, Any], world_id: str) -> None:
             "round_is_reporting_unit_only": True,
             "equal_airtime_not_required": True,
             "actor_selection_reasons_required": True,
+            "participant_selection_priority": [
+                "verification_need",
+                "targeted_objection",
+                "owner",
+                "unanswered_question",
+            ],
+            "fallback": "all_participants_in_declared_order",
         },
     }
     if prep_required:
@@ -178,12 +203,25 @@ class OrchestratorBridge:
 
     def __init__(self, workspace: Path) -> None:
         self.workspace = workspace
+        self.run_store = RunStore(workspace)
 
     def next(self, run_id: str) -> Dict[str, Any]:
         _, _, payload = find_bridge_run(self.workspace, run_id)
-        pending = payload.get("pending_hooks", [])
+        resumable = payload.get("status") == "interrupted"
+        pending = (
+            payload.get("pending_hooks", [])
+            if payload.get("status") == "awaiting_callback"
+            else []
+        )
         hook = pending[0] if pending else None
-        next_action = "run_hermes_hook" if hook else payload.get("next_action", "author_review")
+        if resumable:
+            next_action = "resume"
+        elif hook and hook.get("retry_context"):
+            next_action = "retry_current_hermes_hook"
+        elif hook:
+            next_action = "run_hermes_hook"
+        else:
+            next_action = payload.get("next_action", "author_review")
         prep_report = payload.get("prep_report") if next_action == "review_prep_report" else None
         prep_command = (
             {
@@ -221,6 +259,8 @@ class OrchestratorBridge:
 
     def approve_prep(self, run_id: str) -> Dict[str, Any]:
         world, path, payload = find_bridge_run(self.workspace, run_id)
+        if payload.get("status") in {"interrupted", "closed"}:
+            raise ValueError(f"run is {payload['status']}; resume or start another run first")
         if payload.get("next_action") != "review_prep_report":
             return self.next(run_id)
         payload["status"] = "awaiting_callback"
@@ -241,6 +281,8 @@ class OrchestratorBridge:
 
     def submit(self, run_id: str, callback_path: Path) -> Dict[str, Any]:
         world, path, payload = find_bridge_run(self.workspace, run_id)
+        if payload.get("status") in {"interrupted", "closed"}:
+            raise ValueError(f"run is {payload['status']}; callback submission is blocked")
         if payload.get("next_action") == "review_prep_report":
             raise ValueError("prep review must be approved before submitting actor callbacks")
         callback_path = self._resolve_callback_path(callback_path)
@@ -250,7 +292,7 @@ class OrchestratorBridge:
         turn_id = turn_payload["turn_id"]
         pending_hooks = payload.get("pending_hooks", [])
         hook = self._pending_hook(pending_hooks, turn_id)
-        self._validate_callback_binding(callback, hook)
+        binding_mode = self._validate_callback_binding(callback, hook, payload)
         output = self._sanitize_output(dict(turn_payload["output"]), hook)
         output.update(
             {
@@ -269,19 +311,41 @@ class OrchestratorBridge:
             actor_state=actor_state,
             mode_aware_turn_contract=hook.get("mode_aware_turn_contract"),
         )
-        payload.setdefault("submitted_callbacks", []).append(
-            self._callback_record(callback, callback_path, turn_id, output["quality_gate"])
+        callback_id = str(callback.get("callback_id") or "")
+        self.run_store.claim_callback(
+            callback_id,
+            self._workspace_relative(callback_path),
+            run_id,
+            turn_id,
+            callback,
         )
-        if not output["quality_gate"]["accepted"]:
-            return self._reject_callback(
-                world,
-                path,
-                payload,
+        payload.setdefault("submitted_callbacks", []).append(
+            self._callback_record(
+                callback,
                 callback_path,
                 turn_id,
                 output["quality_gate"],
+                binding_mode,
             )
+        )
+        if not output["quality_gate"]["accepted"]:
+            try:
+                result = self._reject_callback(
+                    world,
+                    path,
+                    payload,
+                    callback_path,
+                    turn_id,
+                    output["quality_gate"],
+                    hook,
+                )
+            except Exception:
+                self.run_store.complete_callback(callback_id, "state_update_failed")
+                raise
+            self.run_store.complete_callback(callback_id, "rejected")
+            return result
 
+        hook.pop("retry_context", None)
         payload["pending_hooks"] = [
             item for item in pending_hooks if item.get("turn_id") != turn_id
         ]
@@ -316,7 +380,12 @@ class OrchestratorBridge:
             payload["next_action"] = "run_next_hermes_hook"
             bridge["status"] = "awaiting_callback"
 
-        self._write_run_payload(path, payload)
+        try:
+            self._write_run_payload(path, payload)
+        except Exception:
+            self.run_store.complete_callback(callback_id, "state_update_failed")
+            raise
+        self.run_store.complete_callback(callback_id, "accepted")
         return {
             "schema": ORCHESTRATOR_SUBMIT_SCHEMA,
             "run_id": run_id,
@@ -336,12 +405,15 @@ class OrchestratorBridge:
         callback_path: Path,
         turn_id: str,
         gate: Dict[str, Any],
+        binding_mode: str,
     ) -> Dict[str, Any]:
         return {
             "callback_ref": self._workspace_relative(callback_path),
             "callback_id": callback.get("callback_id"),
             "task_id": callback.get("task_id"),
             "turn_id": turn_id,
+            "binding_mode": binding_mode,
+            "dispatch_id": (callback.get("dispatch_receipt") or {}).get("dispatch_id"),
             "submitted_at": utc_now(),
             "status": callback.get("status", "completed"),
             "accepted": gate["accepted"],
@@ -356,6 +428,7 @@ class OrchestratorBridge:
         callback_path: Path,
         turn_id: str,
         gate: Dict[str, Any],
+        hook: Dict[str, Any],
     ) -> Dict[str, Any]:
         bridge = payload.setdefault("hermes_bridge", {})
         bridge["status"] = "callback_retry_required"
@@ -365,6 +438,13 @@ class OrchestratorBridge:
         ]
         retry_counts = bridge.setdefault("turn_retry_counts", {})
         retry_counts[turn_id] = int(retry_counts.get(turn_id) or 0) + 1
+        retry_context = _build_retry_context(
+            turn_id=turn_id,
+            attempt=retry_counts[turn_id],
+            callback_ref=self._workspace_relative(callback_path),
+            gate=gate,
+        )
+        hook["retry_context"] = retry_context
         payload["status"] = "awaiting_callback"
         payload["execution_status"] = "callback_retry_required"
         payload["next_action"] = "retry_current_hermes_hook"
@@ -406,13 +486,17 @@ class OrchestratorBridge:
             "pending_hook_count": len(payload.get("pending_hooks", [])),
             "report_id": payload.get("report_id"),
             "retry_limit_reached": retry_limit_reached,
+            "retry_context": retry_context,
         }
 
     def _write_run_payload(self, path: Path, payload: Dict[str, Any]) -> None:
-        path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        expected_revision = int(payload.pop("_store_revision"))
+        record = WorkflowEngine(self.workspace).update(
+            payload,
+            expected_revision=expected_revision,
         )
+        payload.clear()
+        payload.update(record.payload)
         safe_child_path(path.parent, ".wsa_bridge").write_text(
             f"{payload.get('execution_status', payload.get('status'))}\n",
             encoding="utf-8",
@@ -465,6 +549,9 @@ class OrchestratorBridge:
         payload = callback.get("payload")
         if not isinstance(payload, dict):
             raise ValueError("callback payload must be an object")
+        callback_run_id = payload.get("run_id")
+        if callback_run_id is not None and callback_run_id != run_payload.get("run_id"):
+            raise ValueError("callback run_id does not match orchestrator run")
         output = payload.get("output", payload)
         if not isinstance(output, dict):
             raise ValueError("callback output must be an object")
@@ -490,6 +577,13 @@ class OrchestratorBridge:
         }
         if callback["callback_id"] in seen_ids:
             raise ValueError("callback_id was already submitted for this run")
+        seen_task_ids = {
+            item.get("task_id")
+            for item in run_payload.get("submitted_callbacks", [])
+            if item.get("task_id")
+        }
+        if callback["task_id"] in seen_task_ids:
+            raise ValueError("callback task_id was already submitted for this run")
 
     def _validate_callback_path_unique(
         self,
@@ -519,12 +613,105 @@ class OrchestratorBridge:
         self,
         callback: Dict[str, Any],
         hook: Dict[str, Any],
-    ) -> None:
+        run_payload: Dict[str, Any],
+    ) -> str:
         route = callback["route"]
         expected = hook.get("expected_callback_route", {})
-        for key in ("world_id", "session_id", "role"):
-            if expected.get(key) and route.get(key) != expected.get(key):
+        for key in ("world_id", "scene_id", "session_id", "role"):
+            if route.get(key) != expected.get(key):
                 raise ValueError(f"callback {key} does not match pending hook")
+        issued = self._issued_dispatch_tasks(run_payload["run_id"], hook["turn_id"])
+        if not issued:
+            if self._legacy_callback_allowed(run_payload):
+                return "legacy_compatibility"
+            raise ValueError("unbound legacy callback is disabled for this run")
+
+        task_id = callback["task_id"]
+        task = issued.get(task_id)
+        if task is None:
+            raise ValueError("callback task_id does not match pending hook dispatch")
+        task_receipt = task.get("dispatch_receipt")
+        callback_receipt = callback.get("dispatch_receipt")
+        if not isinstance(task_receipt, dict) or not isinstance(callback_receipt, dict):
+            raise ValueError("callback dispatch_receipt must be an object")
+        try:
+            validate_orchestrator_dispatch_receipt(task_receipt)
+            validate_orchestrator_dispatch_receipt(callback_receipt)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        if callback_receipt != task_receipt:
+            raise ValueError("callback dispatch_receipt does not match issued task")
+        if task_receipt.get("task_id") != task_id:
+            raise ValueError("callback task_id does not match dispatch receipt")
+        if task_receipt.get("run_id") != run_payload.get("run_id"):
+            raise ValueError("callback dispatch receipt run_id does not match orchestrator run")
+        if task_receipt.get("turn_id") != hook.get("turn_id"):
+            raise ValueError("callback dispatch receipt turn_id does not match pending hook")
+        expected_digest = hook.get("dispatch_contract", {}).get("route_digest")
+        if not expected_digest:
+            expected_digest = callback_route_digest(expected)
+        if task_receipt.get("route_digest") != expected_digest:
+            raise ValueError("dispatch receipt route digest does not match pending hook")
+        if callback_route_digest(route) != expected_digest:
+            raise ValueError("callback route digest does not match pending hook")
+        task_input = task.get("task", {}).get("input")
+        if not isinstance(task_input, dict):
+            raise ValueError("issued task does not contain bridge input")
+        if task_input.get("schema") != ORCHESTRATOR_BRIDGE_TASK_INPUT_SCHEMA:
+            raise ValueError("issued task bridge input schema does not match pending hook")
+        for key, value in (
+            ("run_id", run_payload.get("run_id")),
+            ("turn_id", hook.get("turn_id")),
+            ("session_id", expected.get("session_id")),
+            ("route_digest", expected_digest),
+        ):
+            if task_input.get(key) != value:
+                raise ValueError(f"issued task bridge input {key} does not match pending hook")
+        payload = callback.get("payload") or {}
+        if payload.get("run_id") != run_payload.get("run_id"):
+            raise ValueError("callback run_id does not match dispatch receipt")
+        if payload.get("turn_id") != hook.get("turn_id"):
+            raise ValueError("callback turn_id does not match dispatch receipt")
+        return "dispatch_receipt"
+
+    def _issued_dispatch_tasks(
+        self,
+        run_id: str,
+        turn_id: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        issued: Dict[str, Dict[str, Any]] = {}
+        for directory in ("task_queue", "task_archive"):
+            root = safe_child_path(self.workspace, "hermes", directory)
+            if not root.exists():
+                continue
+            for path in root.glob("*.json"):
+                try:
+                    task = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if not isinstance(task, dict):
+                    continue
+                receipt = task.get("dispatch_receipt")
+                if (
+                    task.get("schema") == HERMES_TASK_SCHEMA
+                    and isinstance(receipt, dict)
+                    and receipt.get("run_id") == run_id
+                    and receipt.get("turn_id") == turn_id
+                ):
+                    issued[str(task.get("task_id"))] = task
+        return issued
+
+    def _legacy_callback_allowed(self, run_payload: Dict[str, Any]) -> bool:
+        policy = (
+            run_payload.get("hermes_bridge", {})
+            .get("callback_policy", {})
+            .get("legacy_callback_compatibility", {})
+        )
+        return bool(
+            policy.get("enabled") is True
+            and policy.get("policy_id") == LEGACY_CALLBACK_COMPATIBILITY_POLICY_ID
+            and policy.get("only_when_no_dispatch_exists_for_pending_turn") is True
+        )
 
     def _sanitize_output(
         self,
@@ -538,6 +725,53 @@ class OrchestratorBridge:
             if key in allowed:
                 sanitized[key] = _bounded_value(value)
         return sanitized
+
+
+def _build_retry_context(
+    *,
+    turn_id: str,
+    attempt: int,
+    callback_ref: str,
+    gate: Dict[str, Any],
+) -> Dict[str, Any]:
+    required_missing = _bounded_code_list(gate.get("missing_fields", []))
+    expected_missing = _bounded_code_list(gate.get("missing_expected_fields", []))
+    missing_fields = _bounded_code_list(required_missing + expected_missing)
+    reason_codes = _bounded_code_list(gate.get("rejection_reasons", []))
+    return {
+        "schema": RETRY_CONTEXT_SCHEMA,
+        "turn_id": str(turn_id)[:MAX_TEXT_CHARS],
+        "attempt": max(1, int(attempt)),
+        "reason_codes": reason_codes,
+        "missing_fields": missing_fields,
+        "missing_required_fields": required_missing,
+        "missing_expected_fields": expected_missing,
+        "correction_scope": {
+            "supply_fields": missing_fields,
+            "set_uncertainty_to_one_of": (
+                ["low", "medium", "high"]
+                if "unlabeled_uncertainty" in reason_codes
+                else []
+            ),
+            "remove_fields": (
+                ["canon_mutation"] if "canon_mutation_attempt" in reason_codes else []
+            ),
+            "resubmit_same_turn": True,
+        },
+        "rejected_callback_ref": str(callback_ref)[:MAX_TEXT_CHARS],
+        "rejected_output_included": False,
+    }
+
+
+def _bounded_code_list(values: Any) -> List[str]:
+    if not isinstance(values, list):
+        return []
+    result: List[str] = []
+    for value in values[:MAX_LIST_ITEMS]:
+        code = str(value)[:80]
+        if code and code not in result:
+            result.append(code)
+    return result
 
 
 def quality_gate(
@@ -727,6 +961,15 @@ def _bounded_value(value: Any, depth: int = 0) -> Any:
 
 
 def find_bridge_run(workspace: Path, run_id: str) -> tuple[WorldRecord, Path, Dict[str, Any]]:
+    store = RunStore(workspace)
+    try:
+        record = store.get(run_id)
+        world = get_world(workspace, record.world_id)
+        payload = dict(record.payload)
+        payload["_store_revision"] = record.revision
+        return world, record.run_path, payload
+    except KeyError:
+        pass
     for world in list_worlds(workspace):
         root = safe_child_path(world.path, "orchestrator_runs")
         if not root.exists():
@@ -734,8 +977,44 @@ def find_bridge_run(workspace: Path, run_id: str) -> tuple[WorldRecord, Path, Di
         for path in sorted(root.glob("*/run.json")):
             payload = json.loads(path.read_text(encoding="utf-8"))
             if payload.get("run_id") == run_id:
-                return world, path, payload
+                store.register(payload, path, ExternalCallbackRunner(), project=False)
+                record = store.get(run_id)
+                payload = dict(record.payload)
+                payload["_store_revision"] = record.revision
+                return world, record.run_path, payload
     raise KeyError(f"orchestrator run not found: {run_id}")
+
+
+def _bridge_round_contexts(
+    payload: Dict[str, Any],
+    bridge: Dict[str, Any],
+    round_index: int,
+) -> List[Dict[str, Any]]:
+    contexts = payload.get("context_packets", [])
+    active_ids = bridge.get("active_round_participant_ids")
+    if bridge.get("active_round") == round_index and isinstance(active_ids, list):
+        by_participant_id = {
+            item.get("participant_id"): item
+            for item in contexts
+            if item.get("participant_id")
+        }
+        active_contexts = [
+            by_participant_id[participant_id]
+            for participant_id in active_ids
+            if participant_id in by_participant_id
+        ]
+        if active_contexts:
+            return active_contexts
+    selected = choose_participant_contexts(
+        contexts,
+        payload.get("actor_states", {}),
+        payload.get("floor_state", {}),
+    )
+    bridge["active_round"] = round_index
+    bridge["active_round_participant_ids"] = [
+        item["participant_id"] for item in selected
+    ]
+    return selected
 
 
 def _append_next_hook(payload: Dict[str, Any], world_id: str) -> bool:
@@ -754,10 +1033,16 @@ def _append_next_hook(payload: Dict[str, Any], world_id: str) -> bool:
     if not contexts:
         payload["next_action"] = "author_review"
         return False
+    round_contexts = _bridge_round_contexts(payload, bridge, round_index)
+    if not round_contexts:
+        payload["next_action"] = "author_review"
+        return False
     participant_index = int(bridge.get("next_participant_index") or 0)
+    if participant_index >= len(round_contexts):
+        participant_index = 0
     if participant_index == 0:
         _ensure_orchestrator_turn(payload, round_index)
-    context_packet = contexts[participant_index]
+    context_packet = round_contexts[participant_index]
     actor_state = payload.get("actor_states", {}).get(
         context_packet["participant_id"],
         context_packet.get("actor_state", {}),
@@ -787,9 +1072,11 @@ def _append_next_hook(payload: Dict[str, Any], world_id: str) -> bool:
     payload.setdefault("runtime_hook_packets", []).append(hook)
     payload.setdefault("round_prompt_packets", []).append(hook)
     participant_index += 1
-    if participant_index >= len(contexts):
+    if participant_index >= len(round_contexts):
         participant_index = 0
         bridge["next_round"] = round_index + 1
+        bridge.pop("active_round", None)
+        bridge.pop("active_round_participant_ids", None)
     bridge["next_participant_index"] = participant_index
     bridge["pending_turn_ids"] = [hook["turn_id"]]
     bridge["status"] = "awaiting_callback"

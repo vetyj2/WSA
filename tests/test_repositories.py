@@ -2,8 +2,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
+from wsa.migration import apply_migrations, plan_migrations
 from wsa.repositories import ControlRepository, WorldRepository
-from wsa.workspace import control_db_path, create_world, sqlite_connection, world_db_path
+from wsa.workspace import (
+    MigrationRequiredError,
+    control_db_path,
+    create_world,
+    sqlite_connection,
+    world_db_path,
+)
 
 
 CONTROL_TABLES = {
@@ -185,19 +192,33 @@ class RepositoryTests(TestCase):
             self.assertEqual(edges[0].edge_id, edge.edge_id)
             self.assertEqual(knowledge_rows[0].knowledge_id, knowledge.knowledge_id)
 
-    def test_dynamic_attribute_api_adds_missing_tables_for_old_world_db(self) -> None:
+    def test_dynamic_attribute_api_requires_explicit_old_world_migration(self) -> None:
         with TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             world = create_world(workspace, "Old World")
+            repo = WorldRepository(world.world_id, world.path)
+            actor = repo.create_entity("character", "Ara", payload={"preserve": True})
             with sqlite_connection(world_db_path(world.path)) as conn:
                 conn.execute("DROP TABLE knowledge_attributions")
                 conn.execute("DROP TABLE world_edges")
                 conn.execute("DROP TABLE entity_attribute_spans")
                 conn.execute("DROP TABLE dimension_definitions")
+                conn.execute("UPDATE schema_info SET version = 1 WHERE name = 'world'")
+                conn.execute("UPDATE world_metadata SET schema_version = 1")
                 conn.commit()
 
-            repo = WorldRepository(world.world_id, world.path)
-            actor = repo.create_entity("character", "Ara")
+            with self.assertRaises(MigrationRequiredError):
+                repo.set_entity_attribute_span(
+                    actor.entity_id,
+                    "combat_power",
+                    value_number=510,
+                    valid_from="2026-06-01",
+                )
+
+            plan = plan_migrations(workspace)
+            self.assertTrue(plan.upgrade_required)
+            result = apply_migrations(workspace)
+            self.assertTrue(result.backup_path and result.backup_path.exists())
             span = repo.set_entity_attribute_span(
                 actor.entity_id,
                 "combat_power",
@@ -206,6 +227,7 @@ class RepositoryTests(TestCase):
             )
 
             self.assertEqual(span.dimension_key, "combat_power")
+            self.assertTrue(repo.get_entity(actor.entity_id).payload["preserve"])
             self.assertIn("dimension_definitions", table_names(world_db_path(world.path)))
             self.assertEqual(
                 repo.get_dimension_definition("combat_power").status,

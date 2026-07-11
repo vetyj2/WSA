@@ -5,12 +5,14 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from .autonomous_orchestrator import normalize_execution_payload
 from .paths import safe_child_path
 from .reporting_contract import (
     REPORTING_ARTIFACT_MANIFEST_SCHEMA,
     SUPPORTED_REPORT_EXPORT_FORMATS,
     build_reporting_artifact_manifest,
 )
+from .run_store import RunStore
 from .workspace import WorldRecord, utc_now
 
 
@@ -29,8 +31,8 @@ def build_report_export(
     export_format: str,
 ) -> Dict[str, Any]:
     _validate_export_request(artifact_type, export_format)
-    run_path = _run_json_path(world, run_id)
-    payload = _load_json(run_path)
+    run_path, raw_payload = _load_run(world, run_id)
+    payload = normalize_execution_payload(raw_payload)
     lines = _lines_for_artifact(payload, artifact_type)
     content = "\n".join(lines).rstrip() + "\n"
     if export_format == "html":
@@ -43,7 +45,9 @@ def build_report_export(
         "artifact_type": artifact_type,
         "format": export_format,
         "source_ref": _relative_to_world(world, run_path),
-        "source_of_truth": "orchestrator_run_json",
+        "source_of_truth": "control_sqlite_workflow_runs",
+        "execution_mode": payload["execution_mode"],
+        "execution_provenance": payload["execution_provenance"],
         "content": content,
         "side_effect_status": "read_only_until_write_requested",
     }
@@ -61,13 +65,15 @@ def write_report_export(
     output_path = safe_child_path(export_dir, f"{artifact_type}.{export_format}")
     output_path.write_text(export["content"], encoding="utf-8")
     manifest_path = safe_child_path(export_dir, "artifact_source_map.json")
+    run_path, raw_run_payload = _load_run(world, run_id)
+    run_payload = normalize_execution_payload(raw_run_payload)
     manifest = build_reporting_artifact_manifest(
         session_id=run_id,
         world_id=world.world_id,
         run_id=run_id,
-        workflow=_load_json(_run_json_path(world, run_id)).get("workflow"),
-        skill=_load_json(_run_json_path(world, run_id)).get("skill"),
-        session_log_ref=_relative_to_world(world, _run_json_path(world, run_id)),
+        workflow=run_payload.get("workflow"),
+        skill=run_payload.get("skill"),
+        session_log_ref=_relative_to_world(world, run_path),
         exports=[
             {
                 "artifact_type": artifact_type,
@@ -81,6 +87,8 @@ def write_report_export(
     )
     manifest["external_artifacts"] = []
     manifest["source_map_schema"] = REPORTING_ARTIFACT_MANIFEST_SCHEMA
+    manifest["execution_mode"] = run_payload["execution_mode"]
+    manifest["execution_provenance"] = run_payload["execution_provenance"]
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -102,6 +110,7 @@ def format_report_export_result(payload: Dict[str, Any]) -> List[str]:
         f"run_id: {payload['run_id']}",
         f"artifact_type: {payload['artifact_type']}",
         f"format: {payload['format']}",
+        f"execution_mode: {payload['execution_mode']}",
         f"source_ref: {payload['source_ref']}",
         f"side_effect_status: {payload['side_effect_status']}",
     ]
@@ -122,6 +131,11 @@ def _validate_export_request(artifact_type: str, export_format: str) -> None:
 
 
 def _run_json_path(world: WorldRecord, run_id: str) -> Path:
+    workspace = world.path.parent.parent
+    try:
+        return RunStore(workspace).get(run_id).run_path
+    except KeyError:
+        pass
     root = safe_child_path(world.path, "orchestrator_runs")
     direct = safe_child_path(root, run_id, "run.json")
     if direct.exists():
@@ -141,6 +155,16 @@ def _load_json(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(path)
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_run(world: WorldRecord, run_id: str) -> tuple[Path, Dict[str, Any]]:
+    workspace = world.path.parent.parent
+    try:
+        record = RunStore(workspace).get(run_id)
+        return record.run_path, record.payload
+    except KeyError:
+        path = _run_json_path(world, run_id)
+        return path, _load_json(path)
 
 
 def _export_dir(world: WorldRecord, run_id: str, created_at: str) -> Path:
@@ -176,10 +200,7 @@ def _human_session_minutes(payload: Dict[str, Any]) -> List[str]:
         f"Question: {payload.get('question', '')}",
         "",
         "## Runtime Boundary",
-        f"Execution mode: {_get_nested(payload, 'execution_provenance', 'execution_mode') or payload.get('subsession_execution_mode', '')}",
-        f"Real subagent execution: {payload.get('real_subagent_execution', '')}",
-        f"Canon policy: {payload.get('canon_policy', 'proposal_only_until_author_approval')}",
-        f"World mutations: {len(payload.get('world_mutations', []))}",
+        *_runtime_boundary_lines(payload),
         "",
         "## Participants",
     ]
@@ -215,6 +236,9 @@ def _draft_output(payload: Dict[str, Any]) -> List[str]:
         f"Run ID: {payload.get('run_id', '')}",
         f"Workflow: {payload.get('workflow', '')}",
         f"Mode: {_get_nested(payload, 'scene_mode_disclosure', 'resolved_mode') or payload.get('workflow', '')}",
+        "",
+        "## Runtime Boundary",
+        *_runtime_boundary_lines(payload),
         "",
         "## Draft Options",
     ]
@@ -259,6 +283,9 @@ def _round_orchestration_report(payload: Dict[str, Any]) -> List[str]:
         f"Status: {payload.get('status', '')}",
         f"Stop/close reason: {payload.get('close_reason') or payload.get('stop_reason') or ''}",
         "",
+        "## Runtime Boundary",
+        *_runtime_boundary_lines(payload),
+        "",
         "## Counts",
     ]
     turn_records = payload.get("turn_records", [])
@@ -294,6 +321,8 @@ def _round_orchestration_report(payload: Dict[str, Any]) -> List[str]:
 def _summary_lines(payload: Dict[str, Any]) -> List[str]:
     summary = payload.get("actor_contribution_summary", {})
     lines = [
+        f"execution mode: {payload.get('execution_mode', '')}",
+        f"output origin: {_get_nested(payload, 'execution_provenance', 'output_origin') or ''}",
         f"turn records: {len(payload.get('turn_records', []))}",
         f"subsession outputs: {len(payload.get('subsession_outputs', []))}",
         f"callback total: {summary.get('callback_total', 0) if isinstance(summary, dict) else 0}",
@@ -305,6 +334,24 @@ def _summary_lines(payload: Dict[str, Any]) -> List[str]:
         lines.append(f"scene mode: {disclosure.get('resolved_mode', '')}")
         lines.append(f"actors actually did: {disclosure.get('what_actors_actually_did', '')}")
     return lines
+
+
+def _runtime_boundary_lines(payload: Dict[str, Any]) -> List[str]:
+    provenance = payload.get("execution_provenance", {})
+    if not isinstance(provenance, dict):
+        provenance = {}
+    return [
+        f"Execution mode: {payload.get('execution_mode', '')}",
+        f"Output origin: {provenance.get('output_origin', '')}",
+        (
+            "External callback confirmed: "
+            f"{str(provenance.get('external_runtime_confirmed', False)).lower()}"
+        ),
+        f"Callback evidence count: {provenance.get('callback_evidence_count', 0)}",
+        f"Real subagent execution: {payload.get('real_subagent_execution', '')}",
+        f"Canon policy: {payload.get('canon_policy', 'proposal_only_until_author_approval')}",
+        f"World mutations: {len(payload.get('world_mutations', []))}",
+    ]
 
 
 def _quality_lines(payload: Dict[str, Any]) -> List[str]:

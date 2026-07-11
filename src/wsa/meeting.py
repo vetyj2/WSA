@@ -15,6 +15,8 @@ from .workspace import WorldRecord, utc_now
 
 
 MEETING_DECISIONS = {"approve", "retry", "hold"}
+MEETING_RUNTIME_TARGET = "meeting:mock"
+MEETING_EXECUTION_MODE = "deterministic_mock"
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,9 @@ class MeetingResult:
     report_id: str
     manager_session_id: str
     participant_session_ids: List[str]
+    runtime_target: str
+    execution_mode: str
+    execution_provenance: Dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,7 @@ class MeetingOrchestrator:
             f"{slugify(topic)}_{meeting_id[:14]}",
         )
         meeting_dir.mkdir(parents=True, exist_ok=True)
+        execution_provenance = _meeting_execution_provenance()
 
         agenda = {
             "meeting_id": meeting_id,
@@ -84,10 +90,13 @@ class MeetingOrchestrator:
             },
             "decision_options": ["approve", "retry", "hold"],
             "participants": labels,
+            "runtime_target": MEETING_RUNTIME_TARGET,
+            "execution_mode": MEETING_EXECUTION_MODE,
+            "execution_provenance": execution_provenance,
         }
         manager_session_id = self.transport.start_session(
             role="meeting_manager",
-            runtime_target="meeting:mock",
+            runtime_target=MEETING_RUNTIME_TARGET,
             world_id=self.world.world_id,
             payload=agenda,
         )
@@ -109,13 +118,16 @@ class MeetingOrchestrator:
             entity = entity_index.get(label.casefold())
             session_id = self.transport.start_session(
                 role="representative",
-                runtime_target="meeting:mock",
+                runtime_target=MEETING_RUNTIME_TARGET,
                 world_id=self.world.world_id,
                 payload={
                     "meeting_id": meeting_id,
                     "represents": label,
                     "entity_id": entity.entity_id if entity else None,
                     "mode": "meeting",
+                    "runtime_target": MEETING_RUNTIME_TARGET,
+                    "execution_mode": MEETING_EXECUTION_MODE,
+                    "execution_provenance": execution_provenance,
                 },
             )
             self.transport.send(
@@ -128,6 +140,13 @@ class MeetingOrchestrator:
                 parent_message_id=agenda_envelope.message_id,
             )
             contribution = self._build_contribution(label, entity, topic, question)
+            contribution.update(
+                {
+                    "runtime_target": MEETING_RUNTIME_TARGET,
+                    "execution_mode": MEETING_EXECUTION_MODE,
+                    "execution_provenance": execution_provenance,
+                }
+            )
             participant_records.append(
                 MeetingParticipant(
                     label=label,
@@ -153,6 +172,9 @@ class MeetingOrchestrator:
             "meeting_id": meeting_id,
             "topic": topic,
             "question": question,
+            "runtime_target": MEETING_RUNTIME_TARGET,
+            "execution_mode": MEETING_EXECUTION_MODE,
+            "execution_provenance": execution_provenance,
             "apply_policy": agenda["apply_policy"],
             "decision_options": agenda["decision_options"],
             "reporting_artifact_contract": build_reporting_artifact_contract(
@@ -190,7 +212,13 @@ class MeetingOrchestrator:
             role="meeting_manager",
             message_type="meeting_summary",
             world_id=self.world.world_id,
-            payload={"meeting_id": meeting_id, "report_id": report.report_id},
+            payload={
+                "meeting_id": meeting_id,
+                "report_id": report.report_id,
+                "runtime_target": MEETING_RUNTIME_TARGET,
+                "execution_mode": MEETING_EXECUTION_MODE,
+                "execution_provenance": execution_provenance,
+            },
             artifact_refs=[
                 item
                 for item in (str(transcript_path), report.artifact_ref)
@@ -206,6 +234,9 @@ class MeetingOrchestrator:
             report_id=report.report_id,
             manager_session_id=manager_session_id,
             participant_session_ids=[item.session_id for item in participant_records],
+            runtime_target=MEETING_RUNTIME_TARGET,
+            execution_mode=MEETING_EXECUTION_MODE,
+            execution_provenance=execution_provenance,
         )
 
     def decide_report(
@@ -333,7 +364,12 @@ class MeetingOrchestrator:
         participants: List[MeetingParticipant],
     ) -> Dict[str, Any]:
         return {
-            "summary": f"Meeting gathered {len(participants)} representative perspectives.",
+            "summary": (
+                f"WSA deterministic mock meeting generated {len(participants)} "
+                "representative perspectives locally."
+            ),
+            "execution_mode": MEETING_EXECUTION_MODE,
+            "output_origin": "wsa_local_deterministic_simulation",
             "topic": topic,
             "question": question,
             "world_mutations": [],
@@ -343,3 +379,19 @@ class MeetingOrchestrator:
                 "Keep unresolved gaps outside canon until approved.",
             ],
         }
+
+
+def _meeting_execution_provenance() -> Dict[str, Any]:
+    return {
+        "schema": "wsa.meeting.execution_provenance.v1",
+        "execution_mode": MEETING_EXECUTION_MODE,
+        "runtime_target": MEETING_RUNTIME_TARGET,
+        "output_origin": "wsa_local_deterministic_simulation",
+        "deterministic": True,
+        "local_simulated_output": True,
+        "wsa_direct_runtime_execution": False,
+        "real_actor_sessions_executed": False,
+        "callback_execution_reported": False,
+        "external_runtime_confirmed": False,
+        "world_mutation_performed": False,
+    }

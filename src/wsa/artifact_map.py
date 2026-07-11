@@ -160,7 +160,7 @@ def _source_of_truth_zones() -> List[Dict[str, Any]]:
             "workspace_registry",
             "control.sqlite",
             "source_of_truth",
-            "WSA workspace registry, runtime sessions, scheduler metadata, and manager memory.",
+            "WSA registry, revisioned workflow runs, callback receipts, runtime sessions, scheduler metadata, and manager memory.",
             "preserve",
         ),
         _zone(
@@ -178,13 +178,6 @@ def _source_of_truth_zones() -> List[Dict[str, Any]]:
             "preserve",
         ),
         _zone(
-            "orchestrator_run_log",
-            "worlds/{world_id}/orchestrator_runs/{run_id}/run.json",
-            "source_log",
-            "Durable orchestration state and callback-derived floor/actor state.",
-            "preserve_or_archive",
-        ),
-        _zone(
             "session_log",
             "worlds/{world_id}/artifacts/session_logs/{YYYY-MM-DD}/{session_id}/",
             "source_log",
@@ -196,6 +189,13 @@ def _source_of_truth_zones() -> List[Dict[str, Any]]:
 
 def _managed_artifact_zones() -> List[Dict[str, Any]]:
     return [
+        _zone(
+            "orchestrator_run_projection",
+            "worlds/{world_id}/orchestrator_runs/{run_id}/run.json",
+            "derivable_projection",
+            "Compact workflow projection regenerated from control.sqlite workflow_runs.",
+            "repair_or_archive",
+        ),
         _zone(
             "workspace_report_mailbox",
             "reports/{inbox|pending_review|approved|rejected|archived|telegram_queue}/",

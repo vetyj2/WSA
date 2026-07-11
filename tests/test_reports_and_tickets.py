@@ -1,3 +1,5 @@
+import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -5,7 +7,13 @@ from unittest import TestCase
 from wsa.reports import ReportMailbox
 from wsa.repositories import WorldRepository
 from wsa.review_cleanup import reject_pending_review, triage_review_queue
-from wsa.tickets import approve_ticket, create_pr_packet
+from wsa.tickets import (
+    NonApplicableTicketError,
+    apply_ticket,
+    approve_ticket,
+    create_pr_packet,
+    review_ticket,
+)
 from wsa.workspace import create_world
 
 
@@ -86,7 +94,20 @@ class ReportsAndTicketsTests(TestCase):
                 encoding="utf-8",
             )
             callback_path = workspace / "hermes" / "callbacks" / "callback.json"
-            callback_path.write_text('{"status": "accepted"}\n', encoding="utf-8")
+            callback_path.write_text(
+                json.dumps(
+                    {
+                        "callback_id": "cleanup_callback",
+                        "status": "accepted",
+                        "route": {
+                            "world_id": world.world_id,
+                            "run_id": "orun_review",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             triage = triage_review_queue(workspace, world)
             self.assertEqual(triage["counts"]["pending_reports"], 1)
@@ -142,7 +163,7 @@ class ReportsAndTicketsTests(TestCase):
             self.assertEqual(len(facts), 1)
             self.assertEqual(facts[0].object_value, "navigator")
             self.assertEqual(facts[0].status, "canon")
-            self.assertEqual(approved_ticket.status, "approved")
+            self.assertEqual(approved_ticket.status, "applied")
 
     def test_pr_packet_approval_rolls_back_if_later_change_fails(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -176,3 +197,103 @@ class ReportsAndTicketsTests(TestCase):
 
             self.assertEqual(repo.list_facts(actor.entity_id), [])
             self.assertEqual(repo.get_ticket(ticket.ticket_id).status, "proposed")
+
+    def test_candidate_ticket_without_changes_cannot_report_world_application(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Candidate Ticket World")
+            repo = WorldRepository(world.world_id, world.path)
+            ticket = repo.create_ticket(
+                title="Candidate only",
+                ticket_type="meeting_candidate",
+                status="proposed",
+                payload={"candidate": {"summary": "review me"}},
+            )
+
+            with self.assertRaises(NonApplicableTicketError):
+                apply_ticket(repo, ticket.ticket_id)
+
+            self.assertEqual(repo.get_ticket(ticket.ticket_id).status, "proposed")
+
+    def test_ticket_application_is_idempotent_after_success(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Idempotent Ticket World")
+            repo = WorldRepository(world.world_id, world.path)
+            actor = repo.create_entity("character", "Ara")
+            ticket = create_pr_packet(
+                repo,
+                "Add one fact",
+                [
+                    {
+                        "change_type": "add_fact",
+                        "subject_id": actor.entity_id,
+                        "predicate": "has_role",
+                        "object_value": "navigator",
+                    }
+                ],
+            )
+
+            review_ticket(repo, ticket.ticket_id)
+            first = apply_ticket(repo, ticket.ticket_id)
+            second = apply_ticket(repo, ticket.ticket_id)
+
+            self.assertEqual(first.status, "applied")
+            self.assertEqual(len(first.applied_ids), 1)
+            self.assertEqual(second.applied_ids, [])
+            self.assertEqual(
+                second.side_effect_status,
+                "already_applied_no_new_world_mutation",
+            )
+            self.assertEqual(len(repo.list_facts(actor.entity_id)), 1)
+
+    def test_parallel_ticket_application_commits_once(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "Concurrent Ticket World")
+            repo = WorldRepository(world.world_id, world.path)
+            actor = repo.create_entity("character", "Ara")
+            ticket = create_pr_packet(
+                repo,
+                "Concurrent fact",
+                [
+                    {
+                        "change_type": "add_fact",
+                        "subject_id": actor.entity_id,
+                        "predicate": "has_role",
+                        "object_value": "navigator",
+                    }
+                ],
+            )
+
+            review_ticket(repo, ticket.ticket_id)
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(
+                    pool.map(
+                        lambda _: apply_ticket(repo, ticket.ticket_id),
+                        range(2),
+                    )
+                )
+
+            self.assertEqual(len(repo.list_facts(actor.entity_id)), 1)
+            self.assertEqual(
+                sorted(result.side_effect_status for result in results),
+                [
+                    "already_applied_no_new_world_mutation",
+                    "world_changes_applied",
+                ],
+            )
+            with repo._connect() as conn:
+                receipt_count = conn.execute(
+                    "SELECT COUNT(*) FROM ticket_applications WHERE ticket_id = ?",
+                    (ticket.ticket_id,),
+                ).fetchone()[0]
+                commit_count = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM commit_log
+                    WHERE action = 'ticket_applied' AND target_id = ?
+                    """,
+                    (ticket.ticket_id,),
+                ).fetchone()[0]
+            self.assertEqual(receipt_count, 1)
+            self.assertEqual(commit_count, 1)

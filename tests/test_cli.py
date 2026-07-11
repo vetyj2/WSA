@@ -381,7 +381,37 @@ class CliTests(TestCase):
             self.assertIn("discretion_level: 5", discretion_stdout.getvalue())
             self.assertIn("startup_interview_mode: easystartup", interview_stdout.getvalue())
             self.assertIn("0001f=", interview_stdout.getvalue())
+            self.assertNotIn("court intrigue", interview_stdout.getvalue())
             self.assertIn("startup_ambiguity: 80%", batch_stdout.getvalue())
+
+    def test_world_startup_summary_cli_exposes_intent_without_world_mutation(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            world = create_world(workspace, "CLI Startup Summary World")
+            StartupProfileManager(world).answer("0001", "Organize my existing notes.")
+            stdout = StringIO()
+
+            with patch("sys.stdout", stdout):
+                code = main(
+                    [
+                        "--workspace",
+                        str(workspace),
+                        "world",
+                        "startup",
+                        "summary",
+                        world.world_id,
+                        "--format",
+                        "json",
+                    ]
+                )
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["answers"][0]["dimension"], "creation_goal")
+            self.assertEqual(
+                payload["side_effect_status"],
+                "read_only_summary_no_world_mutation",
+            )
 
     def test_world_easystartup_cli_is_mode_aware_without_prior_interview(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -634,6 +664,7 @@ class CliTests(TestCase):
                         run_id,
                         "--format",
                         "json",
+                        "--expand-contracts",
                     ]
                 )
             report_stdout = StringIO()
@@ -822,7 +853,20 @@ class CliTests(TestCase):
                 status="pending_review",
             )
             callback_path = workspace / "hermes" / "callbacks" / "callback.json"
-            callback_path.write_text('{"status": "accepted"}\n', encoding="utf-8")
+            callback_path.write_text(
+                json.dumps(
+                    {
+                        "callback_id": "cli_cleanup_callback",
+                        "status": "accepted",
+                        "route": {
+                            "world_id": world.world_id,
+                            "run_id": "cli_cleanup",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             triage_stdout = StringIO()
             with patch("sys.stdout", triage_stdout):
@@ -935,7 +979,9 @@ class CliTests(TestCase):
                 )
 
             self.assertEqual(code, 0)
-            self.assertIn(f"ticket_approved: {ticket_id}", approve_stdout.getvalue())
+            self.assertIn("ticket_application: applied", approve_stdout.getvalue())
+            self.assertIn(f"ticket_id: {ticket_id}", approve_stdout.getvalue())
+            self.assertIn("side_effect_status: world_changes_applied", approve_stdout.getvalue())
 
     def test_hermes_cli_writes_example_and_task_packet(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -75,7 +75,7 @@ class AutonomousOrchestratorTests(TestCase):
                 participants=["Northern Institute", "Unregistered Circle"],
                 rounds=3,
             )
-            payload = json.loads(result.run_path.read_text(encoding="utf-8"))
+            payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
             control = ControlRepository(workspace)
 
             self.assertEqual(payload["schema"], "wsa.orchestrator.run.v1")
@@ -97,7 +97,7 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertGreater(payload["actor_states"]["P001"]["turn_count"], 0)
             self.assertEqual(
                 payload["execution_provenance"]["execution_mode"],
-                "local-simulated",
+                "deterministic_mock",
             )
             self.assertFalse(
                 payload["execution_provenance"]["wsa_direct_runtime_execution"]
@@ -379,6 +379,8 @@ class AutonomousOrchestratorTests(TestCase):
             self.assertEqual(run_payload["pending_hooks"][0]["turn_id"], next_payload["hook"]["turn_id"])
             self.assertEqual(run_payload["rejected_callbacks"][0]["turn_id"], next_payload["hook"]["turn_id"])
             self.assertIsNone(run_payload["report_id"])
+            retry_payload = bridge.next(result.run_id)
+            self.assertNotIn("Rejected output.", json.dumps(retry_payload, ensure_ascii=False))
 
     def test_hermes_bridge_retry_limit_returns_author_boundary(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -563,7 +565,7 @@ class AutonomousOrchestratorTests(TestCase):
                 rounds=2,
                 skill="scene_start",
             )
-            payload = json.loads(result.run_path.read_text(encoding="utf-8"))
+            payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
 
             self.assertEqual(payload["workflow"], "scene_generation")
             self.assertEqual(payload["workflow_requested"], "scene_start")
@@ -633,7 +635,7 @@ class AutonomousOrchestratorTests(TestCase):
                 max_queue_turns=2,
                 max_subsession_calls=10,
             )
-            payload = json.loads(result.run_path.read_text(encoding="utf-8"))
+            payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
 
             self.assertEqual(payload["skill"], "scene_start")
             self.assertEqual(payload["queue_limits"]["rounds_requested"], 5)
@@ -662,7 +664,7 @@ class AutonomousOrchestratorTests(TestCase):
                 frame_plan="Use only council agenda items already named by the author.",
                 max_concurrent_subsessions=2,
             )
-            payload = json.loads(result.run_path.read_text(encoding="utf-8"))
+            payload = AutonomousOrchestrator.load_run(workspace, result.run_id)
 
             self.assertEqual(payload["plan_frame"]["source"], "user_defined")
             self.assertTrue(payload["concurrency_policy"]["batching_required"])

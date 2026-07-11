@@ -4,7 +4,7 @@
       "do_not_expand_visible_menu_for_every_new_feature": true,
       "free_form_alias_policy": "hyphenated_and_legacy_aliases_may_remain_for_parsing",
       "keep_existing_commands_available": true,
-      "new_capability_rule": "First attach new behavior to an existing entrypoint with workflow, mode, scope, target, or action before creating a new user-visible command.",
+      "new_capability_rule": "Attach behavior to an existing entrypoint before adding a new command.",
       "telegram_menu_policy": "show_entrypoints_or_primary_commands_only"
     },
     "entries": [
@@ -22,7 +22,7 @@
           "easy"
         ],
         "notes": [
-          "Easystartup is Startup with easy-pick mode, not a separate top-level product surface."
+          "Easystartup is an easy-pick Startup mode, not a separate product surface."
         ],
         "primary_command": "/wsa_startup"
       },
@@ -43,7 +43,7 @@
           "decision_meeting"
         ],
         "notes": [
-          "Meetup is a working belief or intermediate orchestration surface; it does not directly canonize generated material."
+          "Meetup output remains proposal-only until an explicit change ticket is applied."
         ],
         "primary_command": "/wsa_orchestrator"
       },
@@ -59,9 +59,6 @@
           "viewpoint_filter",
           "draft_boundary"
         ],
-        "notes": [
-          "Scene is the reliability layer for localized scene data, actor packets, viewpoints, and script-prep scope."
-        ],
         "primary_command": "/wsa_scene_start"
       },
       {
@@ -76,9 +73,6 @@
           "world_health",
           "gap_scan",
           "stale_work_review"
-        ],
-        "notes": [
-          "Patrol should become a visible entrypoint before adding more narrow patrol-style slash commands."
         ],
         "primary_command": null,
         "status": "route_group_no_single_command_yet"
@@ -119,10 +113,6 @@
           "export",
           "migration"
         ],
-        "notes": [
-          "Database is separate from Doctor: Doctor diagnoses health; Database inspects and manages world data.",
-          "Review cleanup stays under Database/Review instead of becoming a new top-level surface."
-        ],
         "primary_command": null,
         "status": "route_group_no_single_command_yet"
       }
@@ -136,18 +126,8 @@
       "action"
     ],
     "max_visible_entrypoints": 6,
-    "purpose": "Keep the user-facing Hermes command surface small while allowing internal workflow, mode, scope, and action routing to grow.",
-    "schema": "wsa.hermes.canonical_menu_surface.v1"
-  },
-  "cli_template_policy": {
-    "argv_array_required": true,
-    "input_json_template": "json_serialize_after_placeholder_resolution",
-    "machine_readable_argument_hints": true,
-    "multiple_templates_default": "run_all",
-    "optional_unset_policy": "omit_flag_and_value_or_omit_input_json_key",
-    "placeholder_resolution": "resolve_all_placeholders_before_execution",
-    "repeatable_argument_policy": "repeat_flag_once_per_value",
-    "shell_joining": "forbidden_by_default"
+    "purpose": "Keep the visible command surface small while compatibility routes remain available.",
+    "schema": "wsa.hermes.canonical_menu_surface.v2"
   },
   "commands": [
     {
@@ -173,10 +153,6 @@
         ]
       ],
       "command": "/wsa_help",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
@@ -228,10 +204,6 @@
         ]
       ],
       "command": "/wsa_doctor",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
@@ -262,10 +234,6 @@
         ]
       ],
       "command": "/wsa_worlds",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
@@ -303,10 +271,6 @@
         ]
       ],
       "command": "/wsa_create_world",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
@@ -366,19 +330,11 @@
         ]
       ],
       "command": "/wsa_startup",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
       "intent": "open_startup_interview",
-      "notes": [
-        "This command may create or update startup_profile.json; do not run during update.lock.",
-        "Use at most three choices per question and encourage longer free-text author answers."
-      ],
       "safety": "workspace_mutating",
       "title": "Start or continue the open-ended startup interview."
     },
@@ -434,20 +390,11 @@
         ]
       ],
       "command": "/wsa_easystartup",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
       "intent": "easy_pick_startup_interview",
-      "notes": [
-        "This command may create or update startup_profile.json; do not run during update.lock.",
-        "Offer five to eight easy-pick choices per question and let Hermes fill details according to discretion level.",
-        "Hermes should keep returning to the interview with progress unless the user stops it."
-      ],
       "safety": "workspace_mutating",
       "title": "Start or continue the easy-pick startup interview."
     },
@@ -508,18 +455,11 @@
         ]
       ],
       "command": "/wsa_answer",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
       "intent": "record_startup_answer",
-      "notes": [
-        "Hermes chooses the startup or easystartup answer endpoint based on the active interview mode."
-      ],
       "safety": "requires_approval",
       "title": "Record an author answer for a startup question."
     },
@@ -574,18 +514,11 @@
         ]
       ],
       "command": "/wsa_pick",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
       "intent": "record_parallel_startup_choices",
-      "notes": [
-        "Hermes chooses the startup or easystartup batch endpoint based on the active interview mode."
-      ],
       "safety": "requires_approval",
       "title": "Record parallel startup choices such as 0001a 0002b plus notes."
     },
@@ -602,7 +535,7 @@
           "required": true
         },
         {
-          "description": "Natural-language stopping point, such as 'until 100 characters exist'.",
+          "description": "Natural-language stopping point, such as 'until the requested outline is ready for review'.",
           "name": "checkpoint",
           "required": true
         },
@@ -638,19 +571,11 @@
         ]
       ],
       "command": "/wsa_autogen",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
       "intent": "autonomous_world_generation",
-      "notes": [
-        "This command generates candidates only; canon mutation still follows user review policy.",
-        "Discretion level 5 requires a destination checkpoint before cron automation starts."
-      ],
       "safety": "proposal_only",
       "title": "Ask Hermes to generate world candidates until a natural-language checkpoint."
     },
@@ -689,21 +614,11 @@
         ]
       ],
       "command": "/wsa_update",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
       "intent": "preflight_wsa_update",
-      "notes": [
-        "This command does not pull, overwrite, migrate, or delete files.",
-        "If Hermes runs from the workspace root, pass the installed WSA source root explicitly or omit source_root.",
-        "Hermes should run this before and after any runtime-owned source update.",
-        "If preflight blocks, Hermes should stop update automation and report the blocking condition."
-      ],
       "safety": "read_only",
       "title": "Run update preflight before a Hermes-owned WSA source upgrade."
     },
@@ -749,20 +664,11 @@
         ]
       ],
       "command": "/wsa_update_backup",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
       "intent": "backup_before_wsa_update",
-      "notes": [
-        "This command creates a backup artifact only; it does not pull, overwrite, migrate, or delete source files.",
-        "If Hermes runs from the workspace root, pass the installed WSA source root explicitly or omit source_root.",
-        "Hermes should run update preflight before and after backup, then request approval for any source update command."
-      ],
       "safety": "requires_approval",
       "title": "Create a workspace backup before a Hermes-owned WSA source upgrade."
     },
@@ -911,385 +817,15 @@
         ]
       ],
       "command": "/wsa_orchestrator",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
       "intent": "run_autonomous_orchestrator",
-      "notes": [
-        "Manual trigger, then autonomous execution until review boundary or max queue turns.",
-        "WSA declares the orchestration contract and audit artifact; Hermes owns actual subagent invocation.",
-        "The template CLI produces local simulated subsession outputs unless a Hermes runtime uses the prompt packets to run real subagents.",
-        "Hermes should preserve a compressed meeting context inside this run and adapt prompt packets to its subagent syntax.",
-        "Hermes should not start without a plan/frame and hard limits; WSA supplies conservative defaults when the user has not customized them.",
-        "Prep review is default-on in bridge mode; inspect prep_report and run wsa orchestrator prep-approve before actor/subagent calls unless the user opted out.",
-        "Treat the run as a live meeting floor: participants receive compressed continuity until the chair closes it or a hard limit stops it.",
-        "Subsession prompts should be short and precise; accumulate only outputs that pass the quality gate.",
-        "Temporary subsessions are closed after the report package is created.",
-        "Generated material stays proposal-only until explicit author approval."
-      ],
-      "runtime_contract": {
-        "actor_state_policy": {
-          "carried_into_later_prompts": true,
-          "durable_per_actor": true,
-          "tracks_identity_claims_objections_and_stance_changes": true
-        },
-        "bridge_loop": {
-          "callback_path_policy": "workspace/hermes/callbacks_only",
-          "mode": "hermes-bridge",
-          "next_template": [
-            "wsa",
-            "orchestrator",
-            "next",
-            "{run_id}",
-            "--format",
-            "json"
-          ],
-          "no_new_user_visible_command_required": true,
-          "purpose": "Let Hermes execute real subagent or actor calls while WSA owns run state, quality gates, callback ingestion, and approval boundaries.",
-          "schema": "wsa.hermes.orchestrator_bridge_loop.v1",
-          "start_template": [
-            "wsa",
-            "orchestrator",
-            "run",
-            "{world_id}",
-            "--workflow",
-            "{workflow}",
-            "--topic",
-            "{topic}",
-            "--mode",
-            "hermes-bridge"
-          ],
-          "submit_template": [
-            "wsa",
-            "orchestrator",
-            "submit",
-            "{run_id}",
-            "--callback",
-            "{callback_path}",
-            "--format",
-            "json"
-          ]
-        },
-        "context_continuity": {
-          "compression": "rolling_summary_plus_recent_outputs",
-          "default_policy": "compressed-continuity",
-          "memory_scope": "orchestrator_run_only",
-          "share_policy": "participant_relevant_context_only"
-        },
-        "execution": "autonomous_until_boundary",
-        "execution_owner": "user_hermes_runtime",
-        "floor_continuity": {
-          "all_participants_receive_compressed_context_until_close": true,
-          "chair_closes_floor_or_hard_limit_stops": true,
-          "model": "live_meeting_floor"
-        },
-        "isolation": "per_orchestrator_run",
-        "manual_trigger": true,
-        "micro_turn_policy": {
-          "accumulate_only_quality_gated_outputs": true,
-          "prompt_budget_posture": "minimal_precise_subsession_calls",
-          "utterance_target": "one_sentence_or_requested_fields"
-        },
-        "plan_frame_policy": {
-          "default_guardrail_allowed_when_user_frame_missing": true,
-          "required_before_start": true,
-          "start_without_frame_recommendation": "do_not_start"
-        },
-        "progress_report_policy": {
-          "allow_mid_round_report": false,
-          "allowed_mid_round_exceptions": [
-            "user_interrupt_or_stop_signal",
-            "runtime_error",
-            "approval_or_canon_boundary",
-            "background_process_completion",
-            "background_process_failure"
-          ],
-          "availability": "optional_runtime_opt_in",
-          "delivery_owner": "user_hermes_runtime",
-          "enabled_by_default": false,
-          "final_report_required_fields": [
-            "stop_reason",
-            "side_effect_status"
-          ],
-          "interim_report_rules": [
-            "send_only_at_explicit_round_or_checkpoint_boundary",
-            "include_current_round_and_max_rounds_when_available",
-            "include_current_turn_and_max_turns_when_turns_are_reported",
-            "avoid_unlabelled_in_progress_messages"
-          ],
-          "policy": "round_boundary_only",
-          "round_state": {
-            "if_rounds_unavailable": "compute_stable_checkpoint_or_state_no_round_state_exists",
-            "max_rounds": 12,
-            "max_turns": 48
-          },
-          "schema": "wsa.orchestrator.progress_report_policy.v1",
-          "side_effect_status_values": [
-            "proposal_only_no_world_mutation",
-            "awaiting_author_approval",
-            "approved_ticket_created_only"
-          ],
-          "stop_reason_values": [
-            "conclusion_reached",
-            "author_boundary",
-            "max_round_or_turn_budget",
-            "error_or_interruption"
-          ],
-          "templates": {
-            "en": "Round {round}/{max_rounds} status — {summary}",
-            "ko": "라운드 {round}/{max_rounds} 현황 — {summary}",
-            "with_turn_en": "Round {round}/{max_rounds}, turn {turn}/{max_turns} status — {summary}",
-            "with_turn_ko": "라운드 {round}/{max_rounds}, 턴 {turn}/{max_turns} 현황 — {summary}"
-          },
-          "wsa_role": "declare_policy_only_no_user_delivery"
-        },
-        "prompt_coordination": {
-          "hermes_adapts_prompt_packets_to_subagent_syntax": true,
-          "owner": "orchestrator_manager",
-          "user_babysitting": "not_required_until_author_boundary"
-        },
-        "queue_limits": {
-          "default_max_concurrent_subsessions": 4,
-          "default_max_queue_turns": 12,
-          "default_max_subsession_calls": 48,
-          "infinite_loop_guard": true,
-          "termination_on_max_queue_turns": true
-        },
-        "reporting_artifact_contract": {
-          "actor_contribution_accounting": {
-            "recommended_counts": [
-              "callback_total",
-              "callback_accepted",
-              "callback_rejected",
-              "rollback_event_count",
-              "sql_or_fact_lookup_performed",
-              "fact_audit_evidence_available",
-              "fact_audit_evidence_count",
-              "line_build_ledger_entry_count",
-              "actor_authored_sentence_count",
-              "adopted_actor_proposal_count",
-              "final_synthesizer"
-            ],
-            "recommended_labels": [
-              "observer",
-              "constraint_panel",
-              "sql_auditor",
-              "co_writer",
-              "validator",
-              "rollback_trigger"
-            ]
-          },
-          "delivery_owner": "user_hermes_runtime",
-          "mode_aware_hook_policy": {
-            "applies_to": [
-              "meetup",
-              "scene_generation"
-            ],
-            "fact_audit_synthesis_turns": {
-              "goal": "verify scene-relevant facts and mark unchecked or deferred claims",
-              "required_evidence_family": [
-                "source_refs",
-                "fact_lookup_queries",
-                "checked_tables",
-                "checked_reports",
-                "conflicts_found",
-                "deferred_claims"
-              ]
-            },
-            "meetup_turns": {
-              "avoid": [
-                "shallow agreement",
-                "broad lore dump",
-                "canon mutation"
-              ],
-              "goal": "advance the live floor with a useful constraint, objection, dependency, or proposal movement"
-            },
-            "packet_field": "mode_aware_turn_contract",
-            "schema": "wsa.orchestrator.mode_aware_hook_policy.v1",
-            "writing_room_line_build_turns": {
-              "goal": "propose or validate one beat or 1-3 candidate lines",
-              "required_ledger_family": [
-                "candidate_text",
-                "line_candidates",
-                "validation_decision",
-                "rollback_reason",
-                "retry_count",
-                "accepted_lines"
-              ]
-            }
-          },
-          "mode_disclosure_required": [
-            "requested_mode",
-            "resolved_mode",
-            "mode_resolution_source",
-            "mode_confidence",
-            "what_actors_actually_did",
-            "what_was_not_performed"
-          ],
-          "owner": "user_runtime",
-          "privacy_policy": {
-            "do_not_commit_session_logs_to_public_template_repo": true,
-            "runtime_should_make_deletion_easy": true,
-            "session_logs_may_contain_private_world_or_user_data": true
-          },
-          "recommended_exports": [
-            {
-              "artifact_type": "human_session_minutes",
-              "audience": "author_operator",
-              "default_auto_generate": false,
-              "formats": [
-                "txt",
-                "html"
-              ],
-              "label": "회의록",
-              "purpose": "Human-readable real session log for meetup or scene-generation work. Shows what actors/runtime steps actually did.",
-              "source": "date_scoped_session_log"
-            },
-            {
-              "artifact_type": "draft_output",
-              "audience": "author_operator",
-              "default_auto_generate": false,
-              "formats": [
-                "txt",
-                "html"
-              ],
-              "label": "원고초안",
-              "purpose": "Meetup conclusion, scene draft, or other authored result produced from the session. It must not imply canon approval by itself.",
-              "source": "accepted_session_outputs_or_synthesis"
-            },
-            {
-              "artifact_type": "round_orchestration_report",
-              "audience": "operator_or_debugger",
-              "default_auto_generate": false,
-              "formats": [
-                "txt",
-                "html"
-              ],
-              "label": "라운드별 오케스트레이션 보고서",
-              "purpose": "Round/checkpoint-level orchestration trace: scheduling, actor roles, quality gates, rejected outputs, rollback triggers, and stop reasons.",
-              "source": "turn_records_and_floor_state"
-            }
-          ],
-          "runtime_customization": {
-            "allowed_custom_outputs": true,
-            "automatic_export_policy": "user_or_hermes_profile_custom",
-            "default_delivery": "none_until_runtime_requests_export",
-            "wsa_does_not_send_chat_or_store_runtime_delivery_preferences": true
-          },
-          "scene_mode_evidence_contracts": {
-            "fact_audit_synthesis": {
-              "no_evidence_wording": "guardrail/synthesis run, not deep fact-audit",
-              "required_to_claim_deep_fact_audit": [
-                "source_refs",
-                "fact_lookup_queries or checked_tables/checked_reports",
-                "conflicts_found/deferred_claims/unchecked_claims when relevant"
-              ]
-            },
-            "writing_room_line_build": {
-              "no_ledger_wording": "synthesis draft, not line-build consensus",
-              "required_to_claim_consensus_drafting": [
-                "line_build_ledger.entry_count > 0",
-                "candidate_text or line_candidates",
-                "validation_decision or rollback_reason",
-                "adopted_into_draft marker for final text"
-              ]
-            }
-          },
-          "schema": "wsa.reporting.artifact_contract.v1",
-          "skill": null,
-          "storage_policy": {
-            "artifact_architecture_map": "manager/artifact_map/artifact_architecture_map.json",
-            "delete_policy": {
-              "delete_exports_with_session_log_when_runtime_policy_allows": true,
-              "keep_world_db_and_canon_separate": true,
-              "source_map_drives_external_cleanup": true,
-              "user_can_delete_session_log_directory": true
-            },
-            "export_on_demand": true,
-            "exports_are_derivable_from_session_log": true,
-            "managed_artifact_roots": [
-              "worlds/{world_id}/artifacts/",
-              "worlds/{world_id}/meetings/",
-              "worlds/{world_id}/orchestrator_runs/",
-              "worlds/{world_id}/scenes/",
-              "reports/",
-              "hermes/reports_outbox/"
-            ],
-            "out_of_contract_artifact_policy": {
-              "allowed_only_when_runtime_or_user_requires_external_path": true,
-              "install_uninstall_goal": "Every external artifact must be traceable back to the WSA session so operators can remove, archive, or migrate it without searching manually.",
-              "required_fields": [
-                "artifact_id",
-                "artifact_type",
-                "originating_command_or_run_id",
-                "absolute_or_runtime_path",
-                "managed_by",
-                "cleanup_hint",
-                "safe_to_delete_with_session"
-              ],
-              "source_map_filename": "artifact_source_map.json",
-              "source_map_required": true,
-              "source_map_schema": "wsa.reporting.artifact_manifest.v1"
-            },
-            "primary_storage": "date_scoped_session_log",
-            "session_log_is_source_of_truth": true,
-            "session_log_root_template": "worlds/{world_id}/artifacts/session_logs/{YYYY-MM-DD}/{session_id}/",
-            "store_every_export_by_default": false
-          },
-          "workflow": null,
-          "wsa_role": "declare_recommended_artifact_shapes_and_session_log_storage_policy"
-        },
-        "runtime_bridge_contract": {
-          "compatible_runtime_families": [
-            "hermes",
-            "codex_or_local_cli_agent",
-            "custom_external_actor_runtime"
-          ],
-          "external_runtime_executes_actor_calls": true,
-          "runner_agnostic": true,
-          "schema": "wsa.runtime_bridge.contract.v1",
-          "wsa_does_not_start_runtime": true
-        },
-        "scheduler_policy": {
-          "equal_airtime_not_required": true,
-          "manager_check_can_pause_risky_claims": true,
-          "round_is_reporting_unit_only": true,
-          "turn_based": true
-        },
-        "schema": "wsa.hermes.orchestrator_runtime_contract.v1",
-        "session_cleanup": {
-          "cleanup_required": true,
-          "no_abandoned_open_subsessions": true
-        },
-        "side_effect_policy": "proposal_only_until_author_approval",
-        "subagent_invocation_owner": "user_hermes_runtime",
-        "workflow_entrypoints": {
-          "entrypoints": {
-            "meetup": {
-              "manual_trigger": "/wsa_meetup or wsa orchestrator run --workflow meetup",
-              "purpose": "Worldbuilding fact proposals, conflict diagnosis, scene-prep planning, or target-oriented representative meetings.",
-              "runtime_boundary": "Hermes owns subagent execution; WSA owns state, prompt packets, audit, quality gates, and approval package."
-            },
-            "scene_generation": {
-              "manual_trigger": "/wsa_scene_start or wsa orchestrator run --workflow scene_generation --skill scene_start",
-              "purpose": "Scene-prep decision collection, cross-verification, actor/session assignment, role isolation, and script-generation readiness.",
-              "runtime_boundary": "Hermes owns actor/subagent calls and model selection; WSA records recommended packets, constraints, checks, and approval boundaries."
-            }
-          },
-          "schema": "wsa.orchestrator.workflow_entrypoints.v1",
-          "shared_guards": [
-            "proposal_only_until_author_approval",
-            "hard_queue_and_call_limits_required",
-            "ephemeral_sessions_must_close_or_mark_complete",
-            "mock_or_simulated_modes_must_be_labeled"
-          ]
-        },
-        "wsa_role": "orchestration_contract_and_audit_artifacts_only"
+      "runtime_contract_ref": {
+        "digest": "sha256:6b533b7532f0f0cf848c708c371ea5273c1acaf92c7936329380720acd027894",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "safety": "proposal_only",
       "title": "Run a manual-trigger autonomous orchestrator workflow."
@@ -1464,400 +1000,20 @@
         ]
       ],
       "command": "/wsa_scene_start",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
-      "input_json_policy": {
-        "omit_unresolved_optional_keys": true,
-        "serialization": "json_object_argv_value",
-        "target_flag": "--input-json"
-      },
-      "input_json_template": {
-        "boundary": "prep_package_before_scene_draft_or_canon_mutation",
-        "condition": "{condition}",
-        "frame_plan": "{frame_plan}",
-        "generation_mode": "{generation_mode:auto}",
-        "location_scope": "{location_scope}",
-        "participant": "{participant}",
-        "question": "{question:Prepare scene facts, actor assignments, role isolation, model/thinking guidance, and approval choices.}",
-        "skill": "scene_start",
-        "time_scope": "{time_scope}",
-        "topic": "{topic}",
-        "viewpoint": "{viewpoint}",
-        "workflow": "scene_generation"
+      "input_json_template_ref": {
+        "digest": "sha256:ef4c28d529722e57113f37eaaeb2632060d66fc72ed85f322ea6a306fafe0f2a",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "intent": "run_scene_generation_orchestrator",
-      "notes": [
-        "Manual trigger for scene-prep, not direct script canonization.",
-        "The first template starts the run and returns a prep review report by default.",
-        "The second template approves the prep report and opens the first Hermes actor hook for a returned run_id.",
-        "The third template remains available when Hermes needs to fetch the next hook for a returned run_id.",
-        "Scene prep should filter facts/history/memory by viewpoint, cross-check contradictions, assign actors, isolate multi-role sessions, recommend model/thinking levels, and stop at approval boundary.",
-        "Hermes owns actual actor/subagent calls. WSA records prompt packets, floor state, turn records, quality gates, and approval package."
-      ],
-      "runtime_contract": {
-        "actor_state_policy": {
-          "carried_into_later_prompts": true,
-          "durable_per_actor": true,
-          "tracks_identity_claims_objections_and_stance_changes": true
-        },
-        "bridge_loop": {
-          "callback_path_policy": "workspace/hermes/callbacks_only",
-          "mode": "hermes-bridge",
-          "next_template": [
-            "wsa",
-            "orchestrator",
-            "next",
-            "{run_id}",
-            "--format",
-            "json"
-          ],
-          "no_new_user_visible_command_required": true,
-          "purpose": "Let Hermes execute real subagent or actor calls while WSA owns run state, quality gates, callback ingestion, and approval boundaries.",
-          "schema": "wsa.hermes.orchestrator_bridge_loop.v1",
-          "start_template": [
-            "wsa",
-            "orchestrator",
-            "run",
-            "{world_id}",
-            "--workflow",
-            "{workflow}",
-            "--topic",
-            "{topic}",
-            "--mode",
-            "hermes-bridge"
-          ],
-          "submit_template": [
-            "wsa",
-            "orchestrator",
-            "submit",
-            "{run_id}",
-            "--callback",
-            "{callback_path}",
-            "--format",
-            "json"
-          ]
-        },
-        "context_continuity": {
-          "compression": "rolling_summary_plus_recent_outputs",
-          "default_policy": "compressed-continuity",
-          "memory_scope": "orchestrator_run_only",
-          "share_policy": "participant_relevant_context_only"
-        },
-        "execution": "autonomous_until_boundary",
-        "execution_owner": "user_hermes_runtime",
-        "floor_continuity": {
-          "all_participants_receive_compressed_context_until_close": true,
-          "chair_closes_floor_or_hard_limit_stops": true,
-          "model": "live_meeting_floor"
-        },
-        "isolation": "per_orchestrator_run",
-        "manual_trigger": true,
-        "micro_turn_policy": {
-          "accumulate_only_quality_gated_outputs": true,
-          "prompt_budget_posture": "minimal_precise_subsession_calls",
-          "utterance_target": "one_sentence_or_requested_fields"
-        },
-        "plan_frame_policy": {
-          "default_guardrail_allowed_when_user_frame_missing": true,
-          "required_before_start": true,
-          "start_without_frame_recommendation": "do_not_start"
-        },
-        "progress_report_policy": {
-          "allow_mid_round_report": false,
-          "allowed_mid_round_exceptions": [
-            "user_interrupt_or_stop_signal",
-            "runtime_error",
-            "approval_or_canon_boundary",
-            "background_process_completion",
-            "background_process_failure"
-          ],
-          "availability": "optional_runtime_opt_in",
-          "delivery_owner": "user_hermes_runtime",
-          "enabled_by_default": false,
-          "final_report_required_fields": [
-            "stop_reason",
-            "side_effect_status"
-          ],
-          "interim_report_rules": [
-            "send_only_at_explicit_round_or_checkpoint_boundary",
-            "include_current_round_and_max_rounds_when_available",
-            "include_current_turn_and_max_turns_when_turns_are_reported",
-            "avoid_unlabelled_in_progress_messages"
-          ],
-          "policy": "round_boundary_only",
-          "round_state": {
-            "if_rounds_unavailable": "compute_stable_checkpoint_or_state_no_round_state_exists",
-            "max_rounds": 12,
-            "max_turns": 48
-          },
-          "schema": "wsa.orchestrator.progress_report_policy.v1",
-          "side_effect_status_values": [
-            "proposal_only_no_world_mutation",
-            "awaiting_author_approval",
-            "approved_ticket_created_only"
-          ],
-          "stop_reason_values": [
-            "conclusion_reached",
-            "author_boundary",
-            "max_round_or_turn_budget",
-            "error_or_interruption"
-          ],
-          "templates": {
-            "en": "Round {round}/{max_rounds} status — {summary}",
-            "ko": "라운드 {round}/{max_rounds} 현황 — {summary}",
-            "with_turn_en": "Round {round}/{max_rounds}, turn {turn}/{max_turns} status — {summary}",
-            "with_turn_ko": "라운드 {round}/{max_rounds}, 턴 {turn}/{max_turns} 현황 — {summary}"
-          },
-          "wsa_role": "declare_policy_only_no_user_delivery"
-        },
-        "prompt_coordination": {
-          "hermes_adapts_prompt_packets_to_subagent_syntax": true,
-          "owner": "orchestrator_manager",
-          "user_babysitting": "not_required_until_author_boundary"
-        },
-        "queue_limits": {
-          "default_max_concurrent_subsessions": 4,
-          "default_max_queue_turns": 12,
-          "default_max_subsession_calls": 48,
-          "infinite_loop_guard": true,
-          "termination_on_max_queue_turns": true
-        },
-        "reporting_artifact_contract": {
-          "actor_contribution_accounting": {
-            "recommended_counts": [
-              "callback_total",
-              "callback_accepted",
-              "callback_rejected",
-              "rollback_event_count",
-              "sql_or_fact_lookup_performed",
-              "fact_audit_evidence_available",
-              "fact_audit_evidence_count",
-              "line_build_ledger_entry_count",
-              "actor_authored_sentence_count",
-              "adopted_actor_proposal_count",
-              "final_synthesizer"
-            ],
-            "recommended_labels": [
-              "observer",
-              "constraint_panel",
-              "sql_auditor",
-              "co_writer",
-              "validator",
-              "rollback_trigger"
-            ]
-          },
-          "delivery_owner": "user_hermes_runtime",
-          "mode_aware_hook_policy": {
-            "applies_to": [
-              "meetup",
-              "scene_generation"
-            ],
-            "fact_audit_synthesis_turns": {
-              "goal": "verify scene-relevant facts and mark unchecked or deferred claims",
-              "required_evidence_family": [
-                "source_refs",
-                "fact_lookup_queries",
-                "checked_tables",
-                "checked_reports",
-                "conflicts_found",
-                "deferred_claims"
-              ]
-            },
-            "meetup_turns": {
-              "avoid": [
-                "shallow agreement",
-                "broad lore dump",
-                "canon mutation"
-              ],
-              "goal": "advance the live floor with a useful constraint, objection, dependency, or proposal movement"
-            },
-            "packet_field": "mode_aware_turn_contract",
-            "schema": "wsa.orchestrator.mode_aware_hook_policy.v1",
-            "writing_room_line_build_turns": {
-              "goal": "propose or validate one beat or 1-3 candidate lines",
-              "required_ledger_family": [
-                "candidate_text",
-                "line_candidates",
-                "validation_decision",
-                "rollback_reason",
-                "retry_count",
-                "accepted_lines"
-              ]
-            }
-          },
-          "mode_disclosure_required": [
-            "requested_mode",
-            "resolved_mode",
-            "mode_resolution_source",
-            "mode_confidence",
-            "what_actors_actually_did",
-            "what_was_not_performed"
-          ],
-          "owner": "user_runtime",
-          "privacy_policy": {
-            "do_not_commit_session_logs_to_public_template_repo": true,
-            "runtime_should_make_deletion_easy": true,
-            "session_logs_may_contain_private_world_or_user_data": true
-          },
-          "recommended_exports": [
-            {
-              "artifact_type": "human_session_minutes",
-              "audience": "author_operator",
-              "default_auto_generate": false,
-              "formats": [
-                "txt",
-                "html"
-              ],
-              "label": "회의록",
-              "purpose": "Human-readable real session log for meetup or scene-generation work. Shows what actors/runtime steps actually did.",
-              "source": "date_scoped_session_log"
-            },
-            {
-              "artifact_type": "draft_output",
-              "audience": "author_operator",
-              "default_auto_generate": false,
-              "formats": [
-                "txt",
-                "html"
-              ],
-              "label": "원고초안",
-              "purpose": "Meetup conclusion, scene draft, or other authored result produced from the session. It must not imply canon approval by itself.",
-              "source": "accepted_session_outputs_or_synthesis"
-            },
-            {
-              "artifact_type": "round_orchestration_report",
-              "audience": "operator_or_debugger",
-              "default_auto_generate": false,
-              "formats": [
-                "txt",
-                "html"
-              ],
-              "label": "라운드별 오케스트레이션 보고서",
-              "purpose": "Round/checkpoint-level orchestration trace: scheduling, actor roles, quality gates, rejected outputs, rollback triggers, and stop reasons.",
-              "source": "turn_records_and_floor_state"
-            }
-          ],
-          "runtime_customization": {
-            "allowed_custom_outputs": true,
-            "automatic_export_policy": "user_or_hermes_profile_custom",
-            "default_delivery": "none_until_runtime_requests_export",
-            "wsa_does_not_send_chat_or_store_runtime_delivery_preferences": true
-          },
-          "scene_mode_evidence_contracts": {
-            "fact_audit_synthesis": {
-              "no_evidence_wording": "guardrail/synthesis run, not deep fact-audit",
-              "required_to_claim_deep_fact_audit": [
-                "source_refs",
-                "fact_lookup_queries or checked_tables/checked_reports",
-                "conflicts_found/deferred_claims/unchecked_claims when relevant"
-              ]
-            },
-            "writing_room_line_build": {
-              "no_ledger_wording": "synthesis draft, not line-build consensus",
-              "required_to_claim_consensus_drafting": [
-                "line_build_ledger.entry_count > 0",
-                "candidate_text or line_candidates",
-                "validation_decision or rollback_reason",
-                "adopted_into_draft marker for final text"
-              ]
-            }
-          },
-          "schema": "wsa.reporting.artifact_contract.v1",
-          "skill": null,
-          "storage_policy": {
-            "artifact_architecture_map": "manager/artifact_map/artifact_architecture_map.json",
-            "delete_policy": {
-              "delete_exports_with_session_log_when_runtime_policy_allows": true,
-              "keep_world_db_and_canon_separate": true,
-              "source_map_drives_external_cleanup": true,
-              "user_can_delete_session_log_directory": true
-            },
-            "export_on_demand": true,
-            "exports_are_derivable_from_session_log": true,
-            "managed_artifact_roots": [
-              "worlds/{world_id}/artifacts/",
-              "worlds/{world_id}/meetings/",
-              "worlds/{world_id}/orchestrator_runs/",
-              "worlds/{world_id}/scenes/",
-              "reports/",
-              "hermes/reports_outbox/"
-            ],
-            "out_of_contract_artifact_policy": {
-              "allowed_only_when_runtime_or_user_requires_external_path": true,
-              "install_uninstall_goal": "Every external artifact must be traceable back to the WSA session so operators can remove, archive, or migrate it without searching manually.",
-              "required_fields": [
-                "artifact_id",
-                "artifact_type",
-                "originating_command_or_run_id",
-                "absolute_or_runtime_path",
-                "managed_by",
-                "cleanup_hint",
-                "safe_to_delete_with_session"
-              ],
-              "source_map_filename": "artifact_source_map.json",
-              "source_map_required": true,
-              "source_map_schema": "wsa.reporting.artifact_manifest.v1"
-            },
-            "primary_storage": "date_scoped_session_log",
-            "session_log_is_source_of_truth": true,
-            "session_log_root_template": "worlds/{world_id}/artifacts/session_logs/{YYYY-MM-DD}/{session_id}/",
-            "store_every_export_by_default": false
-          },
-          "workflow": null,
-          "wsa_role": "declare_recommended_artifact_shapes_and_session_log_storage_policy"
-        },
-        "runtime_bridge_contract": {
-          "compatible_runtime_families": [
-            "hermes",
-            "codex_or_local_cli_agent",
-            "custom_external_actor_runtime"
-          ],
-          "external_runtime_executes_actor_calls": true,
-          "runner_agnostic": true,
-          "schema": "wsa.runtime_bridge.contract.v1",
-          "wsa_does_not_start_runtime": true
-        },
-        "scheduler_policy": {
-          "equal_airtime_not_required": true,
-          "manager_check_can_pause_risky_claims": true,
-          "round_is_reporting_unit_only": true,
-          "turn_based": true
-        },
-        "schema": "wsa.hermes.orchestrator_runtime_contract.v1",
-        "session_cleanup": {
-          "cleanup_required": true,
-          "no_abandoned_open_subsessions": true
-        },
-        "side_effect_policy": "proposal_only_until_author_approval",
-        "subagent_invocation_owner": "user_hermes_runtime",
-        "workflow_entrypoints": {
-          "entrypoints": {
-            "meetup": {
-              "manual_trigger": "/wsa_meetup or wsa orchestrator run --workflow meetup",
-              "purpose": "Worldbuilding fact proposals, conflict diagnosis, scene-prep planning, or target-oriented representative meetings.",
-              "runtime_boundary": "Hermes owns subagent execution; WSA owns state, prompt packets, audit, quality gates, and approval package."
-            },
-            "scene_generation": {
-              "manual_trigger": "/wsa_scene_start or wsa orchestrator run --workflow scene_generation --skill scene_start",
-              "purpose": "Scene-prep decision collection, cross-verification, actor/session assignment, role isolation, and script-generation readiness.",
-              "runtime_boundary": "Hermes owns actor/subagent calls and model selection; WSA records recommended packets, constraints, checks, and approval boundaries."
-            }
-          },
-          "schema": "wsa.orchestrator.workflow_entrypoints.v1",
-          "shared_guards": [
-            "proposal_only_until_author_approval",
-            "hard_queue_and_call_limits_required",
-            "ephemeral_sessions_must_close_or_mark_complete",
-            "mock_or_simulated_modes_must_be_labeled"
-          ]
-        },
-        "wsa_role": "orchestration_contract_and_audit_artifacts_only"
+      "runtime_contract_ref": {
+        "digest": "sha256:6b533b7532f0f0cf848c708c371ea5273c1acaf92c7936329380720acd027894",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "safety": "proposal_only",
       "title": "Prepare a scene-generation lifecycle through the WSA orchestrator."
@@ -1908,18 +1064,11 @@
         ]
       ],
       "command": "/wsa_orchestrator_decide",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
       "intent": "decide_autonomous_orchestrator",
-      "notes": [
-        "Approval creates a candidate ticket only; canon mutation remains a later explicit step."
-      ],
       "safety": "requires_approval",
       "title": "Approve, retry, or hold an orchestrator package."
     },
@@ -1991,59 +1140,20 @@
         ]
       ],
       "command": "/fill_the_rest",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
-      "input_json_policy": {
-        "omit_unresolved_optional_keys": true,
-        "serialization": "json_object_argv_value",
-        "target_flag": "--input-json"
-      },
-      "input_json_template": {
-        "completion": "plan_only_no_cron",
-        "cron_schedule": "{cron_schedule}",
-        "destination": "{destination}",
-        "discretion_level": "{discretion_level:5}",
-        "quality_bar": "{quality_bar}",
-        "quality_gate": "required_before_completion",
-        "scope": "{scope}"
+      "input_json_template_ref": {
+        "digest": "sha256:31ba3b57f2990773bfb01ec4b7b372ccf0f8ccd68837e12a41617813f7ac43a4",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "intent": "fill_remaining_lower_layer_candidates",
-      "notes": [
-        "Generates lower-layer candidate material only; it does not directly mutate canon.",
-        "Can be used at initial setup, mid-project, or late-project cleanup.",
-        "Compatibility command: Hermes should plan first, then use /filltherest_start after explicit approval for cron work.",
-        "At discretion level 5 Hermes must ask for the destination checkpoint before preparing automation.",
-        "Before completion, Hermes must diagnose whether the generated material actually satisfies the destination and quality bar.",
-        "After completion, Hermes should request user approval before canon conversion."
-      ],
-      "runtime_contract": {
-        "approval_flow": "report_candidates_then_request_user_approval",
-        "available_anytime": true,
-        "candidate_scope": "lower_layer_information",
-        "canon_policy": "generated_material_requires_user_or_policy_approval",
-        "completion_must_state_cron_stopped": true,
-        "cron_capable_at_discretion_level": 5,
-        "cron_owner": "user_hermes_runtime",
-        "must_stop_when_destination_met": true,
-        "owner": "user_hermes_runtime",
-        "purpose": "Prepare lower-layer autonomous candidate generation until a destination checkpoint.",
-        "quality_gate": {
-          "checks": [
-            "destination_checkpoint_satisfied",
-            "internal_consistency_reviewed",
-            "duplicate_or_low_value_fill_removed",
-            "approval_report_created"
-          ],
-          "required_before_completion": true
-        },
-        "requires_destination_checkpoint": true,
-        "schema": "wsa.hermes.fill_the_rest_contract.v1"
+      "runtime_contract_ref": {
+        "digest": "sha256:585a5ab13a68dd97e39a660eb9c346bc300087450a5215858ae7dcc710f0ff65",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "safety": "proposal_only",
       "title": "Prepare lower-layer fill work until a destination checkpoint."
@@ -2110,54 +1220,20 @@
         ]
       ],
       "command": "/filltherest_plan",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
-      "input_json_policy": {
-        "omit_unresolved_optional_keys": true,
-        "serialization": "json_object_argv_value",
-        "target_flag": "--input-json"
-      },
-      "input_json_template": {
-        "completion": "plan_only_no_cron",
-        "destination": "{destination}",
-        "discretion_level": "{discretion_level:5}",
-        "quality_bar": "{quality_bar}",
-        "quality_gate": "required_before_completion",
-        "scope": "{scope}"
+      "input_json_template_ref": {
+        "digest": "sha256:44082ad4b7ce7b73f8a85f8fcbbdff8b39af5f106f1f11258529466a3938c74a",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "intent": "plan_fill_remaining_lower_layer_candidates",
-      "notes": [
-        "Read-only from the user's canon perspective: it produces a plan and candidate checklist.",
-        "Hermes should report risks, stop conditions, and whether cron would be justified."
-      ],
-      "runtime_contract": {
-        "approval_flow": "report_candidates_then_request_user_approval",
-        "available_anytime": true,
-        "candidate_scope": "lower_layer_information",
-        "canon_policy": "generated_material_requires_user_or_policy_approval",
-        "completion_must_state_cron_stopped": true,
-        "cron_capable_at_discretion_level": 5,
-        "cron_owner": "user_hermes_runtime",
-        "must_stop_when_destination_met": true,
-        "owner": "user_hermes_runtime",
-        "purpose": "Prepare lower-layer autonomous candidate generation until a destination checkpoint.",
-        "quality_gate": {
-          "checks": [
-            "destination_checkpoint_satisfied",
-            "internal_consistency_reviewed",
-            "duplicate_or_low_value_fill_removed",
-            "approval_report_created"
-          ],
-          "required_before_completion": true
-        },
-        "requires_destination_checkpoint": true,
-        "schema": "wsa.hermes.fill_the_rest_contract.v1"
+      "runtime_contract_ref": {
+        "digest": "sha256:585a5ab13a68dd97e39a660eb9c346bc300087450a5215858ae7dcc710f0ff65",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "safety": "proposal_only",
       "title": "Plan a lower-layer fill pass without starting cron automation."
@@ -2234,57 +1310,20 @@
         ]
       ],
       "command": "/filltherest_start",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
-      "input_json_policy": {
-        "omit_unresolved_optional_keys": true,
-        "serialization": "json_object_argv_value",
-        "target_flag": "--input-json"
-      },
-      "input_json_template": {
-        "completion": "stop_cron_then_report_and_request_approval",
-        "cron_schedule": "{cron_schedule}",
-        "destination": "{destination}",
-        "discretion_level": "{discretion_level:5}",
-        "quality_bar": "{quality_bar}",
-        "quality_gate": "required_before_completion",
-        "scope": "{scope}"
+      "input_json_template_ref": {
+        "digest": "sha256:debded3524885014100a885232f270936959515a1a25de9ad6ad9696a9698e4e",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "intent": "start_fill_remaining_lower_layer_candidates",
-      "notes": [
-        "Requires explicit user approval before Hermes starts cron-capable work.",
-        "When the destination is met, Hermes must stop the cron job and explicitly report that it stopped.",
-        "Before completion, Hermes must diagnose whether the generated material actually satisfies the destination and quality bar.",
-        "After completion, Hermes should request user approval before canon conversion."
-      ],
-      "runtime_contract": {
-        "approval_flow": "report_candidates_then_request_user_approval",
-        "available_anytime": true,
-        "candidate_scope": "lower_layer_information",
-        "canon_policy": "generated_material_requires_user_or_policy_approval",
-        "completion_must_state_cron_stopped": true,
-        "cron_capable_at_discretion_level": 5,
-        "cron_owner": "user_hermes_runtime",
-        "must_stop_when_destination_met": true,
-        "owner": "user_hermes_runtime",
-        "purpose": "Prepare lower-layer autonomous candidate generation until a destination checkpoint.",
-        "quality_gate": {
-          "checks": [
-            "destination_checkpoint_satisfied",
-            "internal_consistency_reviewed",
-            "duplicate_or_low_value_fill_removed",
-            "approval_report_created"
-          ],
-          "required_before_completion": true
-        },
-        "requires_destination_checkpoint": true,
-        "schema": "wsa.hermes.fill_the_rest_contract.v1"
+      "runtime_contract_ref": {
+        "digest": "sha256:585a5ab13a68dd97e39a660eb9c346bc300087450a5215858ae7dcc710f0ff65",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "safety": "requires_approval",
       "title": "Start an approved cron-capable fill pass toward a destination checkpoint."
@@ -2346,10 +1385,6 @@
         ]
       ],
       "command": "/wsa_meeting",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
@@ -2400,10 +1435,6 @@
         ]
       ],
       "command": "/wsa_meeting_decide",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
@@ -2450,10 +1481,6 @@
         ]
       ],
       "command": "/wsa_reports",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
@@ -2491,19 +1518,11 @@
         ]
       ],
       "command": "/wsa_review_queue",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
       },
       "intent": "triage_review_queue",
-      "notes": [
-        "Read-only command. Use this before any bulk rejection or callback archive action.",
-        "Approved reports, canon facts, tickets, and world DB schema are excluded from cleanup."
-      ],
       "safety": "read_only",
       "title": "Triage pending proposal reports, reviewable runs, and callback residue."
     },
@@ -2544,20 +1563,11 @@
         ]
       ],
       "command": "/wsa_review_cleanup",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
       "intent": "reject_pending_review_queue",
-      "notes": [
-        "Requires explicit author approval because it changes proposal/report/run state.",
-        "This rejects pending proposal artifacts only; it must not delete approved canon facts or tickets.",
-        "The command writes an audit JSON under reports/archived and moves callback residue, not raw-deletes it."
-      ],
       "safety": "requires_approval",
       "title": "Reject pending proposal reports/runs and archive callback residue after author approval."
     },
@@ -2599,10 +1609,6 @@
         ]
       ],
       "command": "/wsa_tickets",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": false
@@ -2640,26 +1646,19 @@
         [
           "wsa",
           "ticket",
-          "approve",
+          "apply",
           "{world_id}",
           "{ticket_id}"
         ]
       ],
       "command": "/wsa_approve_ticket",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
-      "intent": "approve_ticket",
-      "notes": [
-        "Hermes should obtain explicit user confirmation before executing this command."
-      ],
+      "intent": "apply_ticket",
       "safety": "world_mutating",
-      "title": "Approve and apply a ticket to world state."
+      "title": "Apply a concrete ticket to world state."
     },
     {
       "aliases": [
@@ -2684,386 +1683,26 @@
       },
       "cli_templates": [],
       "command": "/wsa_snapshot",
-      "delivery": {
-        "default": "chat_summary",
-        "full_artifact": "local_report_or_file_attachment"
-      },
       "execution_policy": {
         "owner": "user_hermes_runtime",
         "requires_user_confirmation": true
       },
       "intent": "version_control_snapshot",
-      "notes": [
-        "WSA declares the operation request only.",
-        "The user's Hermes runtime decides whether this means none, local commit, remote push, or custom."
-      ],
-      "operation_request": {
-        "action": "version_control.snapshot",
-        "allowed_modes": [
-          "none",
-          "local_commit",
-          "remote_push",
-          "custom"
-        ]
+      "operation_request_ref": {
+        "digest": "sha256:a2c8f6f043464105f72b1b71221d79278e2bca87f55fd0a919e4c051f7b1d3da",
+        "schema": "wsa.hermes.inline_contract_ref.v1",
+        "source": "build_hermes_command_registry(compact=False)"
       },
       "safety": "requires_approval",
       "title": "Request a local or remote version-control snapshot through Hermes policy."
     }
   ],
-  "discretion_policy": {
-    "customizable": true,
-    "level_5_requires_destination_checkpoint": true,
-    "scale": {
-      "0": {
-        "agent_may": [
-          "organize answers",
-          "surface contradictions",
-          "ask follow-up questions"
-        ],
-        "agent_must_not": [
-          "invent canon candidates without explicit request"
-        ],
-        "cron_allowed": false,
-        "label": "author_only",
-        "summary": "Hermes asks before filling any world detail."
-      },
-      "1": {
-        "agent_may": [
-          "draft alternatives",
-          "recommend one option with reasons"
-        ],
-        "agent_must_not": [
-          "fill missing details as if accepted"
-        ],
-        "cron_allowed": false,
-        "label": "ask_before_filling",
-        "summary": "Hermes may propose small options, then waits for author selection."
-      },
-      "2": {
-        "agent_may": [
-          "fill names, placeholders, and low-risk connective tissue"
-        ],
-        "agent_must_not": [
-          "change major premise, faction power, or protagonist frame"
-        ],
-        "cron_allowed": false,
-        "label": "small_gaps_allowed",
-        "summary": "Hermes may fill minor connective details as candidates."
-      },
-      "3": {
-        "agent_may": [
-          "draft institutions, locations, customs, and scene hooks"
-        ],
-        "agent_must_not": [
-          "canonize generated material without review"
-        ],
-        "cron_allowed": false,
-        "label": "balanced_fill",
-        "summary": "Hermes may prefill ordinary supporting details and report assumptions."
-      },
-      "4": {
-        "agent_may": [
-          "run larger fill passes",
-          "prepare candidate reports for approval"
-        ],
-        "agent_must_not": [
-          "run unattended cron loops without a level-5 agreement"
-        ],
-        "cron_allowed": false,
-        "label": "broad_agent_fill",
-        "summary": "Hermes may generate broad lower-layer world material as candidate sets."
-      },
-      "5": {
-        "agent_may": [
-          "prepare recurring lower-layer generation",
-          "stop when the destination checkpoint is met",
-          "perform a quality gate before completion"
-        ],
-        "agent_must_not": [
-          "start without a destination checkpoint",
-          "continue after the checkpoint is met",
-          "canonize generated material without approval"
-        ],
-        "completion_policy": "stop_cron_then_report_quality_and_request_approval",
-        "cron_allowed": true,
-        "label": "challenge_world_autonomy",
-        "requires_destination_checkpoint": true,
-        "summary": "Hermes may run cron-capable autonomous fill loops toward a destination checkpoint."
-      }
-    }
-  },
-  "fill_the_rest": {
-    "approval_flow": "report_candidates_then_request_user_approval",
-    "available_anytime": true,
-    "candidate_scope": "lower_layer_information",
-    "canon_policy": "generated_material_requires_user_or_policy_approval",
-    "completion_must_state_cron_stopped": true,
-    "cron_capable_at_discretion_level": 5,
-    "cron_owner": "user_hermes_runtime",
-    "must_stop_when_destination_met": true,
-    "owner": "user_hermes_runtime",
-    "purpose": "Prepare lower-layer autonomous candidate generation until a destination checkpoint.",
-    "quality_gate": {
-      "checks": [
-        "destination_checkpoint_satisfied",
-        "internal_consistency_reviewed",
-        "duplicate_or_low_value_fill_removed",
-        "approval_report_created"
-      ],
-      "required_before_completion": true
-    },
-    "requires_destination_checkpoint": true,
-    "schema": "wsa.hermes.fill_the_rest_contract.v1"
-  },
-  "local_overlay_policy": {
-    "base_updates_replace_generated_registry_only": true,
-    "conflict_policy": "block_update_until_resolved",
-    "filename": "hermes_commands.local.json",
-    "local_namespace_recommendation": "Use user/runtime-specific commands such as /local_status or /project_status; the /wsa_ and /filltherest namespaces are reserved for upstream compatibility.",
-    "local_overlay_preserved_across_updates": true,
-    "merge_order": [
-      "base_registry",
-      "local_overlay"
-    ],
-    "official_command_surface_policy": "Do not upstream personal shortcut names; preserve them as local overlay commands unless a pattern is broadly useful and can attach to an existing compact entrypoint.",
-    "override_base_commands": "forbidden_by_default",
-    "owner": "user_hermes_runtime",
-    "pre_post_update_diagnostics": {
-      "high_risk_policy": "If block findings or mutating-command warnings exist, Hermes should report them to the user and recommend overlay changes before live execution resumes.",
-      "run_after_source_update": [
-        "wsa hermes commands --validate-local-overlay --format json",
-        "wsa update preflight --format json"
-      ],
-      "run_before_source_update": [
-        "wsa hermes commands --validate-local-overlay --format json",
-        "wsa update preflight --format json"
-      ]
-    },
-    "schema": "wsa.hermes.command_registry.local.v1"
+  "expansion": {
+    "compact_argument": false,
+    "installed_builder": "wsa.hermes_commands.build_hermes_command_registry"
   },
   "owner": "user_hermes_runtime",
-  "parser_policy": {
-    "aliases_may_include_hyphen": true,
-    "canonical_style": "telegram_safe_underscore",
-    "execution_owner": "user_hermes_runtime",
-    "telegram_menu_policy": "prefer_canonical_menu_surface; keep compatibility commands available for free-form parsing",
-    "unknown_command_policy": "show_help_without_execution",
-    "wsa_role": "declare_intents_and_cli_templates_only"
-  },
   "purpose": "Public-safe shortcut command manifest for Hermes chat adapters.",
-  "reporting_artifact_policy": {
-    "actor_contribution_accounting": {
-      "recommended_counts": [
-        "callback_total",
-        "callback_accepted",
-        "callback_rejected",
-        "rollback_event_count",
-        "sql_or_fact_lookup_performed",
-        "fact_audit_evidence_available",
-        "fact_audit_evidence_count",
-        "line_build_ledger_entry_count",
-        "actor_authored_sentence_count",
-        "adopted_actor_proposal_count",
-        "final_synthesizer"
-      ],
-      "recommended_labels": [
-        "observer",
-        "constraint_panel",
-        "sql_auditor",
-        "co_writer",
-        "validator",
-        "rollback_trigger"
-      ]
-    },
-    "delivery_owner": "user_hermes_runtime",
-    "mode_aware_hook_policy": {
-      "applies_to": [
-        "meetup",
-        "scene_generation"
-      ],
-      "fact_audit_synthesis_turns": {
-        "goal": "verify scene-relevant facts and mark unchecked or deferred claims",
-        "required_evidence_family": [
-          "source_refs",
-          "fact_lookup_queries",
-          "checked_tables",
-          "checked_reports",
-          "conflicts_found",
-          "deferred_claims"
-        ]
-      },
-      "meetup_turns": {
-        "avoid": [
-          "shallow agreement",
-          "broad lore dump",
-          "canon mutation"
-        ],
-        "goal": "advance the live floor with a useful constraint, objection, dependency, or proposal movement"
-      },
-      "packet_field": "mode_aware_turn_contract",
-      "schema": "wsa.orchestrator.mode_aware_hook_policy.v1",
-      "writing_room_line_build_turns": {
-        "goal": "propose or validate one beat or 1-3 candidate lines",
-        "required_ledger_family": [
-          "candidate_text",
-          "line_candidates",
-          "validation_decision",
-          "rollback_reason",
-          "retry_count",
-          "accepted_lines"
-        ]
-      }
-    },
-    "mode_disclosure_required": [
-      "requested_mode",
-      "resolved_mode",
-      "mode_resolution_source",
-      "mode_confidence",
-      "what_actors_actually_did",
-      "what_was_not_performed"
-    ],
-    "owner": "user_runtime",
-    "privacy_policy": {
-      "do_not_commit_session_logs_to_public_template_repo": true,
-      "runtime_should_make_deletion_easy": true,
-      "session_logs_may_contain_private_world_or_user_data": true
-    },
-    "recommended_exports": [
-      {
-        "artifact_type": "human_session_minutes",
-        "audience": "author_operator",
-        "default_auto_generate": false,
-        "formats": [
-          "txt",
-          "html"
-        ],
-        "label": "회의록",
-        "purpose": "Human-readable real session log for meetup or scene-generation work. Shows what actors/runtime steps actually did.",
-        "source": "date_scoped_session_log"
-      },
-      {
-        "artifact_type": "draft_output",
-        "audience": "author_operator",
-        "default_auto_generate": false,
-        "formats": [
-          "txt",
-          "html"
-        ],
-        "label": "원고초안",
-        "purpose": "Meetup conclusion, scene draft, or other authored result produced from the session. It must not imply canon approval by itself.",
-        "source": "accepted_session_outputs_or_synthesis"
-      },
-      {
-        "artifact_type": "round_orchestration_report",
-        "audience": "operator_or_debugger",
-        "default_auto_generate": false,
-        "formats": [
-          "txt",
-          "html"
-        ],
-        "label": "라운드별 오케스트레이션 보고서",
-        "purpose": "Round/checkpoint-level orchestration trace: scheduling, actor roles, quality gates, rejected outputs, rollback triggers, and stop reasons.",
-        "source": "turn_records_and_floor_state"
-      }
-    ],
-    "runtime_customization": {
-      "allowed_custom_outputs": true,
-      "automatic_export_policy": "user_or_hermes_profile_custom",
-      "default_delivery": "none_until_runtime_requests_export",
-      "wsa_does_not_send_chat_or_store_runtime_delivery_preferences": true
-    },
-    "scene_mode_evidence_contracts": {
-      "fact_audit_synthesis": {
-        "no_evidence_wording": "guardrail/synthesis run, not deep fact-audit",
-        "required_to_claim_deep_fact_audit": [
-          "source_refs",
-          "fact_lookup_queries or checked_tables/checked_reports",
-          "conflicts_found/deferred_claims/unchecked_claims when relevant"
-        ]
-      },
-      "writing_room_line_build": {
-        "no_ledger_wording": "synthesis draft, not line-build consensus",
-        "required_to_claim_consensus_drafting": [
-          "line_build_ledger.entry_count > 0",
-          "candidate_text or line_candidates",
-          "validation_decision or rollback_reason",
-          "adopted_into_draft marker for final text"
-        ]
-      }
-    },
-    "schema": "wsa.reporting.artifact_contract.v1",
-    "skill": null,
-    "storage_policy": {
-      "artifact_architecture_map": "manager/artifact_map/artifact_architecture_map.json",
-      "delete_policy": {
-        "delete_exports_with_session_log_when_runtime_policy_allows": true,
-        "keep_world_db_and_canon_separate": true,
-        "source_map_drives_external_cleanup": true,
-        "user_can_delete_session_log_directory": true
-      },
-      "export_on_demand": true,
-      "exports_are_derivable_from_session_log": true,
-      "managed_artifact_roots": [
-        "worlds/{world_id}/artifacts/",
-        "worlds/{world_id}/meetings/",
-        "worlds/{world_id}/orchestrator_runs/",
-        "worlds/{world_id}/scenes/",
-        "reports/",
-        "hermes/reports_outbox/"
-      ],
-      "out_of_contract_artifact_policy": {
-        "allowed_only_when_runtime_or_user_requires_external_path": true,
-        "install_uninstall_goal": "Every external artifact must be traceable back to the WSA session so operators can remove, archive, or migrate it without searching manually.",
-        "required_fields": [
-          "artifact_id",
-          "artifact_type",
-          "originating_command_or_run_id",
-          "absolute_or_runtime_path",
-          "managed_by",
-          "cleanup_hint",
-          "safe_to_delete_with_session"
-        ],
-        "source_map_filename": "artifact_source_map.json",
-        "source_map_required": true,
-        "source_map_schema": "wsa.reporting.artifact_manifest.v1"
-      },
-      "primary_storage": "date_scoped_session_log",
-      "session_log_is_source_of_truth": true,
-      "session_log_root_template": "worlds/{world_id}/artifacts/session_logs/{YYYY-MM-DD}/{session_id}/",
-      "store_every_export_by_default": false
-    },
-    "workflow": null,
-    "wsa_role": "declare_recommended_artifact_shapes_and_session_log_storage_policy"
-  },
-  "runtime_portability": {
-    "command_wrapper": "wsa",
-    "cwd_policy": "workspace_root_recommended",
-    "fallback_command_wrapper": "python -m wsa",
-    "path_policy": "relative_to_workspace_root",
-    "supported_runtime_shapes": [
-      "local_shell",
-      "docker_container",
-      "vps_service"
-    ],
-    "workspace_env": "WSA_WORKSPACE"
-  },
-  "schema": "wsa.hermes.command_registry.v1",
-  "schema_version": 1,
-  "side_effect_metadata_policy": {
-    "adapter_briefing_rule": "Hermes should brief the user before workspace/world mutating commands and should show update-preflight overlay findings before and after source updates.",
-    "applies_to": [
-      "base_commands",
-      "local_overlay_commands"
-    ],
-    "recommended_for_mutating_commands": [
-      "execution_policy.requires_user_confirmation",
-      "side_effects",
-      "rollback_or_backup_recommendation",
-      "delivery.default"
-    ],
-    "required_fields": [
-      "safety",
-      "intent"
-    ]
-  }
+  "schema": "wsa.hermes.command_registry.compact.v1",
+  "schema_version": 1
 }

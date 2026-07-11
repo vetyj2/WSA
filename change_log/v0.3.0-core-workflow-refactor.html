@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WSA v0.3.0 Core Workflow Refactor</title>
+  <style>
+    :root { color-scheme: light; --bg:#f5f7f8; --panel:#fff; --ink:#17202a; --muted:#637083; --line:#d8dee6; --accent:#0f766e; --warn:#9a6700; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(1120px,calc(100% - 32px)); margin:auto; padding:32px 0 48px; }
+    header { display:grid; gap:10px; margin-bottom:22px; }
+    h1,h2 { margin:0; line-height:1.2; } h1 { font-size:clamp(30px,4vw,46px); } h2 { font-size:20px; }
+    p { margin:0; color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:17px; }
+    .wide { grid-column:1/-1; }
+    ul { margin:10px 0 0; padding-left:20px; color:var(--muted); }
+    code { background:#edf1f4; border-radius:4px; padding:2px 5px; }
+    .metric { color:var(--accent); font-size:28px; font-weight:700; }
+    .warning { border-left:4px solid var(--warn); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>v0.3.0 Core Workflow Refactor</h1>
+      <p>중립 Startup부터 proposal/apply, viewpoint context, callback workflow, migration, public CI까지 실제 사용자 흐름을 연결한 릴리스입니다.</p>
+    </header>
+    <section class="grid">
+      <article class="panel"><h2>Artifact</h2><div class="metric">-79%</div><p>빈 1인 bridge run의 plan/run JSON 총량: 212,131B → 44,553B.</p></article>
+      <article class="panel"><h2>Verification</h2><div class="metric">Strict</div><p>ResourceWarning, migration fixture, concurrency, callback replay, installed smoke를 CI에서 검증합니다.</p></article>
+      <article class="panel"><h2>Schema</h2><div class="metric">v2</div><p>Control/world migration은 plan → backup → apply → verify 순서입니다.</p></article>
+      <article class="panel wide">
+        <h2>사용자 흐름</h2>
+        <ul>
+          <li><code>startup summary → proposal preview → ticket review → ticket apply → world inspect</code></li>
+          <li>Meeting/Orchestrator candidate는 구체 change-set materialization 뒤에만 review/apply할 수 있습니다.</li>
+          <li>Hidden fact는 actor knowledge attribution 없이는 ContextBundle에서 제외됩니다.</li>
+          <li>Mock과 external callback은 공통 RunStore/state contract를 사용합니다.</li>
+          <li>Manager 진단은 read-only 탐지, finding 기록, 안전 artifact 복구를 분리합니다.</li>
+          <li>CLI, Hermes registry, repository를 compatibility facade와 800줄 이하 하위 모듈로 분리했습니다.</li>
+          <li>거절 callback은 다음 context에 들어가지 않고 replay receipt가 중복 제출을 막습니다.</li>
+        </ul>
+      </article>
+      <article class="panel warning wide">
+        <h2>호환 및 경계</h2>
+        <p>WSA는 여전히 provider credential이나 실제 agent process를 소유하지 않습니다. 기존 v1 workspace는 자동 변경되지 않으며 <code>wsa migrate --apply</code> 전 backup plan을 확인해야 합니다.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

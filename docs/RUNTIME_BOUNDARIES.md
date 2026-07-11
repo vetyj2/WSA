@@ -11,6 +11,7 @@
 - Proposal-only meetup, scene-prep, startup, review workflows
 - Update preflight와 backup safety checks
 - Runtime bridge hook 생성, actor_state/floor_state 유지, callback quality gate 기록
+- 사용자가 명시하고 확인한 provider-neutral stdio command 한 개의 bounded 실행
 
 ## Hermes 또는 operator가 맡는 것
 
@@ -18,7 +19,7 @@
 - OAuth token, API key, SSH key, remote URL, delivery channel
 - Docker, Telegram, cron, daemon 등 long-running process management
 - 실제 subagent/session invocation
-- Actor/session process lifecycle, interrupt, cleanup 실행
+- Provider/session lifecycle, 장기 실행 process, interrupt, cleanup 실행
 - Operation request에 대한 shell command mapping
 - User confirmation과 deployment-specific approval policy
 
@@ -39,6 +40,14 @@ workspace/hermes/callbacks/
 `hermes-bridge`는 이름에 Hermes가 들어가지만 실행 정책은 runner-agnostic합니다. WSA가 하는 일은 다음 hook과 callback 계약을 만드는 것입니다. 실제 actor/subagent 호출, model/provider 선택, Docker/Telegram/Codex/local runner process 관리, interrupt, cleanup 실행은 외부 runtime이 맡습니다.
 
 WSA는 callback이 들어오면 route, turn ID, expected fields, canon mutation attempt, low-value/repetition warning을 검증하고 `actor_state`와 `floor_state`를 갱신합니다. 하지만 이 callback이 어떤 process에서 생성되었는지 cryptographic하게 증명하지는 않습니다. 따라서 cleanup status나 real actor session metadata는 external runtime이 보고한 provenance로만 취급합니다.
+
+## Stdio Adapter 경계
+
+`orchestrator dispatch-plan`은 process를 시작하지 않고 redacted argv, workdir, timeout, route digest와 capability 요구만 보여줍니다. `orchestrator dispatch --confirm`은 사용자가 제공한 argv를 `shell=False`로 한 번 실행하고 stdin hook/stdout callback을 bridge에 제출합니다.
+
+Adapter는 provider를 자동 탐색하지 않고 API key나 OAuth token을 요청·저장하지 않습니다. 상속 환경은 최소 allowlist이고 stdout/stderr 원문도 runtime receipt에 저장하지 않습니다. Provider credential은 외부 command 자체의 ignored local config 또는 keychain 경계가 소유해야 하며 secret을 argv에 넣지 않는 것이 원칙입니다.
+
+Dispatch receipt와 route digest는 callback을 현재 run/turn/task에 결합하지만 cryptographic process identity는 아닙니다. Callback 디렉터리 write 권한 통제는 여전히 local operator 책임입니다.
 
 ## Operation Requests
 

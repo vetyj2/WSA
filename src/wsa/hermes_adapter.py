@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,9 @@ DEFAULT_HERMES_COMMAND = "wsa-hermes-cli"
 HERMES_TASK_SCHEMA = "wsa.hermes.task.v1"
 HERMES_CALLBACK_SCHEMA = "wsa.hermes.callback.v1"
 HERMES_OPERATION_CONTRACT_SCHEMA = "wsa.hermes.operation_contract.v1"
+ORCHESTRATOR_BRIDGE_TASK_INPUT_SCHEMA = "wsa.orchestrator.bridge_task_input.v1"
+ORCHESTRATOR_DISPATCH_RECEIPT_SCHEMA = "wsa.orchestrator.dispatch_receipt.v1"
+CALLBACK_ROUTE_KEYS = ("world_id", "scene_id", "session_id", "role")
 ALLOWED_OPERATION_ACTIONS = {"version_control.snapshot"}
 ALLOWED_OPERATION_MODES = ("none", "local_commit", "remote_push", "custom")
 CALLBACK_STATUSES = ("completed", "failed", "blocked", "quarantined", "waiting_approval")
@@ -36,6 +40,10 @@ class HermesAdapterRouteError(HermesAdapterError):
     """Raised when a Hermes callback route does not match its task."""
 
 
+class HermesAdapterReplayError(HermesAdapterError):
+    """Raised when a callback attempts to consume an already collected task."""
+
+
 @dataclass(frozen=True)
 class HermesTaskRecord:
     task_id: str
@@ -46,6 +54,7 @@ class HermesTaskRecord:
     world_id: str
     role: str
     runtime_envelope: RuntimeEnvelope
+    dispatch_receipt: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +87,74 @@ class RuntimeAdapter(Protocol):
 
     def collect_callback(self, callback_path: Path) -> HermesCallbackRecord:
         ...
+
+
+def callback_route_digest(route: Dict[str, Any]) -> str:
+    """Return the stable digest used to bind a task and callback route."""
+
+    if not isinstance(route, dict):
+        raise HermesAdapterRouteError("callback route must be an object")
+    canonical_route = {key: route.get(key) for key in CALLBACK_ROUTE_KEYS}
+    encoded = json.dumps(
+        canonical_route,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def build_orchestrator_dispatch_receipt(
+    run_id: str,
+    turn_id: str,
+    task_id: str,
+    route: Dict[str, Any],
+) -> Dict[str, Any]:
+    route_digest = callback_route_digest(route)
+    bound = {
+        "run_id": run_id,
+        "turn_id": turn_id,
+        "task_id": task_id,
+        "route_digest": route_digest,
+    }
+    encoded = json.dumps(
+        bound,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return {
+        "schema": ORCHESTRATOR_DISPATCH_RECEIPT_SCHEMA,
+        "dispatch_id": f"dispatch_{hashlib.sha256(encoded).hexdigest()[:32]}",
+        **bound,
+    }
+
+
+def validate_orchestrator_dispatch_receipt(receipt: Dict[str, Any]) -> None:
+    if not isinstance(receipt, dict):
+        raise HermesAdapterRouteError("callback dispatch_receipt must be an object")
+    if receipt.get("schema") != ORCHESTRATOR_DISPATCH_RECEIPT_SCHEMA:
+        raise HermesAdapterRouteError(
+            f"unsupported dispatch receipt schema: {receipt.get('schema')}"
+        )
+    for key in ("run_id", "turn_id", "task_id", "route_digest", "dispatch_id"):
+        if not isinstance(receipt.get(key), str) or not receipt[key].strip():
+            raise HermesAdapterRouteError(f"dispatch receipt requires {key}")
+    bound = {
+        "run_id": receipt["run_id"],
+        "turn_id": receipt["turn_id"],
+        "task_id": receipt["task_id"],
+        "route_digest": receipt["route_digest"],
+    }
+    encoded = json.dumps(
+        bound,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    expected_dispatch_id = f"dispatch_{hashlib.sha256(encoded).hexdigest()[:32]}"
+    if receipt["dispatch_id"] != expected_dispatch_id:
+        raise HermesAdapterRouteError("dispatch receipt dispatch_id is invalid")
 
 
 class HermesCliTemplateAdapter:
@@ -208,14 +285,29 @@ class HermesCliTemplateAdapter:
                 },
             )
 
+        input_payload = dict(payload or {})
+        task_id = new_id("hermes_task")
+        route = {
+            "world_id": world.world_id,
+            "scene_id": None,
+            "session_id": session_id,
+            "role": role,
+        }
+        dispatch_receipt = self._dispatch_receipt_for_input(
+            input_payload,
+            task_id,
+            route,
+        )
         task_payload = {
             "task_type": task_type,
             "title": title,
             "instruction": instruction,
-            "input": payload or {},
+            "input": input_payload,
             "sensitivity": sensitivity,
             "delivery": delivery,
         }
+        if dispatch_receipt is not None:
+            task_payload["dispatch_receipt"] = dispatch_receipt
         envelope = self.transport.send(
             session_id=session_id,
             direction="inbox",
@@ -224,7 +316,6 @@ class HermesCliTemplateAdapter:
             world_id=world.world_id,
             payload=task_payload,
         )
-        task_id = new_id("hermes_task")
         task_path = safe_child_path(self.task_queue_dir(), f"{task_id}.json")
         task_ref = self._workspace_relative(task_path)
         packet = {
@@ -243,12 +334,7 @@ class HermesCliTemplateAdapter:
                 "workspace_root": ".",
                 "path_policy": "relative_to_workspace_root",
             },
-            "route": {
-                "world_id": world.world_id,
-                "scene_id": None,
-                "session_id": session_id,
-                "role": role,
-            },
+            "route": route,
             "task": task_payload,
             "runtime_envelope": envelope.to_dict(),
             "runtime_target": runtime_target,
@@ -267,20 +353,21 @@ class HermesCliTemplateAdapter:
             "agent_harness": build_agent_harness_contract(),
             "operation_contract": build_operation_contract(),
         }
+        if dispatch_receipt is not None:
+            packet["dispatch_receipt"] = dispatch_receipt
         task_path.write_text(
             json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        self._write_task_state(
-            task_id,
-            "queued",
-            {
-                "task_ref": task_ref,
-                "session_id": session_id,
-                "world_id": world.world_id,
-                "runtime_target": runtime_target,
-            },
-        )
+        state_payload = {
+            "task_ref": task_ref,
+            "session_id": session_id,
+            "world_id": world.world_id,
+            "runtime_target": runtime_target,
+        }
+        if dispatch_receipt is not None:
+            state_payload["dispatch_receipt"] = dispatch_receipt
+        self._write_task_state(task_id, "queued", state_payload)
         return HermesTaskRecord(
             task_id=task_id,
             task_path=task_path,
@@ -290,7 +377,44 @@ class HermesCliTemplateAdapter:
             world_id=world.world_id,
             role=role,
             runtime_envelope=envelope,
+            dispatch_receipt=dispatch_receipt,
         )
+
+    def _dispatch_receipt_for_input(
+        self,
+        input_payload: Dict[str, Any],
+        task_id: str,
+        route: Dict[str, Any],
+    ) -> Dict[str, Any] | None:
+        if input_payload.get("schema") != ORCHESTRATOR_BRIDGE_TASK_INPUT_SCHEMA:
+            return None
+        run_id = self._required_str(input_payload, "run_id")
+        turn_id = self._required_str(input_payload, "turn_id")
+        session_id = self._required_str(input_payload, "session_id")
+        if route.get("role") != "orchestrator_subsession":
+            raise HermesAdapterRouteError(
+                "orchestrator bridge task role must be orchestrator_subsession"
+            )
+        if session_id != route.get("session_id"):
+            raise HermesAdapterRouteError(
+                "orchestrator bridge input session_id does not match task route"
+            )
+        expected_route = input_payload.get("expected_callback_route")
+        if not isinstance(expected_route, dict):
+            raise HermesAdapterRouteError(
+                "orchestrator bridge input requires expected_callback_route"
+            )
+        for key in CALLBACK_ROUTE_KEYS:
+            if expected_route.get(key) != route.get(key):
+                raise HermesAdapterRouteError(
+                    f"orchestrator bridge input {key} does not match task route"
+                )
+        expected_digest = callback_route_digest(expected_route)
+        if input_payload.get("route_digest") != expected_digest:
+            raise HermesAdapterRouteError(
+                "orchestrator bridge input route_digest does not match expected route"
+            )
+        return build_orchestrator_dispatch_receipt(run_id, turn_id, task_id, route)
 
     def collect_callback(
         self,
@@ -303,8 +427,11 @@ class HermesCliTemplateAdapter:
             callback = self._load_json(callback_path)
             task_id = self._required_str(callback, "task_id")
             task = self._load_task(task_id)
+            self._validate_callback_not_collected(task_id, callback)
             self._validate_callback_shape(callback)
             self._validate_callback_route(task, callback)
+        except HermesAdapterReplayError:
+            raise
         except HermesAdapterError as exc:
             self._quarantine_callback(callback_path, exc)
             raise
@@ -338,21 +465,27 @@ class HermesCliTemplateAdapter:
             artifact_refs=artifact_refs,
             status=status,
         )
+        dispatch_receipt = task.get("dispatch_receipt")
+        bridge_bound = isinstance(dispatch_receipt, dict)
         archive_refs, archived_callback_path = self._archive_completed_task_files(
             task_id,
             callback_path,
+            archive_callback=not bridge_bound,
         )
-        self._write_task_state(
-            task_id,
-            status,
-            {
-                "callback_id": self._required_str(callback, "callback_id"),
-                "callback_ref": self._workspace_relative(callback_path),
-                "message_id": envelope.message_id,
-                "report_id": report_id,
-                "archive_refs": archive_refs,
-            },
-        )
+        if bridge_bound:
+            archive_refs["callback_archive_policy"] = (
+                "deferred_until_orchestrator_bridge_ingest_or_review_cleanup"
+            )
+        state_payload = {
+            "callback_id": self._required_str(callback, "callback_id"),
+            "callback_ref": self._workspace_relative(callback_path),
+            "message_id": envelope.message_id,
+            "report_id": report_id,
+            "archive_refs": archive_refs,
+        }
+        if dispatch_receipt is not None:
+            state_payload["dispatch_receipt"] = dispatch_receipt
+        self._write_task_state(task_id, status, state_payload)
         return HermesCallbackRecord(
             callback_id=self._required_str(callback, "callback_id"),
             callback_path=archived_callback_path or callback_path,
@@ -398,12 +531,37 @@ class HermesCliTemplateAdapter:
 
     def _load_task(self, task_id: str) -> Dict[str, Any]:
         task_path = safe_child_path(self.task_queue_dir(), f"{task_id}.json")
-        return self._load_json(task_path)
+        if task_path.exists():
+            return self._load_json(task_path)
+        archived_path = safe_child_path(self.task_archive_dir(), f"{task_id}.json")
+        return self._load_json(archived_path)
+
+    def _validate_callback_not_collected(
+        self,
+        task_id: str,
+        callback: Dict[str, Any],
+    ) -> None:
+        state_path = safe_child_path(self.task_state_dir(), f"{task_id}.json")
+        if not state_path.exists():
+            return
+        state = self._load_json(state_path)
+        if state.get("status") == "queued":
+            return
+        prior_callback_id = (state.get("payload") or {}).get("callback_id")
+        if prior_callback_id == callback.get("callback_id"):
+            raise HermesAdapterReplayError(
+                f"callback replay blocked: {callback.get('callback_id')}"
+            )
+        if prior_callback_id:
+            raise HermesAdapterReplayError(
+                f"task callback already collected: {task_id}"
+            )
 
     def _archive_completed_task_files(
         self,
         task_id: str,
         callback_path: Path,
+        archive_callback: bool = True,
     ) -> tuple[Dict[str, str], Path | None]:
         refs: Dict[str, str] = {}
         archived_callback_path: Path | None = None
@@ -413,6 +571,9 @@ class HermesCliTemplateAdapter:
             task_target = safe_child_path(self.task_archive_dir(), task_path.name)
             task_path.replace(task_target)
             refs["task_archive_ref"] = self._workspace_relative(task_target)
+
+        if not archive_callback:
+            return refs, archived_callback_path
 
         try:
             callback_path.resolve().relative_to(self.callbacks_dir().resolve())
@@ -538,6 +699,29 @@ class HermesCliTemplateAdapter:
         if callback.get("workspace_id") != task.get("workspace", {}).get("workspace_id"):
             raise HermesAdapterRouteError("callback workspace_id does not match task")
 
+        task_receipt = task.get("dispatch_receipt")
+        if task_receipt is None:
+            return
+        if not isinstance(task_receipt, dict):
+            raise HermesAdapterRouteError("callback dispatch_receipt must be an object")
+        validate_orchestrator_dispatch_receipt(task_receipt)
+        callback_receipt = callback.get("dispatch_receipt")
+        if not isinstance(callback_receipt, dict):
+            raise HermesAdapterRouteError("callback dispatch_receipt must be an object")
+        validate_orchestrator_dispatch_receipt(callback_receipt)
+        if callback_receipt != task_receipt:
+            raise HermesAdapterRouteError("callback dispatch_receipt does not match task")
+        if callback.get("task_id") != task_receipt.get("task_id"):
+            raise HermesAdapterRouteError("callback task_id does not match dispatch receipt")
+        route_digest = callback_route_digest(callback_route)
+        if route_digest != task_receipt.get("route_digest"):
+            raise HermesAdapterRouteError("callback route digest does not match dispatch receipt")
+        payload = callback.get("payload") or {}
+        if payload.get("run_id") != task_receipt.get("run_id"):
+            raise HermesAdapterRouteError("callback run_id does not match dispatch receipt")
+        if payload.get("turn_id") != task_receipt.get("turn_id"):
+            raise HermesAdapterRouteError("callback turn_id does not match dispatch receipt")
+
     def _validate_callback_shape(self, callback: Dict[str, Any]) -> None:
         status = str(callback.get("status") or "completed")
         if status not in CALLBACK_STATUSES:
@@ -548,6 +732,9 @@ class HermesCliTemplateAdapter:
         artifact_refs = callback.get("artifact_refs")
         if artifact_refs is not None:
             self._validate_string_list(artifact_refs, "artifact_refs")
+        dispatch_receipt = callback.get("dispatch_receipt")
+        if dispatch_receipt is not None and not isinstance(dispatch_receipt, dict):
+            raise HermesAdapterError("callback dispatch_receipt must be an object")
         self._delivery_if_any(callback)
         self._sensitivity_if_any(callback)
 
@@ -744,14 +931,15 @@ def build_agent_harness_contract() -> Dict[str, Any]:
             "discretion_customizable": True,
             "discretion_scale": discretion_scale_contract(),
             "fill_the_rest": fill_the_rest_contract(),
-            "fully_autonomous_generation_allowed": True,
+            "fully_autonomous_generation_allowed": False,
+            "external_runtime_policy_required_for_autonomous_generation": True,
             "checkpoint_policy": {
                 "natural_language_allowed": True,
                 "recommended": True,
                 "examples": [
-                    "until 100 characters exist",
-                    "until three regions have factions, conflicts, and opening hooks",
-                    "until the opening arc has enough institutions for scene play",
+                    "until the requested outline is ready for review",
+                    "until three contrasting candidates are available",
+                    "until the user-defined review condition is met",
                 ],
                 "on_checkpoint": "summarize candidates and request user decision",
             },
@@ -791,7 +979,10 @@ def build_template_callback(
     summary: str = "Template Hermes callback completed.",
     status: str = "completed",
 ) -> Dict[str, Any]:
-    return {
+    callback_payload: Dict[str, Any] = {
+        "summary": summary,
+    }
+    callback: Dict[str, Any] = {
         "schema": HERMES_CALLBACK_SCHEMA,
         "schema_version": SCHEMA_VERSION,
         "callback_id": new_id("hermes_callback"),
@@ -806,9 +997,7 @@ def build_template_callback(
             "session_id": task.session_id,
             "role": task.role,
         },
-        "payload": {
-            "summary": summary,
-        },
+        "payload": callback_payload,
         "delivery": build_delivery_contract(),
         "sensitivity": build_sensitivity_contract(),
         "artifact_refs": [],
@@ -825,3 +1014,12 @@ def build_template_callback(
             },
         },
     }
+    if task.dispatch_receipt is not None:
+        callback["dispatch_receipt"] = task.dispatch_receipt
+        callback_payload.update(
+            {
+                "run_id": task.dispatch_receipt["run_id"],
+                "turn_id": task.dispatch_receipt["turn_id"],
+            }
+        )
+    return callback

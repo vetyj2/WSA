@@ -5,9 +5,9 @@
       "canon_policy": "Autonomous generation may produce candidates; canon mutation still follows the user's Hermes runtime policy and WSA ticket or callback review flow.",
       "checkpoint_policy": {
         "examples": [
-          "until 100 characters exist",
-          "until three regions have factions, conflicts, and opening hooks",
-          "until the opening arc has enough institutions for scene play"
+          "until the requested outline is ready for review",
+          "until three contrasting candidates are available",
+          "until the user-defined review condition is met"
         ],
         "natural_language_allowed": true,
         "on_checkpoint": "summarize candidates and request user decision",
@@ -116,7 +116,8 @@
         "requires_destination_checkpoint": true,
         "schema": "wsa.hermes.fill_the_rest_contract.v1"
       },
-      "fully_autonomous_generation_allowed": true,
+      "external_runtime_policy_required_for_autonomous_generation": true,
+      "fully_autonomous_generation_allowed": false,
       "owner": "user_hermes_runtime_dialogue",
       "range": {
         "max": 100,

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install .
+      - run: python -W error::ResourceWarning -m unittest discover -s tests -v
+      - run: PYTHONPYCACHEPREFIX=/tmp/wsa-pyc python -m compileall -q src/wsa
+      - run: python scripts/check_public_tree.py
+      - run: python scripts/check_docs_parity.py
+      - run: bash scripts/fresh_clone_smoke.sh
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev]'
+      - run: ruff check src/wsa tests scripts
+      - run: mypy src/wsa/application src/wsa/atomic_io.py src/wsa/cli_tickets.py src/wsa/context.py src/wsa/contract_registry.py src/wsa/diagnostics.py src/wsa/manager.py src/wsa/migration.py src/wsa/run_store.py src/wsa/tickets.py src/wsa/workflow_engine.py
+      - run: python -m build

@@ -27,6 +27,7 @@ docs/requirements/
 /wsa-runtime*/
 /wsa_v*/
 /wsa-v*/
+**/.wsa_migration_backups/
 
 # Python
 __pycache__/
@@ -65,11 +66,8 @@ build/
 *.key
 *.p8
 *.p12
-/operation_policy*.json
-/hermes_operation_policy*.json
-**/*operation_policy*.local.json
-!/operation_policy.example.json
-!/hermes_operation_policy.example.json
+**/*operation_policy*.json
+!**/*operation_policy*.example.json
 !tests/**/*operation_policy*.local.json
 
 # WSA runtime state
@@ -85,6 +83,9 @@ workspace/
 **/*.sqlite
 **/*.sqlite-shm
 **/*.sqlite-wal
+**/*.sqlite3
+**/*.sqlite3-shm
+**/*.sqlite3-wal
 *.db
 *.db-shm
 *.db-wal
@@ -94,6 +95,7 @@ workspace/
 docker-compose.override.yml
 docker-compose*.local.yml
 docker-compose*.beta.yml
+**/hermes_commands.local.json
 **/hermes/adapter_config/*
 **/hermes/task_queue/*
 **/hermes/callbacks/*

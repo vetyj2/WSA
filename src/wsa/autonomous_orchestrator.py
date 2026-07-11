@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from .context import ContextBuilder
+from .atomic_io import atomic_write_json
+from .contract_registry import compact_plan_projection
 from .ids import slugify
 from .orchestrator_bridge import initialize_bridge_payload, is_hermes_bridge_mode
 from .orchestrator_contract import (
@@ -31,6 +34,7 @@ from .orchestrator_turns import (
     build_orchestrator_turn_record,
     build_round_prompt_packet,
     build_scheduler_decision,
+    choose_participant_contexts,
     update_actor_states,
     update_floor_state,
 )
@@ -52,9 +56,23 @@ from .scene_modes import (
 )
 from .transport import RuntimeTransport
 from .workspace import WorldRecord, list_worlds, utc_now
+from .run_store import RunStore
+from .workflow_engine import (
+    DeterministicMockRunner,
+    ExternalCallbackRunner,
+    WorkflowEngine,
+)
 
 
 SCENE_FILTER_CONTRACT_SCHEMA = "wsa.scene.filter_contract.v1"
+EXECUTION_MODE_DETERMINISTIC_MOCK = "deterministic_mock"
+EXECUTION_MODE_EXTERNAL_WAITING = "external_waiting"
+EXECUTION_MODE_EXTERNAL_CONFIRMED = "external_confirmed"
+NORMALIZED_EXECUTION_MODES = {
+    EXECUTION_MODE_DETERMINISTIC_MOCK,
+    EXECUTION_MODE_EXTERNAL_WAITING,
+    EXECUTION_MODE_EXTERNAL_CONFIRMED,
+}
 
 
 @dataclass(frozen=True)
@@ -66,6 +84,8 @@ class OrchestratorRunResult:
     report_id: str
     manager_session_id: str
     subsession_session_ids: List[str]
+    execution_mode: str
+    execution_provenance: Dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -199,8 +219,11 @@ def select_scene_entities(
     """Resolve simple scene filters against sparse temporal graph data."""
 
     known = set(known_dimension_keys or [])
-    parsed = [_parse_scene_condition(item) for item in (conditions or [])]
-    parsed = [item for item in parsed if item is not None]
+    parsed: List[Dict[str, Any]] = []
+    for item in conditions or []:
+        parsed_condition = _parse_scene_condition(item)
+        if parsed_condition is not None:
+            parsed.append(parsed_condition)
     gap_diagnostics: List[Dict[str, Any]] = []
     applied_conditions: List[Dict[str, Any]] = []
     candidate_ids: set[str] | None = None
@@ -510,7 +533,37 @@ class AutonomousOrchestrator:
         )
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        lifecycle = [{"state": "requested", "at": utc_now()}]
+        external_bridge = is_hermes_bridge_mode(mode)
+        execution_mode = (
+            EXECUTION_MODE_EXTERNAL_WAITING
+            if external_bridge
+            else EXECUTION_MODE_DETERMINISTIC_MOCK
+        )
+        legacy_subsession_mode = (
+            "hermes_bridge_pending_callbacks"
+            if external_bridge
+            else "local_simulated_outputs"
+        )
+        real_subagent_execution = (
+            "pending_user_hermes_runtime_callbacks"
+            if external_bridge
+            else "hermes_runtime_owned_not_performed_by_wsa_cli"
+        )
+        actual_execution_owner = (
+            "user_runtime" if external_bridge else "wsa_local_deterministic_runner"
+        )
+        execution_provenance = _execution_provenance(
+            mode="hermes-bridge" if external_bridge else "local-simulated",
+            artifact_type=(
+                "runtime_bridge_contract"
+                if external_bridge
+                else "wsa_local_simulated_plan"
+            ),
+            completed=not external_bridge,
+        )
+        execution_summary = _execution_summary(execution_mode)
+
+        lifecycle: List[Dict[str, Any]] = [{"state": "requested", "at": utc_now()}]
         manager_session_id = self.transport.start_session(
             role="orchestrator_manager",
             runtime_target=f"orchestrator:{mode}",
@@ -521,7 +574,11 @@ class AutonomousOrchestrator:
                 "skill": skill_name,
                 "topic": topic,
                 "execution": "autonomous_until_boundary",
+                "execution_mode": execution_mode,
+                "execution_provenance": execution_provenance,
+                "execution_summary": execution_summary,
                 "execution_owner": "user_hermes_runtime",
+                "actual_execution_owner": actual_execution_owner,
                 "wsa_role": "orchestration_contract_and_audit_artifacts_only",
             },
         )
@@ -539,9 +596,14 @@ class AutonomousOrchestrator:
                 "created_at": utc_now(),
             },
             "execution": "autonomous_until_boundary",
-            "subsession_execution_mode": "local_simulated_outputs",
-            "real_subagent_execution": "hermes_runtime_owned_not_performed_by_wsa_cli",
+            "execution_mode": execution_mode,
+            "execution_provenance": execution_provenance,
+            "execution_summary": execution_summary,
+            "subsession_execution_mode": legacy_subsession_mode,
+            "real_subagent_execution": real_subagent_execution,
             "execution_owner": "user_hermes_runtime",
+            "actual_execution_owner": actual_execution_owner,
+            "execution_owner_field_status": "legacy_contract_owner_retained_for_compatibility",
             "wsa_role": "orchestration_contract_and_audit_artifacts_only",
             "mode": mode,
             "round_budget": rounds,
@@ -574,7 +636,10 @@ class AutonomousOrchestrator:
             "approval": approval,
             "close_on": close_on,
             "scene_mode_disclosure": scene_mode_disclosure,
-            "actor_contribution_summary": build_actor_contribution_summary([]),
+            "actor_contribution_summary": build_actor_contribution_summary(
+                [],
+                execution_mode=execution_mode,
+            ),
             "participants": participant_plan,
             "termination_conditions": [
                 "planned_rounds_complete",
@@ -603,17 +668,23 @@ class AutonomousOrchestrator:
         }
         plan["prep_review_policy"] = prep_review_policy
         plan_path = safe_child_path(run_dir, "plan.json")
-        plan_path.write_text(
-            json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        plan_projection = compact_plan_projection(plan)
+        plan_projection.update(
+            {
+                "execution_mode": execution_mode,
+                "execution_provenance": execution_provenance,
+                "execution_summary": execution_summary,
+                "actual_execution_owner": actual_execution_owner,
+            }
         )
+        atomic_write_json(plan_path, plan_projection)
         plan_envelope = self.transport.send(
             manager_session_id,
             "inbox",
             role="wsa",
             message_type="orchestrator_plan",
             world_id=self.world.world_id,
-            payload=plan,
+            payload=plan_projection,
             artifact_refs=[str(plan_path)],
         )
         lifecycle.append({"state": "planned", "at": utc_now()})
@@ -637,6 +708,8 @@ class AutonomousOrchestrator:
                     "participant_id": participant["participant_id"],
                     "represents": participant["label"],
                     "ephemeral": True,
+                    "execution_mode": execution_mode,
+                    "execution_provenance": execution_provenance,
                 },
             )
             subsession_session_ids.append(session_id)
@@ -654,6 +727,8 @@ class AutonomousOrchestrator:
                 scene_filter_contract,
                 scene_mode_disclosure,
             )
+            context_packet["execution_mode"] = execution_mode
+            context_packet["execution_provenance"] = execution_provenance
             context_packet["actor_state"] = actor_states[participant["participant_id"]]
             context_packet["prompt_packet"]["actor_state_seed"] = context_packet["actor_state"]
             context_packets.append({**context_packet, "session_id": session_id})
@@ -712,9 +787,12 @@ class AutonomousOrchestrator:
                 "question": question,
                 "manual_trigger": True,
                 "execution": "autonomous_until_boundary",
+                "execution_mode": execution_mode,
                 "subsession_execution_mode": "hermes_bridge_pending_callbacks",
                 "real_subagent_execution": "pending_user_hermes_runtime_callbacks",
                 "execution_owner": "user_hermes_runtime",
+                "actual_execution_owner": actual_execution_owner,
+                "execution_owner_field_status": "legacy_contract_owner_retained_for_compatibility",
                 "wsa_role": "orchestration_contract_and_audit_artifacts_only",
                 "plan_frame": plan_frame,
                 "floor_state": floor_state,
@@ -724,6 +802,7 @@ class AutonomousOrchestrator:
                     artifact_type="runtime_bridge_contract",
                     completed=False,
                 ),
+                "execution_summary": execution_summary,
                 "start_preflight": start_preflight,
                 "session_contract": session_contract,
                 "context_continuity": session_contract["context_continuity"],
@@ -738,7 +817,10 @@ class AutonomousOrchestrator:
                 "queue_limits": plan["queue_limits"],
                 "scene_filter_contract": scene_filter_contract,
                 "scene_mode_disclosure": scene_mode_disclosure,
-                "actor_contribution_summary": build_actor_contribution_summary([]),
+                "actor_contribution_summary": build_actor_contribution_summary(
+                    [],
+                    execution_mode=execution_mode,
+                ),
                 "fact_audit_evidence_summary": build_fact_audit_evidence_summary([]),
                 "line_build_ledger": build_line_build_ledger([]),
                 "prep_review_policy": prep_review_policy,
@@ -758,10 +840,18 @@ class AutonomousOrchestrator:
                 "report_id": None,
             }
             initialize_bridge_payload(run_payload, self.world.world_id)
+            run_payload["execution_mode"] = execution_mode
+            run_payload["execution_provenance"] = _execution_provenance(
+                mode="hermes-bridge",
+                artifact_type="runtime_bridge_contract",
+                completed=False,
+            )
+            run_payload["execution_summary"] = execution_summary
             run_path = safe_child_path(run_dir, "run.json")
-            run_path.write_text(
-                json.dumps(run_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
+            WorkflowEngine(self.workspace).register(
+                run_payload,
+                run_path,
+                ExternalCallbackRunner(),
             )
             self.transport.send(
                 manager_session_id,
@@ -773,6 +863,8 @@ class AutonomousOrchestrator:
                     "run_id": run_id,
                     "status": run_payload["status"],
                     "execution_status": run_payload["execution_status"],
+                    "execution_mode": execution_mode,
+                    "execution_provenance": run_payload["execution_provenance"],
                 },
                 artifact_refs=[str(run_path)],
             )
@@ -788,9 +880,11 @@ class AutonomousOrchestrator:
                 report_id="",
                 manager_session_id=manager_session_id,
                 subsession_session_ids=subsession_session_ids,
+                execution_mode=execution_mode,
+                execution_provenance=run_payload["execution_provenance"],
             )
 
-        compressed_context_snapshots = []
+        compressed_context_snapshots: List[Dict[str, Any]] = []
         round_prompt_packets = []
         turn_records = []
         floor_state = build_initial_floor_state(
@@ -817,7 +911,12 @@ class AutonomousOrchestrator:
                 )
             )
             round_outputs = []
-            for context_packet in context_packets:
+            selected_context_packets = choose_participant_contexts(
+                context_packets,
+                actor_states,
+                floor_state,
+            )
+            for context_packet in selected_context_packets:
                 actor_state = actor_states.get(context_packet["participant_id"], {})
                 scheduler_decision = build_scheduler_decision(
                     context_packet,
@@ -888,6 +987,7 @@ class AutonomousOrchestrator:
             subsession_outputs,
             final_synthesizer="wsa_local_simulated_synthesis",
             actor_authorship_evidence=False,
+            execution_mode=EXECUTION_MODE_DETERMINISTIC_MOCK,
         )
         fact_audit_evidence_summary = build_fact_audit_evidence_summary(subsession_outputs)
         line_build_ledger = build_line_build_ledger(subsession_outputs)
@@ -913,9 +1013,12 @@ class AutonomousOrchestrator:
             "question": question,
             "manual_trigger": True,
             "execution": "autonomous_until_boundary",
+            "execution_mode": EXECUTION_MODE_DETERMINISTIC_MOCK,
             "subsession_execution_mode": "local_simulated_outputs",
             "real_subagent_execution": "hermes_runtime_owned_not_performed_by_wsa_cli",
             "execution_owner": "user_hermes_runtime",
+            "actual_execution_owner": "wsa_local_deterministic_runner",
+            "execution_owner_field_status": "legacy_contract_owner_retained_for_compatibility",
             "wsa_role": "orchestration_contract_and_audit_artifacts_only",
             "plan_frame": plan_frame,
             "floor_state": floor_state,
@@ -924,6 +1027,9 @@ class AutonomousOrchestrator:
                 mode="local-simulated",
                 artifact_type="wsa_local_simulated_proposal",
                 completed=True,
+            ),
+            "execution_summary": _execution_summary(
+                EXECUTION_MODE_DETERMINISTIC_MOCK,
             ),
             "start_preflight": start_preflight,
             "session_contract": session_contract,
@@ -968,10 +1074,6 @@ class AutonomousOrchestrator:
             "world_mutations": [],
         }
         run_path = safe_child_path(run_dir, "run.json")
-        run_path.write_text(
-            json.dumps(run_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
         report = self.mailbox.create_world_report(
             self.repo,
             title=f"Orchestrator report: {topic}",
@@ -979,6 +1081,12 @@ class AutonomousOrchestrator:
             risk="medium" if diagnosis["requires_author_boundary"] else "low",
             status="inbox",
             payload=run_payload,
+        )
+        run_payload["report_id"] = report.report_id
+        WorkflowEngine(self.workspace).register(
+            run_payload,
+            run_path,
+            DeterministicMockRunner(),
         )
         self.transport.send(
             manager_session_id,
@@ -990,6 +1098,8 @@ class AutonomousOrchestrator:
                 "run_id": run_id,
                 "report_id": report.report_id,
                 "status": "awaiting_author_review",
+                "execution_mode": EXECUTION_MODE_DETERMINISTIC_MOCK,
+                "execution_provenance": run_payload["execution_provenance"],
             },
             artifact_refs=(
                 [str(run_path), report.artifact_ref]
@@ -1007,12 +1117,14 @@ class AutonomousOrchestrator:
             report_id=report.report_id,
             manager_session_id=manager_session_id,
             subsession_session_ids=subsession_session_ids,
+            execution_mode=EXECUTION_MODE_DETERMINISTIC_MOCK,
+            execution_provenance=run_payload["execution_provenance"],
         )
 
     @staticmethod
     def load_run(workspace: Path, run_id: str) -> Dict[str, Any]:
         _, _, payload = find_orchestrator_run(workspace, run_id)
-        return payload
+        return normalize_execution_payload(payload)
 
     @staticmethod
     def report_path(workspace: Path, run_id: str) -> Path:
@@ -1030,6 +1142,7 @@ class AutonomousOrchestrator:
         if decision not in ORCHESTRATOR_DECISIONS:
             raise ValueError(f"unsupported orchestrator decision: {decision}")
         world, path, payload = find_orchestrator_run(workspace, run_id)
+        record = RunStore(workspace).get(run_id)
         if decision == "approve":
             allowed_options = {
                 item.get("option_id")
@@ -1060,10 +1173,7 @@ class AutonomousOrchestrator:
             "note": note,
             "decided_at": utc_now(),
         }
-        path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        WorkflowEngine(workspace).update(payload, expected_revision=record.revision)
         ticket = None
         if decision == "approve":
             ticket = repo.create_ticket(
@@ -1091,15 +1201,36 @@ class AutonomousOrchestrator:
 
     @staticmethod
     def close(workspace: Path, run_id: str, reason: str | None = None) -> Dict[str, Any]:
-        _, path, payload = find_orchestrator_run(workspace, run_id)
-        payload["status"] = "closed"
-        payload["close_reason"] = reason or "closed_by_user_or_runtime"
-        payload["closed_at"] = utc_now()
-        path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        find_orchestrator_run(workspace, run_id)
+        return WorkflowEngine(workspace).close(run_id, reason).payload
+
+    @staticmethod
+    def interrupt(workspace: Path, run_id: str, reason: str | None = None) -> Dict[str, Any]:
+        find_orchestrator_run(workspace, run_id)
+        return WorkflowEngine(workspace).interrupt(run_id, reason).payload
+
+    @staticmethod
+    def resume(workspace: Path, run_id: str) -> Dict[str, Any]:
+        find_orchestrator_run(workspace, run_id)
+        engine = WorkflowEngine(workspace)
+        record = engine.resume(run_id)
+        payload = dict(record.payload)
+        retry_pending = any(
+            isinstance(hook, dict) and bool(hook.get("retry_context"))
+            for hook in payload.get("pending_hooks", [])
         )
-        return payload
+        if payload.get("status") == "awaiting_callback" and retry_pending:
+            retry_action = "retry_current_hermes_hook"
+            workflow_state = payload.setdefault("workflow_state", {})
+            if (
+                payload.get("next_action") == retry_action
+                and workflow_state.get("next_action") == retry_action
+            ):
+                return record.payload
+            payload["next_action"] = retry_action
+            workflow_state["next_action"] = retry_action
+            return engine.update(payload, expected_revision=record.revision).payload
+        return record.payload
 
     def _plan_participants(
         self,
@@ -1242,24 +1373,41 @@ class AutonomousOrchestrator:
         scene_filter_contract: Dict[str, Any] | None = None,
         scene_mode_disclosure: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        anchors = []
+        anchors: List[Dict[str, Any]] = []
+        assembled_context: Dict[str, Any] | None = None
         if entity is not None:
+            time_scope = None
+            location_scope = None
+            if isinstance(scene_filter_contract, dict):
+                time_scope = scene_filter_contract.get("time_scope")
+                location_scope = scene_filter_contract.get("location_scope")
+            assembled_context = ContextBuilder(self.repo).build_actor_context(
+                entity,
+                scene_id=None,
+                scene_goal=question or topic,
+                time_scope=time_scope,
+                location_scope=location_scope,
+                viewpoint_entity_id=entity.entity_id,
+                persist=False,
+            )
             anchors = [
                 {
-                    "predicate": fact.predicate,
-                    "object_value": fact.object_value,
-                    "status": fact.status,
+                    "predicate": fact["predicate"],
+                    "object_value": fact.get("object_value"),
+                    "status": fact["status"],
                 }
-                for fact in self.repo.list_facts(entity.entity_id)[:8]
+                for fact in assembled_context["facts"][:8]
             ]
         expected_fields = profile_expected_output_fields(workflow_profile)
-        relevant_context = {
+        relevant_context: Dict[str, Any] = {
             "topic": topic,
             "question": question,
             "canon_anchors": anchors,
         }
         if scene_filter_contract is not None:
             relevant_context["scene_filter_contract"] = scene_filter_contract
+        if assembled_context is not None:
+            relevant_context["assembled_context"] = assembled_context
         scene_mode_contract = None
         if scene_mode_disclosure and scene_mode_disclosure.get("applicable"):
             mode_contracts = scene_mode_disclosure.get("mode_contracts", {})
@@ -1324,6 +1472,7 @@ class AutonomousOrchestrator:
                 "share_policy": "participant_relevant_context_only",
             },
             "canon_anchors": anchors,
+            "assembled_context": assembled_context,
             "scene_filter_contract": scene_filter_contract,
             "scene_generation_mode": scene_mode_disclosure,
             "scene_mode_contract": scene_mode_contract,
@@ -1340,6 +1489,11 @@ class AutonomousOrchestrator:
             "participant_id": context_packet["participant_id"],
             "represents": label,
             "round": round_index,
+            "execution_mode": context_packet.get(
+                "execution_mode",
+                EXECUTION_MODE_DETERMINISTIC_MOCK,
+            ),
+            "output_origin": "wsa_local_deterministic_simulation",
             "position": (
                 f"{label} evaluates the topic through existing canon anchors."
                 if grounded
@@ -1517,8 +1671,14 @@ class AutonomousOrchestrator:
             ]
         synthesis = {
             "summary": (
-                f"Autonomous orchestrator ran {len(outputs)} subsession outputs "
-                f"for {len(participants)} participants in {workflow_profile.get('workflow')} mode."
+                f"WSA deterministic mock generated {len(outputs)} local simulated outputs "
+                f"for {len(participants)} participants in "
+                f"{workflow_profile.get('workflow')} mode."
+            ),
+            "execution_mode": EXECUTION_MODE_DETERMINISTIC_MOCK,
+            "output_origin": "wsa_local_deterministic_simulation",
+            "execution_summary": (
+                "No external actor callback was used; WSA generated deterministic local proposals."
             ),
             "topic": topic,
             "question": question,
@@ -1637,6 +1797,11 @@ class AutonomousOrchestrator:
 
 
 def find_orchestrator_run(workspace: Path, run_id: str) -> tuple[WorldRecord, Path, Dict[str, Any]]:
+    store = RunStore(workspace)
+    try:
+        return store.locate(run_id)
+    except KeyError:
+        pass
     for world in list_worlds(workspace):
         root = safe_child_path(world.path, "orchestrator_runs")
         if not root.exists():
@@ -1644,8 +1809,148 @@ def find_orchestrator_run(workspace: Path, run_id: str) -> tuple[WorldRecord, Pa
         for path in sorted(root.glob("*/run.json")):
             payload = json.loads(path.read_text(encoding="utf-8"))
             if payload.get("run_id") == run_id:
-                return world, path, payload
+                runner: ExternalCallbackRunner | DeterministicMockRunner = (
+                    ExternalCallbackRunner()
+                    if is_hermes_bridge_mode(str(payload.get("subsession_execution_mode") or ""))
+                    or "bridge" in str(payload.get("subsession_execution_mode") or "")
+                    else DeterministicMockRunner()
+                )
+                store.register(payload, path, runner.runner_type, project=False)
+                return store.locate(run_id)
     raise KeyError(f"orchestrator run not found: {run_id}")
+
+
+def normalized_execution_mode(payload: Dict[str, Any]) -> str:
+    provenance = payload.get("execution_provenance", {})
+    summary = payload.get("actor_contribution_summary", {})
+    workflow_state = payload.get("workflow_state", {})
+    candidates = [
+        payload.get("execution_mode"),
+        provenance.get("execution_mode") if isinstance(provenance, dict) else None,
+        summary.get("execution_mode") if isinstance(summary, dict) else None,
+        payload.get("subsession_execution_mode"),
+        workflow_state.get("runner_type") if isinstance(workflow_state, dict) else None,
+    ]
+    deterministic_aliases = {
+        "agent",
+        "deterministic_mock",
+        "local_simulated",
+        "local_simulated_outputs",
+        "meeting_mock",
+    }
+    external_aliases = {
+        "external_callback",
+        "external_confirmed",
+        "external_waiting",
+        "hermes_bridge",
+        "hermes_bridge_pending_callbacks",
+        "hermes_runtime",
+        "runtime_bridge",
+    }
+    for candidate in candidates:
+        token = _execution_mode_token(candidate)
+        if token in deterministic_aliases:
+            return EXECUTION_MODE_DETERMINISTIC_MOCK
+        if token in external_aliases:
+            return (
+                EXECUTION_MODE_EXTERNAL_CONFIRMED
+                if _callback_evidence_count(payload)
+                else EXECUTION_MODE_EXTERNAL_WAITING
+            )
+    return (
+        EXECUTION_MODE_EXTERNAL_CONFIRMED
+        if _callback_evidence_count(payload)
+        else EXECUTION_MODE_DETERMINISTIC_MOCK
+    )
+
+
+def normalized_execution_provenance(payload: Dict[str, Any]) -> Dict[str, Any]:
+    original = payload.get("execution_provenance", {})
+    provenance = dict(original) if isinstance(original, dict) else {}
+    mode = normalized_execution_mode(payload)
+    callback_count = _callback_evidence_count(payload)
+    legacy_mode = provenance.get("legacy_execution_mode")
+    if not legacy_mode:
+        previous_mode = provenance.get("execution_mode")
+        if previous_mode and _execution_mode_token(previous_mode) != mode:
+            legacy_mode = previous_mode
+        elif payload.get("subsession_execution_mode"):
+            legacy_mode = payload["subsession_execution_mode"]
+
+    provenance.update(
+        {
+            "schema": provenance.get(
+                "schema",
+                "wsa.orchestrator.execution_provenance.v1",
+            ),
+            "execution_mode": mode,
+            "normalized_execution_mode": mode,
+            "output_origin": _execution_output_origin(mode),
+            "actual_execution_owner": (
+                "wsa_local_deterministic_runner"
+                if mode == EXECUTION_MODE_DETERMINISTIC_MOCK
+                else "user_runtime"
+            ),
+            "local_simulated_output": mode == EXECUTION_MODE_DETERMINISTIC_MOCK,
+            "external_runtime_confirmed": mode == EXECUTION_MODE_EXTERNAL_CONFIRMED,
+            "callback_execution_reported": mode == EXECUTION_MODE_EXTERNAL_CONFIRMED,
+            "callback_evidence_count": callback_count,
+            "external_confirmation_basis": _external_confirmation_basis(payload),
+            "wsa_direct_runtime_execution": False,
+            "canon_write_performed": bool(provenance.get("canon_write_performed", False)),
+            "startup_profile_write_performed": bool(
+                provenance.get("startup_profile_write_performed", False)
+            ),
+            "world_mutation_performed": bool(
+                provenance.get("world_mutation_performed", False)
+            ),
+            "requires_author_decision": bool(
+                provenance.get("requires_author_decision", True)
+            ),
+        }
+    )
+    if legacy_mode:
+        provenance["legacy_execution_mode"] = legacy_mode
+    if mode == EXECUTION_MODE_EXTERNAL_CONFIRMED:
+        provenance["real_actor_sessions_executed"] = "external_runtime_callback_report_only"
+    elif mode == EXECUTION_MODE_DETERMINISTIC_MOCK:
+        provenance["real_actor_sessions_executed"] = False
+    else:
+        provenance.setdefault("real_actor_sessions_executed", False)
+    return provenance
+
+
+def normalize_execution_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(payload)
+    mode = normalized_execution_mode(payload)
+    callback_count = _callback_evidence_count(payload)
+    provenance = normalized_execution_provenance(payload)
+    execution_summary = _execution_summary(mode, callback_count)
+    normalized["execution_mode"] = mode
+    normalized["execution_provenance"] = provenance
+    normalized["execution_summary"] = execution_summary
+
+    contribution_summary = payload.get("actor_contribution_summary")
+    if isinstance(contribution_summary, dict):
+        updated_summary = dict(contribution_summary)
+        updated_summary.update(
+            {
+                "execution_mode": mode,
+                "output_origin": provenance["output_origin"],
+                "external_callback_confirmed": mode == EXECUTION_MODE_EXTERNAL_CONFIRMED,
+                "execution_summary": execution_summary["statement"],
+            }
+        )
+        normalized["actor_contribution_summary"] = updated_summary
+
+    synthesis = payload.get("synthesis")
+    if isinstance(synthesis, dict):
+        updated_synthesis = dict(synthesis)
+        updated_synthesis["execution_mode"] = mode
+        updated_synthesis["output_origin"] = provenance["output_origin"]
+        updated_synthesis["execution_summary"] = execution_summary["statement"]
+        normalized["synthesis"] = updated_synthesis
+    return normalized
 
 
 def _execution_provenance(
@@ -1653,22 +1958,106 @@ def _execution_provenance(
     artifact_type: str,
     completed: bool,
 ) -> Dict[str, Any]:
-    is_bridge = mode in {"hermes-bridge", "hermes_runtime", "hermes-runtime"}
+    is_external = _execution_mode_token(mode) in {
+        "external_callback",
+        "external_confirmed",
+        "external_waiting",
+        "hermes_bridge",
+        "hermes_runtime",
+        "runtime_bridge",
+    }
+    normalized_mode = (
+        EXECUTION_MODE_EXTERNAL_CONFIRMED
+        if is_external and completed
+        else EXECUTION_MODE_EXTERNAL_WAITING
+        if is_external
+        else EXECUTION_MODE_DETERMINISTIC_MOCK
+    )
     return {
         "schema": "wsa.orchestrator.execution_provenance.v1",
-        "execution_mode": mode,
+        "execution_mode": normalized_mode,
+        "normalized_execution_mode": normalized_mode,
+        "legacy_execution_mode": mode,
         "artifact_type": artifact_type,
+        "output_origin": _execution_output_origin(normalized_mode),
+        "actual_execution_owner": (
+            "user_runtime" if is_external else "wsa_local_deterministic_runner"
+        ),
+        "local_simulated_output": not is_external,
         "wsa_direct_runtime_execution": False,
         "external_runtime_owner": "user_runtime",
+        "external_runtime_confirmed": normalized_mode == EXECUTION_MODE_EXTERNAL_CONFIRMED,
         "real_actor_sessions_executed": (
-            "external_runtime_callback_report_only" if is_bridge and completed else False
+            "external_runtime_callback_report_only" if is_external and completed else False
         ),
-        "callback_execution_reported": bool(is_bridge and completed),
+        "callback_execution_reported": bool(is_external and completed),
+        "callback_evidence_count": 1 if is_external and completed else 0,
+        "external_confirmation_basis": (
+            "callback_execution_reported" if is_external and completed else "none"
+        ),
         "canon_write_performed": False,
         "startup_profile_write_performed": False,
         "world_mutation_performed": False,
         "requires_author_decision": True,
     }
+
+
+def _execution_summary(mode: str, callback_count: int = 0) -> Dict[str, Any]:
+    statement = {
+        EXECUTION_MODE_DETERMINISTIC_MOCK: (
+            "WSA generated deterministic local simulated outputs; no external callback was used."
+        ),
+        EXECUTION_MODE_EXTERNAL_WAITING: (
+            "WSA is waiting for an external runtime callback; external execution is not confirmed."
+        ),
+        EXECUTION_MODE_EXTERNAL_CONFIRMED: (
+            "WSA received external runtime callback evidence; callback execution is confirmed."
+        ),
+    }[mode]
+    return {
+        "execution_mode": mode,
+        "output_origin": _execution_output_origin(mode),
+        "external_callback_count": callback_count,
+        "statement": statement,
+    }
+
+
+def _execution_output_origin(mode: str) -> str:
+    return {
+        EXECUTION_MODE_DETERMINISTIC_MOCK: "wsa_local_deterministic_simulation",
+        EXECUTION_MODE_EXTERNAL_WAITING: "external_runtime_pending_callback",
+        EXECUTION_MODE_EXTERNAL_CONFIRMED: "external_runtime_callback",
+    }[mode]
+
+
+def _execution_mode_token(value: Any) -> str:
+    return str(value or "").strip().casefold().replace("-", "_")
+
+
+def _callback_evidence_count(payload: Dict[str, Any]) -> int:
+    submitted = payload.get("submitted_callbacks")
+    if isinstance(submitted, list) and submitted:
+        return len(submitted)
+    provenance = payload.get("execution_provenance", {})
+    if isinstance(provenance, dict) and provenance.get("callback_execution_reported") is True:
+        return max(1, int(provenance.get("callback_evidence_count") or 0))
+    summary = payload.get("actor_contribution_summary", {})
+    if isinstance(summary, dict) and summary.get("external_callback_confirmed") is True:
+        return max(1, int(summary.get("callback_total") or 0))
+    return 0
+
+
+def _external_confirmation_basis(payload: Dict[str, Any]) -> str:
+    submitted = payload.get("submitted_callbacks")
+    if isinstance(submitted, list) and submitted:
+        return "submitted_callback_records"
+    provenance = payload.get("execution_provenance", {})
+    if isinstance(provenance, dict) and provenance.get("callback_execution_reported") is True:
+        return "callback_execution_reported"
+    summary = payload.get("actor_contribution_summary", {})
+    if isinstance(summary, dict) and summary.get("external_callback_confirmed") is True:
+        return "actor_contribution_summary"
+    return "none"
 
 
 def _report_id_for_run(repo: WorldRepository, run_id: str) -> str:

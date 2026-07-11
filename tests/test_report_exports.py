@@ -35,7 +35,7 @@ class ReportExportTests(TestCase):
             self.assertEqual(payload["side_effect_status"], "read_only_until_write_requested")
             self.assertIn("# WSA Session Minutes", payload["content"])
             self.assertIn("exportable council minutes", payload["content"])
-            self.assertEqual(payload["source_of_truth"], "orchestrator_run_json")
+            self.assertEqual(payload["source_of_truth"], "control_sqlite_workflow_runs")
 
     def test_cli_writes_html_export_and_source_map(self) -> None:
         with TemporaryDirectory() as tmp:

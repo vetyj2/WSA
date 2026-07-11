@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any, Dict, List
 
+from .hermes_adapter import (
+    ORCHESTRATOR_BRIDGE_TASK_INPUT_SCHEMA,
+    ORCHESTRATOR_DISPATCH_RECEIPT_SCHEMA,
+    callback_route_digest,
+)
 from .orchestrator_contract import DEFAULT_UTTERANCE_TARGET
+from .participant_selection import (
+    choose_participant_contexts as choose_participant_contexts,
+    participant_selection_signals as _participant_selection_signals,
+)
 from .scene_modes import build_mode_aware_turn_contract
 
 
@@ -133,13 +143,27 @@ def build_scheduler_decision(
         for item in floor_state.get("verification_queue", [])
         if item.get("participant_id") == participant_id
     ]
+    selection_signals = _participant_selection_signals(
+        [participant_id],
+        {participant_id: actor_state},
+        floor_state,
+    )
     if verification_items:
         reason = "actor_has_pending_verification_or_manager_check"
         action = "ask_actor_to_answer_only_after considering verification status"
-    elif actor_state.get("objections_received"):
+    elif (
+        actor_state.get("objections_received")
+        or selection_signals["targeted_objection"]
+    ):
         reason = "actor_has_relevant_objections_to_answer"
         action = "ask_actor_to answer the strongest received objection"
-    elif actor_state.get("unanswered_questions"):
+    elif selection_signals["owner"]:
+        reason = "actor_owns_active_question_or_domain"
+        action = "ask the owner for the smallest decision or constraint that advances the floor"
+    elif (
+        actor_state.get("unanswered_questions")
+        or selection_signals["unanswered_question"]
+    ):
         reason = "actor_owns_unanswered_question"
         action = "ask a focused follow-up instead of broad restatement"
     elif round_index == 1 or not actor_state.get("last_position"):
@@ -196,6 +220,28 @@ def build_round_prompt_packet(
         mode_aware_turn_contract,
     )
     task_type = f"orchestrator_{workflow_profile.get('workflow', context_packet['workflow'])}_actor_turn"
+    session_id = context_packet.get("session_id")
+    expected_callback_route = {
+        "world_id": world_id,
+        "scene_id": None,
+        "session_id": session_id,
+        "role": "orchestrator_subsession",
+    }
+    route_digest = callback_route_digest(expected_callback_route)
+    bridge_task_input = {
+        "schema": ORCHESTRATOR_BRIDGE_TASK_INPUT_SCHEMA,
+        "run_id": context_packet["run_id"],
+        "turn_id": turn_id,
+        "session_id": session_id,
+        "expected_callback_route": expected_callback_route,
+        "route_digest": route_digest,
+        "callback_contract": {
+            "schema": "wsa.hermes.callback.v1",
+            "binding": "dispatch_receipt_required",
+            "copy_dispatch_receipt_from_task_packet": True,
+            "required_payload_fields": ["run_id", "turn_id", "output"],
+        },
+    }
     return {
         "schema": "wsa.orchestrator.round_prompt_packet.v1",
         "prompt_packet_id": turn_id,
@@ -203,7 +249,7 @@ def build_round_prompt_packet(
         "run_id": context_packet["run_id"],
         "participant_id": participant_id,
         "represents": context_packet["represents"],
-        "session_id": context_packet.get("session_id"),
+        "session_id": session_id,
         "round": round_index,
         "turn_type": "actor_turn",
         "workflow": workflow_profile.get("workflow", context_packet["workflow"]),
@@ -236,12 +282,21 @@ def build_round_prompt_packet(
                 world_id,
                 "--task-type",
                 task_type,
+                "--role",
+                "orchestrator_subsession",
                 "--title",
                 f"{context_packet['represents']} round {round_index}",
                 "--instruction",
                 prompt,
                 "--session-id",
-                str(context_packet.get("session_id", "")),
+                str(session_id or ""),
+                "--input-json",
+                json.dumps(
+                    bridge_task_input,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
                 "--skill",
                 str(context_packet.get("skill", workflow_profile.get("workflow", "orchestrator"))),
                 "--background",
@@ -252,6 +307,19 @@ def build_round_prompt_packet(
                 "collect-callback",
                 "hermes/callbacks/<callback>.json",
             ],
+            "bridge_submission_shape": [
+                "wsa",
+                "orchestrator",
+                "submit",
+                context_packet["run_id"],
+                "--callback",
+                "hermes/callbacks/<callback>.json",
+                "--format",
+                "json",
+            ],
+            "callback_archive_policy": (
+                "bridge_bound_callbacks_remain_in_callbacks_until_bridge_ingest_or_review_cleanup"
+            ),
         },
         "instruction": (
             "Respond with only the requested bounded fields. Prefer one precise sentence "
@@ -259,10 +327,13 @@ def build_round_prompt_packet(
         ),
         "expected_response_shape": DEFAULT_UTTERANCE_TARGET,
         "expected_fields": context_packet.get("expected_output", []),
-        "expected_callback_route": {
-            "world_id": world_id,
-            "session_id": context_packet.get("session_id"),
-            "role": "orchestrator_subsession",
+        "expected_callback_route": expected_callback_route,
+        "dispatch_contract": {
+            "schema": ORCHESTRATOR_DISPATCH_RECEIPT_SCHEMA,
+            "task_input_schema": ORCHESTRATOR_BRIDGE_TASK_INPUT_SCHEMA,
+            "binding": "run_id+turn_id+task_id+route_digest",
+            "required_for_generated_tasks": True,
+            "route_digest": route_digest,
         },
         "quality_gate": {
             "accepted_only_if_complete": True,
